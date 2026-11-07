@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from models import Candle, Trade, DrawingObject, UserSettings, BacktestSession
 from services.resampler import resample_candles
-from services.yahoo_provider import YahooFinanceProvider
+from services.dukascopy_provider import DukascopyProvider
 from services.market_data_service import market_data_service
 from services.data_validator import DataValidator
 import database
@@ -94,6 +94,15 @@ class TestBackend(unittest.TestCase):
         self.assertEqual(res[0].low, 1.0990)
         self.assertEqual(res[0].close, 1.1050)
         self.assertEqual(res[0].volume, 450.0)
+
+    def test_dukascopy_provider(self):
+        provider = DukascopyProvider()
+        quote = provider.get_latest_quote()
+        self.assertEqual(quote.symbol, "EUR/USD")
+        self.assertIn("Dukascopy", quote.provider)
+        self.assertGreater(quote.bid, 1.0)
+        self.assertGreater(quote.ask, quote.bid)
+        print(f"\n[Dukascopy Provider Live Quote]: Bid={quote.bid} Ask={quote.ask} Spread={quote.spread} Provider={quote.provider}")
 
     def test_market_data_validation_endpoint(self):
         report = market_data_service.validate_data("1h", "5d")

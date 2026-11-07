@@ -91,7 +91,7 @@ export const App: React.FC = () => {
     spread_pips: 1.2,
     commission_per_lot: 3.5,
     slippage_pips: 0.2,
-    active_provider: 'yahoo',
+    active_provider: 'dukascopy',
     timezone: 'UTC',
     theme: 'dark',
   });

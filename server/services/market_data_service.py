@@ -7,14 +7,14 @@ import time
 from typing import List, Dict, Optional, Set, Tuple
 from fastapi import WebSocket
 from models import Candle, Quote, UserSettings, DataValidationReport
-from services.yahoo_provider import YahooFinanceProvider
+from services.dukascopy_provider import DukascopyProvider
 from services.resampler import resample_candles, TIMEFRAME_SECONDS
 from services.data_validator import DataValidator
 import database
 
 class MarketDataService:
     def __init__(self):
-        self.yahoo_provider = YahooFinanceProvider()
+        self.dukascopy_provider = DukascopyProvider()
         self.active_connections: Set[WebSocket] = set()
         self.candle_cache: Dict[str, List[Candle]] = {}  # memory cache
         self.settings: UserSettings = database.get_settings()
@@ -23,8 +23,8 @@ class MarketDataService:
         self.settings = new_settings
 
     def get_latest_quote(self) -> Quote:
-        """Retrieves real-time or latest available interbank quote."""
-        quote = self.yahoo_provider.get_latest_quote(spread_pips=self.settings.spread_pips)
+        """Retrieves real-time or latest available interbank quote from Dukascopy Swiss Bank."""
+        quote = self.dukascopy_provider.get_latest_quote(spread_pips=self.settings.spread_pips)
         return quote
 
     def get_candles(
@@ -67,7 +67,7 @@ class MarketDataService:
             base_timeframe = "1h"
             need_resample = True
 
-        raw_candles = self.yahoo_provider.fetch_historical_candles(
+        raw_candles = self.dukascopy_provider.fetch_historical_candles(
             base_timeframe, range_str=range_str, start_time=start_time, end_time=end_time
         )
 

@@ -257,8 +257,12 @@ def get_settings() -> UserSettings:
     row = cursor.fetchone()
     conn.close()
     if row:
-        return UserSettings.model_validate_json(row["value_json"])
-    default_settings = UserSettings()
+        settings = UserSettings.model_validate_json(row["value_json"])
+        if settings.active_provider == "yahoo":
+            settings.active_provider = "dukascopy"
+            save_settings(settings)
+        return settings
+    default_settings = UserSettings(active_provider="dukascopy")
     save_settings(default_settings)
     return default_settings
 

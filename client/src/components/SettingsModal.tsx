@@ -173,7 +173,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   onChange={(e) => setFormData({ ...formData, active_provider: e.target.value })}
                   className="w-full bg-[#131722] border border-[#2a2e39] rounded px-3 py-2 text-white focus:outline-none focus:border-[#2962ff]"
                 >
-                  <option value="yahoo">Yahoo Finance Interbank Feed (Authentic Data, Zero-Config)</option>
+                  <option value="dukascopy">Dukascopy Bank SA (Swiss Forex Bank - Real bi5 Feed)</option>
                   <option value="twelvedata">Twelve Data WebSocket (Requires API Key)</option>
                   <option value="finnhub">Finnhub Forex API (Requires API Key)</option>
                 </select>

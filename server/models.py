@@ -78,7 +78,7 @@ class UserSettings(BaseModel):
     spread_pips: float = 1.2
     commission_per_lot: float = 3.50
     slippage_pips: float = 0.2
-    active_provider: str = "yahoo"
+    active_provider: str = "dukascopy"
     twelvedata_api_key: Optional[str] = ""
     finnhub_api_key: Optional[str] = ""
     timezone: str = "UTC"
