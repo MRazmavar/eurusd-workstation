@@ -44,6 +44,11 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
   const seriesRef = useRef<ISeriesApi<any> | null>(null);
   const indicatorSeriesRef = useRef<Map<string, ISeriesApi<any>>>(new Map());
   const [hoveredCandle, setHoveredCandle] = useState<Candle | null>(null);
+  const candlesRef = useRef<Candle[]>(candles);
+
+  useEffect(() => {
+    candlesRef.current = candles;
+  }, [candles]);
 
   const updateTransformer = useCallback(() => {
     if (!chartRef.current || !seriesRef.current) return;
@@ -54,7 +59,38 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
       timeToX: (t: number) => {
         if (t === undefined || t === null || isNaN(t)) return null;
         try {
-          return chart.timeScale().timeToCoordinate(t as unknown as Time);
+          const coord = chart.timeScale().timeToCoordinate(t as unknown as Time);
+          if (coord !== null) return coord;
+
+          // Extrapolate/interpolate using candles list
+          const list = candlesRef.current;
+          if (list && list.length > 0) {
+            const len = list.length;
+            if (len === 1) return chart.timeScale().logicalToCoordinate(0 as any);
+            const step = (list[len - 1].time - list[0].time) / Math.max(1, len - 1);
+            if (step <= 0) return chart.timeScale().logicalToCoordinate(0 as any);
+
+            if (t <= list[0].time) {
+              const logIdx = (t - list[0].time) / step;
+              return chart.timeScale().logicalToCoordinate(logIdx as any);
+            } else if (t >= list[len - 1].time) {
+              const logIdx = len - 1 + (t - list[len - 1].time) / step;
+              return chart.timeScale().logicalToCoordinate(logIdx as any);
+            } else {
+              // Binary search for surrounding bar
+              let low = 0, high = len - 1;
+              while (low <= high) {
+                const mid = Math.floor((low + high) / 2);
+                if (list[mid].time < t) low = mid + 1;
+                else high = mid - 1;
+              }
+              const i = Math.max(0, Math.min(len - 2, high));
+              const barDiff = Math.max(1, list[i + 1].time - list[i].time);
+              const frac = (t - list[i].time) / barDiff;
+              return chart.timeScale().logicalToCoordinate((i + frac) as any);
+            }
+          }
+          return null;
         } catch {
           return null;
         }
@@ -71,7 +107,25 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
         if (x === undefined || x === null || isNaN(x)) return null;
         try {
           const timeVal = chart.timeScale().coordinateToTime(x);
-          return typeof timeVal === 'number' ? timeVal : null;
+          if (typeof timeVal === 'number') return timeVal;
+
+          // Fallback via logical index
+          const logical = chart.timeScale().coordinateToLogical(x);
+          const list = candlesRef.current;
+          if (logical !== null && list && list.length > 0) {
+            const len = list.length;
+            if (len === 1) return list[0].time;
+            const step = (list[len - 1].time - list[0].time) / Math.max(1, len - 1);
+            if (logical >= 0 && logical < len) {
+              const idx = Math.min(len - 1, Math.max(0, Math.round(logical)));
+              return list[idx].time;
+            } else if (logical >= len) {
+              return Math.round(list[len - 1].time + (logical - (len - 1)) * step);
+            } else {
+              return Math.round(list[0].time + logical * step);
+            }
+          }
+          return null;
         } catch {
           return null;
         }

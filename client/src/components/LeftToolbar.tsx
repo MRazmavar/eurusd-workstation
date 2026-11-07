@@ -156,9 +156,15 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
   onDeleteAll,
 }) => {
   const [openFlyoutId, setOpenFlyoutId] = useState<string | null>(null);
+  const [lastSelectedTools, setLastSelectedTools] = useState<Record<string, DrawingToolType>>({});
 
   // Determine current active group icon
   const getGroupIcon = (group: ToolGroup) => {
+    const selectedInGroup = lastSelectedTools[group.id];
+    if (selectedInGroup) {
+      const match = group.items.find(i => i.tool === selectedInGroup);
+      if (match) return match.icon;
+    }
     const matched = group.items.find(i => i.tool === activeTool);
     return matched ? matched.icon : group.icon;
   };
@@ -168,7 +174,7 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
   };
 
   return (
-    <div className="w-11 bg-[#131722] border-r border-[#2a2e39] flex flex-col justify-between items-center py-2 z-20 select-none">
+    <div className="w-12 bg-[#131722] border-r border-[#2a2e39] flex flex-col justify-between items-center py-2 z-20 select-none">
       {/* Top Drawing Tool Groups */}
       <div className="flex flex-col space-y-1 w-full items-center">
         {TOOL_GROUPS.map((group) => {
@@ -177,22 +183,17 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
           const isFlyoutOpen = openFlyoutId === group.id;
 
           return (
-            <div key={group.id} className="relative w-full flex justify-center">
+            <div key={group.id} className="relative flex justify-center items-center">
               <button
                 onClick={() => {
-                  // If clicking active group, toggle submenu. If not active, switch to default or open.
-                  if (active) {
-                    setOpenFlyoutId(isFlyoutOpen ? null : group.id);
-                  } else {
-                    onSelectTool(group.defaultTool);
-                    setOpenFlyoutId(null);
-                  }
+                  const tool = lastSelectedTools[group.id] || group.defaultTool;
+                  onSelectTool(tool);
                 }}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   setOpenFlyoutId(isFlyoutOpen ? null : group.id);
                 }}
-                className={`w-8 h-8 rounded flex items-center justify-center relative transition-colors ${
+                className={`w-7 h-8 rounded-l flex items-center justify-center transition-colors ${
                   active
                     ? 'bg-[#2962ff] text-white shadow'
                     : 'text-gray-400 hover:text-white hover:bg-[#1e222d]'
@@ -200,16 +201,26 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
                 title={group.title}
               >
                 <Icon size={16} />
-                {/* Tiny arrow indicator for submenu */}
-                <span className="absolute bottom-0.5 right-0.5 text-[8px] leading-none opacity-60">
-                  ▸
-                </span>
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setOpenFlyoutId(isFlyoutOpen ? null : group.id);
+                }}
+                className={`w-3 h-8 rounded-r flex items-center justify-center text-[7px] transition-colors ${
+                  active
+                    ? 'bg-[#2962ff] text-white'
+                    : 'text-gray-500 hover:text-white hover:bg-[#2a2e39]'
+                }`}
+                title={`${group.title} Menu`}
+              >
+                ▸
               </button>
 
               {/* Flyout Submenu */}
               {isFlyoutOpen && (
                 <div
-                  className="absolute left-10 top-0 bg-[#1e222d] border border-[#2a2e39] rounded shadow-2xl py-1 w-48 z-50 text-xs"
+                  className="absolute left-11 top-0 bg-[#1e222d] border border-[#2a2e39] rounded shadow-2xl py-1 w-48 z-50 text-xs"
                   onMouseLeave={() => setOpenFlyoutId(null)}
                 >
                   <div className="px-3 py-1 text-[10px] text-gray-400 font-semibold uppercase tracking-wider border-b border-[#2a2e39] mb-1">
@@ -222,6 +233,7 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
                       <button
                         key={item.tool}
                         onClick={() => {
+                          setLastSelectedTools(prev => ({ ...prev, [group.id]: item.tool }));
                           onSelectTool(item.tool);
                           setOpenFlyoutId(null);
                         }}

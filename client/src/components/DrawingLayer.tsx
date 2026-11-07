@@ -2,7 +2,7 @@
  * Interactive SVG Drawing Overlay for TradingView-style technical analysis tools
  * and Draggable Trade Setup Lines (Entry, Stop Loss, Take Profit).
  */
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   DrawingObject,
   DrawingToolType,
@@ -52,6 +52,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   onCancelSetup,
 }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null);
 
   // Drawing state
   const [inProgressDrawing, setInProgressDrawing] = useState<DrawingObject | null>(null);
@@ -66,6 +67,25 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   const [draggingSetupLine, setDraggingSetupLine] = useState<'entry' | 'sl' | 'tp' | null>(null);
 
   const selectedDrawing = drawings.find(d => d.id === selectedId) || null;
+  const isDrawingToolActive = activeTool !== 'crosshair' && activeTool !== 'arrow';
+  const isSingleClickTool = ['horizontal_line', 'vertical_line', 'horizontal_ray', 'price_label'].includes(activeTool);
+  const isThreePointTool = ['parallel_channel', 'flat_top_bottom', 'disjoint_channel', 'triangle'].includes(activeTool);
+
+  // Global escape key listener to cancel in-progress drawing
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (inProgressDrawing) {
+          setInProgressDrawing(null);
+          onResetTool();
+        } else if (selectedId) {
+          onSelect(null);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [inProgressDrawing, selectedId, onResetTool, onSelect]);
 
   // Snaps point to nearest OHLC if magnet mode is on
   const snapPrice = (time: number, price: number): { time: number; price: number } => {
@@ -139,8 +159,8 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
       return;
     }
 
-    // 3. Selection / Object Move
-    if (activeTool === 'crosshair' || activeTool === 'arrow') {
+    // 3. Selection / Object Move when cursor active
+    if (!isDrawingToolActive) {
       const hit = DrawingEngine.hitTest({ x: mouse.x, y: mouse.y }, drawings, transformer);
       if (hit) {
         onSelect(hit.drawing.id);
@@ -158,7 +178,65 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
       return;
     }
 
-    // 4. Start drawing a new object
+    // 4. Start or advance drawing a new object
+    if (isSingleClickTool) {
+      const singleDrawing: DrawingObject = {
+        id: `draw_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        type: activeTool,
+        timeframe,
+        points: [{ time: mouse.time, price: mouse.price }],
+        properties: {
+          color: '#2962ff',
+          fillColor: '#2962ff',
+          fillOpacity: 0.15,
+          strokeWidth: 2,
+          lineStyle: 'solid',
+          fontSize: 12,
+          text: activeTool === 'price_label' ? mouse.price.toFixed(5) : '',
+        },
+        locked: false,
+        hidden: false,
+        created_at: Date.now(),
+        updated_at: Date.now(),
+      };
+      onAdd(singleDrawing);
+      onSelect(singleDrawing.id);
+      onResetTool();
+      return;
+    }
+
+    // Click-to-click advance
+    if (inProgressDrawing) {
+      if (isThreePointTool && inProgressDrawing.points.length === 2) {
+        // Step 2 -> 3: Base line locked, add 3rd point for height
+        const pts = [
+          inProgressDrawing.points[0],
+          inProgressDrawing.points[1],
+          { time: mouse.time, price: mouse.price },
+        ];
+        setInProgressDrawing({ ...inProgressDrawing, points: pts });
+        mouseDownPosRef.current = { x: mouse.x, y: mouse.y };
+        return;
+      }
+
+      // Complete 2-point or 3-point drawing
+      const finalPts = [...inProgressDrawing.points];
+      finalPts[finalPts.length - 1] = { time: mouse.time, price: mouse.price };
+      const completed: DrawingObject = {
+        ...inProgressDrawing,
+        points: finalPts,
+        updated_at: Date.now(),
+      };
+      onAdd(completed);
+      onSelect(completed.id);
+      setInProgressDrawing(null);
+      mouseDownPosRef.current = null;
+      onResetTool();
+      return;
+    }
+
+    // Fresh drawing initiation
+    mouseDownPosRef.current = { x: mouse.x, y: mouse.y };
     const newDrawing: DrawingObject = {
       id: `draw_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       type: activeTool,
@@ -207,7 +285,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
 
     if (inProgressDrawing) {
       const pts = [...inProgressDrawing.points];
-      pts[1] = { time: mouse.time, price: mouse.price };
+      pts[pts.length - 1] = { time: mouse.time, price: mouse.price };
       setInProgressDrawing({ ...inProgressDrawing, points: pts });
       return;
     }
@@ -238,18 +316,50 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     }
   };
 
-  const handleMouseUp = () => {
+  const handleMouseUp = (e: React.MouseEvent) => {
     if (draggingSetupLine) {
       setDraggingSetupLine(null);
     }
-    if (inProgressDrawing) {
-      onAdd(inProgressDrawing);
-      onSelect(inProgressDrawing.id);
-      setInProgressDrawing(null);
-      onResetTool();
-    }
     if (dragState) {
       setDragState(null);
+    }
+
+    if (inProgressDrawing && mouseDownPosRef.current) {
+      const mouse = getMouseCoord(e);
+      if (mouse) {
+        const dx = mouse.x - mouseDownPosRef.current.x;
+        const dy = mouse.y - mouseDownPosRef.current.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        // If user performed a drag gesture (> 8px)
+        if (dist > 8) {
+          if (isThreePointTool && inProgressDrawing.points.length === 2) {
+            // Dragged baseline, now initialize point 3 for parallel channel height
+            const pts = [
+              inProgressDrawing.points[0],
+              inProgressDrawing.points[1],
+              { time: mouse.time, price: mouse.price },
+            ];
+            setInProgressDrawing({ ...inProgressDrawing, points: pts });
+            mouseDownPosRef.current = null;
+          } else {
+            // Commit drawing
+            const finalPts = [...inProgressDrawing.points];
+            finalPts[finalPts.length - 1] = { time: mouse.time, price: mouse.price };
+            const completed = {
+              ...inProgressDrawing,
+              points: finalPts,
+              updated_at: Date.now(),
+            };
+            onAdd(completed);
+            onSelect(completed.id);
+            setInProgressDrawing(null);
+            mouseDownPosRef.current = null;
+            onResetTool();
+          }
+        }
+        // If dist <= 8, it was a single click: leave inProgressDrawing active for click-to-click TV drawing!
+      }
     }
   };
 
@@ -429,7 +539,31 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     const dashArray = d.properties.lineStyle === 'dashed' ? '6,4' : d.properties.lineStyle === 'dotted' ? '2,2' : undefined;
 
     return (
-      <g key={d.id} opacity={isTemp ? 0.7 : 1}>
+      <g
+        key={d.id}
+        opacity={isTemp ? 0.75 : 1}
+        className={!isDrawingToolActive && !isTemp ? 'pointer-events-auto cursor-pointer' : undefined}
+        onClick={(e) => {
+          if (!isDrawingToolActive && !isTemp) {
+            e.stopPropagation();
+            onSelect(d.id);
+          }
+        }}
+        onMouseDown={(e) => {
+          if (!isDrawingToolActive && !isTemp && !d.locked) {
+            e.stopPropagation();
+            onSelect(d.id);
+            const mouse = getMouseCoord(e);
+            if (mouse) {
+              setDragState({
+                drawingId: d.id,
+                startMouse: { x: mouse.x, y: mouse.y },
+                initialPoints: [...d.points],
+              });
+            }
+          }
+        }}
+      >
         {/* Trendline */}
         {d.type === 'trendline' && screenPts.length >= 2 && (
           <line
@@ -574,32 +708,52 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         )}
 
         {/* Parallel Channel / Disjoint Channel / Regression Trend */}
-        {['parallel_channel', 'regression_trend', 'flat_top_bottom', 'disjoint_channel'].includes(d.type) && screenPts.length >= 2 && (
-          <g>
-            <line
-              x1={screenPts[0].x}
-              y1={screenPts[0].y}
-              x2={screenPts[1].x}
-              y2={screenPts[1].y}
-              stroke={color}
-              strokeWidth={strokeWidth}
-            />
-            <line
-              x1={screenPts[0].x}
-              y1={screenPts[0].y + 45}
-              x2={screenPts[1].x}
-              y2={screenPts[1].y + 45}
-              stroke={color}
-              strokeWidth={strokeWidth}
-              strokeDasharray="4,4"
-            />
-            <polygon
-              points={`${screenPts[0].x},${screenPts[0].y} ${screenPts[1].x},${screenPts[1].y} ${screenPts[1].x},${screenPts[1].y + 45} ${screenPts[0].x},${screenPts[0].y + 45}`}
-              fill={color}
-              fillOpacity={0.12}
-            />
-          </g>
-        )}
+        {['parallel_channel', 'regression_trend', 'flat_top_bottom', 'disjoint_channel'].includes(d.type) && screenPts.length >= 2 && (() => {
+          const p1 = screenPts[0];
+          const p2 = screenPts[1];
+          // Use 3rd point if available for real channel offset, otherwise default offset
+          const offsetY = screenPts.length >= 3 ? screenPts[2].y - p1.y : 45;
+          const offsetX = screenPts.length >= 3 ? screenPts[2].x - p1.x : 0;
+          const p3 = { x: p2.x + offsetX, y: p2.y + offsetY };
+          const p4 = { x: p1.x + offsetX, y: p1.y + offsetY };
+          const mid1 = { x: (p1.x + p4.x) / 2, y: (p1.y + p4.y) / 2 };
+          const mid2 = { x: (p2.x + p3.x) / 2, y: (p2.y + p3.y) / 2 };
+
+          return (
+            <g>
+              <polygon
+                points={`${p1.x},${p1.y} ${p2.x},${p2.y} ${p3.x},${p3.y} ${p4.x},${p4.y}`}
+                fill={color}
+                fillOpacity={d.properties.fillOpacity || 0.12}
+              />
+              <line
+                x1={p1.x}
+                y1={p1.y}
+                x2={p2.x}
+                y2={p2.y}
+                stroke={color}
+                strokeWidth={strokeWidth}
+              />
+              <line
+                x1={p4.x}
+                y1={p4.y}
+                x2={p3.x}
+                y2={p3.y}
+                stroke={color}
+                strokeWidth={strokeWidth}
+              />
+              <line
+                x1={mid1.x}
+                y1={mid1.y}
+                x2={mid2.x}
+                y2={mid2.y}
+                stroke={color}
+                strokeWidth={1}
+                strokeDasharray="4,4"
+              />
+            </g>
+          );
+        })()}
 
         {/* Fibonacci Retracement */}
         {d.type === 'fib_retracement' && screenPts.length >= 2 && (
@@ -676,12 +830,12 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
 
         {/* Triangle */}
         {d.type === 'triangle' && screenPts.length >= 2 && (() => {
-          const p3 = { x: screenPts[0].x, y: screenPts[1].y };
+          const p3 = screenPts.length >= 3 ? screenPts[2] : { x: screenPts[0].x, y: screenPts[1].y };
           return (
             <polygon
               points={`${screenPts[0].x},${screenPts[0].y} ${screenPts[1].x},${screenPts[1].y} ${p3.x},${p3.y}`}
               fill={color}
-              fillOpacity={0.15}
+              fillOpacity={d.properties.fillOpacity || 0.15}
               stroke={color}
               strokeWidth={strokeWidth}
             />
@@ -959,14 +1113,26 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           screenPts.map((pt, idx) => (
             <rect
               key={idx}
-              x={pt.x - 4}
-              y={pt.y - 4}
-              width={8}
-              height={8}
+              x={pt.x - 5}
+              y={pt.y - 5}
+              width={10}
+              height={10}
               fill="#ffffff"
               stroke="#2962ff"
               strokeWidth={2}
-              className="cursor-pointer"
+              className="pointer-events-auto cursor-move"
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                const mouse = getMouseCoord(e);
+                if (mouse) {
+                  setDragState({
+                    drawingId: d.id,
+                    pointIndex: idx,
+                    startMouse: { x: mouse.x, y: mouse.y },
+                    initialPoints: [...d.points],
+                  });
+                }
+              }}
             />
           ))}
       </g>
@@ -974,13 +1140,32 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   };
 
   return (
-    <div className="absolute inset-0 pointer-events-auto overflow-hidden">
+    <div
+      className={`absolute inset-0 z-[15] overflow-hidden ${
+        isDrawingToolActive || inProgressDrawing || activeSetup?.active || selectedId
+          ? 'pointer-events-auto'
+          : 'pointer-events-none'
+      }`}
+    >
       <svg
         ref={svgRef}
-        className="w-full h-full cursor-crosshair select-none"
+        className={`w-full h-full select-none ${
+          isDrawingToolActive
+            ? 'cursor-crosshair pointer-events-auto'
+            : inProgressDrawing || activeSetup?.active
+            ? 'pointer-events-auto'
+            : 'pointer-events-none'
+        }`}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
+        onContextMenu={(e) => {
+          if (inProgressDrawing) {
+            e.preventDefault();
+            setInProgressDrawing(null);
+            onResetTool();
+          }
+        }}
       >
         <defs>
           <marker
