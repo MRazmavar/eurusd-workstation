@@ -27,6 +27,7 @@ interface ChartContainerProps {
   onTransformerReady: (t: CoordinateTransformer) => void;
   onCrosshairMove?: (param: { time?: number; price?: number; candle?: Candle }) => void;
   onChartInstanceReady?: (instance: { fitContent: () => void; resetScale: () => void }) => void;
+  onChartClick?: (point: { x: number; y: number }) => void;
 }
 
 export const ChartContainer: React.FC<ChartContainerProps> = ({
@@ -38,6 +39,7 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
   onTransformerReady,
   onCrosshairMove,
   onChartInstanceReady,
+  onChartClick,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -45,10 +47,15 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
   const indicatorSeriesRef = useRef<Map<string, ISeriesApi<any>>>(new Map());
   const [hoveredCandle, setHoveredCandle] = useState<Candle | null>(null);
   const candlesRef = useRef<Candle[]>(candles);
+  const onChartClickRef = useRef(onChartClick);
 
   useEffect(() => {
     candlesRef.current = candles;
   }, [candles]);
+
+  useEffect(() => {
+    onChartClickRef.current = onChartClick;
+  }, [onChartClick]);
 
   const updateTransformer = useCallback(() => {
     if (!chartRef.current || !seriesRef.current) return;
@@ -216,6 +223,13 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
 
     chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
       updateTransformer();
+    });
+
+    // Handle canvas clicks for drawing selection and deselection
+    chart.subscribeClick((param) => {
+      if (param.point && onChartClickRef.current) {
+        onChartClickRef.current(param.point);
+      }
     });
 
     // Crosshair movement handler for top bar metrics

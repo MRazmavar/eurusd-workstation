@@ -16,7 +16,7 @@ import {
 import { marketClient } from './services/MarketDataClient';
 import { replayEngine, ReplaySpeed } from './services/ReplayEngine';
 import { backtestingEngine } from './services/BacktestingEngine';
-import { CoordinateTransformer } from './services/DrawingEngine';
+import { CoordinateTransformer, DrawingEngine } from './services/DrawingEngine';
 import { TopBar } from './components/TopBar';
 import { LeftToolbar } from './components/LeftToolbar';
 import { ChartContainer } from './components/ChartContainer';
@@ -248,6 +248,18 @@ export const App: React.FC = () => {
     marketClient.saveDrawing(updated);
   };
 
+  // Handle clicking on chart canvas (select nearby drawing or deselect when clicking empty space)
+  const handleChartClick = useCallback((point: { x: number; y: number }) => {
+    if (activeTool !== 'crosshair' && activeTool !== 'arrow') return;
+    const hit = DrawingEngine.hitTest(point, drawings, transformer, 14);
+    console.log('[App] handleChartClick at:', point, 'hit:', hit ? hit.drawing.id : 'none');
+    if (hit) {
+      setSelectedDrawingId(hit.drawing.id);
+    } else {
+      setSelectedDrawingId(null);
+    }
+  }, [activeTool, drawings, transformer]);
+
   const handleDeleteDrawing = (id: string) => {
     setDrawings(prev => prev.filter(d => d.id !== id));
     if (selectedDrawingId === id) setSelectedDrawingId(null);
@@ -355,6 +367,7 @@ export const App: React.FC = () => {
               quote={quote}
               onTransformerReady={setTransformer}
               onChartInstanceReady={(inst) => { chartHelpersRef.current = inst; }}
+              onChartClick={handleChartClick}
             />
 
             {/* Interactive Drawing Layer Canvas Overlay */}

@@ -89,7 +89,8 @@ export class DrawingEngine {
 
       // 1. Check control handles (points)
       for (let pIdx = 0; pIdx < screenPoints.length; pIdx++) {
-        if (this.dist(mouse, screenPoints[pIdx]) <= hitTolerance + 3) {
+        const dHandle = this.dist(mouse, screenPoints[pIdx]);
+        if (dHandle <= hitTolerance + 6) {
           return { drawing: d, pointIndex: pIdx };
         }
       }
@@ -154,14 +155,19 @@ export class DrawingEngine {
         }
       }
 
-      // 7. Check Parallel Channel
-      else if (d.type === 'parallel_channel' && screenPoints.length >= 2) {
-        const offset = 40;
+      // 7. Check Parallel Channel & Channel tools
+      else if (['parallel_channel', 'regression_trend', 'flat_top_bottom', 'disjoint_channel'].includes(d.type) && screenPoints.length >= 2) {
         const p1 = screenPoints[0];
         const p2 = screenPoints[1];
-        const p3 = { x: p2.x, y: p2.y + offset };
-        const p4 = { x: p1.x, y: p1.y + offset };
-        if (this.pointInPolygon(mouse, [p1, p2, p3, p4])) {
+        const offsetY = screenPoints.length >= 3 ? screenPoints[2].y - p1.y : 45;
+        const offsetX = screenPoints.length >= 3 ? screenPoints[2].x - p1.x : 0;
+        const p3 = { x: p2.x + offsetX, y: p2.y + offsetY };
+        const p4 = { x: p1.x + offsetX, y: p1.y + offsetY };
+        if (
+          this.pointInPolygon(mouse, [p1, p2, p3, p4]) ||
+          this.distToSegment(mouse, p1, p2) <= hitTolerance ||
+          this.distToSegment(mouse, p4, p3) <= hitTolerance
+        ) {
           return { drawing: d };
         }
       }

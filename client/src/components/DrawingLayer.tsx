@@ -1257,16 +1257,37 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     >
       <svg
         ref={svgRef}
+        data-testid="drawing-svg"
         className={`w-full h-full select-none ${
           isDrawingToolActive
             ? 'cursor-crosshair pointer-events-auto'
             : inProgressDrawing || activeSetup?.active || dragState !== null || draggingSetupLine !== null
             ? 'pointer-events-auto cursor-move'
+            : selectedId !== null
+            ? 'pointer-events-auto'
             : 'pointer-events-none'
         }`}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
+        onClick={(e) => {
+          if (!isDrawingToolActive) {
+            // Clicking empty space on SVG deselects the current object
+            if (e.target === svgRef.current) {
+              const mouse = getMouseCoord(e);
+              if (mouse) {
+                const hit = DrawingEngine.hitTest({ x: mouse.x, y: mouse.y }, drawings, transformer, 12);
+                if (hit) {
+                  onSelect(hit.drawing.id);
+                } else {
+                  onSelect(null);
+                }
+              } else {
+                onSelect(null);
+              }
+            }
+          }
+        }}
         onContextMenu={(e) => {
           if (inProgressDrawing) {
             e.preventDefault();
