@@ -71,6 +71,33 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   const isSingleClickTool = ['horizontal_line', 'vertical_line', 'horizontal_ray', 'price_label'].includes(activeTool);
   const isThreePointTool = ['parallel_channel', 'flat_top_bottom', 'disjoint_channel', 'triangle'].includes(activeTool);
 
+  // Refs for window drag listener to eliminate stale closures
+  const dragStateRef = useRef<typeof dragState>(dragState);
+  const draggingSetupLineRef = useRef<typeof draggingSetupLine>(draggingSetupLine);
+  const drawingsRef = useRef<DrawingObject[]>(drawings);
+  const activeSetupRef = useRef<DraggableTradeSetup | null | undefined>(activeSetup);
+  const transformerRef = useRef<CoordinateTransformer>(transformer);
+
+  useEffect(() => {
+    dragStateRef.current = dragState;
+  }, [dragState]);
+
+  useEffect(() => {
+    draggingSetupLineRef.current = draggingSetupLine;
+  }, [draggingSetupLine]);
+
+  useEffect(() => {
+    drawingsRef.current = drawings;
+  }, [drawings]);
+
+  useEffect(() => {
+    activeSetupRef.current = activeSetup;
+  }, [activeSetup]);
+
+  useEffect(() => {
+    transformerRef.current = transformer;
+  }, [transformer]);
+
   // Global escape key listener to cancel in-progress drawing
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -112,19 +139,88 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     return { time: closest.time, price: bestLevel };
   };
 
-  const getMouseCoord = (e: React.MouseEvent): { x: number; y: number; time: number; price: number } | null => {
+  const getMouseCoord = (e: React.MouseEvent | MouseEvent): { x: number; y: number; time: number; price: number } | null => {
     if (!svgRef.current) return null;
     const rect = svgRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    const t = transformer.xToTime(x);
-    const p = transformer.yToPrice(y);
+    const currentTransformer = transformerRef.current;
+    const t = currentTransformer.xToTime(x);
+    const p = currentTransformer.yToPrice(y);
     if (t === null || p === null) return null;
 
     const snapped = snapPrice(t, p);
     return { x, y, time: snapped.time, price: snapped.price };
   };
+
+  // High-performance global window drag tracking: handles move at ANY speed without dropping
+  useEffect(() => {
+    if (!dragState && !draggingSetupLine) return;
+
+    const handleWindowMouseMove = (e: MouseEvent) => {
+      const mouse = getMouseCoord(e);
+      if (!mouse) return;
+
+      // 1. Dragging Trade Setup Line
+      if (draggingSetupLineRef.current && activeSetupRef.current && onUpdateSetup) {
+        const rounded = Number(mouse.price.toFixed(5));
+        if (draggingSetupLineRef.current === 'entry') {
+          onUpdateSetup({ entryPrice: rounded });
+        } else if (draggingSetupLineRef.current === 'sl') {
+          onUpdateSetup({ slPrice: rounded });
+        } else if (draggingSetupLineRef.current === 'tp') {
+          onUpdateSetup({ tpPrice: rounded });
+        }
+        return;
+      }
+
+      // 2. Dragging Drawing Anchor Handle or Entire Object
+      const currentDrag = dragStateRef.current;
+      if (currentDrag) {
+        const target = drawingsRef.current.find(d => d.id === currentDrag.drawingId);
+        if (!target || target.locked) return;
+
+        if (currentDrag.pointIndex !== undefined) {
+          // Dragging specific anchor point
+          const updatedPts = [...target.points];
+          updatedPts[currentDrag.pointIndex] = { time: mouse.time, price: mouse.price };
+          onUpdate({ ...target, points: updatedPts, updated_at: Date.now() });
+        } else {
+          // Dragging entire body
+          const currentTransformer = transformerRef.current;
+          const startT = currentTransformer.xToTime(currentDrag.startMouse.x);
+          const startP = currentTransformer.yToPrice(currentDrag.startMouse.y);
+          if (startT !== null && startP !== null) {
+            const dt = mouse.time - startT;
+            const dp = mouse.price - startP;
+            const updatedPts = currentDrag.initialPoints.map(pt => ({
+              time: pt.time + dt,
+              price: Number((pt.price + dp).toFixed(5)),
+            }));
+            onUpdate({ ...target, points: updatedPts, updated_at: Date.now() });
+          }
+        }
+      }
+    };
+
+    const handleWindowMouseUp = () => {
+      if (dragStateRef.current) {
+        setDragState(null);
+      }
+      if (draggingSetupLineRef.current) {
+        setDraggingSetupLine(null);
+      }
+    };
+
+    window.addEventListener('mousemove', handleWindowMouseMove);
+    window.addEventListener('mouseup', handleWindowMouseUp);
+
+    return () => {
+      window.removeEventListener('mousemove', handleWindowMouseMove);
+      window.removeEventListener('mouseup', handleWindowMouseUp);
+    };
+  }, [dragState !== null || draggingSetupLine !== null, onUpdate, onUpdateSetup]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     const mouse = getMouseCoord(e);
@@ -1111,29 +1207,41 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         {isSelected &&
           !d.locked &&
           screenPts.map((pt, idx) => (
-            <rect
-              key={idx}
-              x={pt.x - 5}
-              y={pt.y - 5}
-              width={10}
-              height={10}
-              fill="#ffffff"
-              stroke="#2962ff"
-              strokeWidth={2}
-              className="pointer-events-auto cursor-move"
-              onMouseDown={(e) => {
-                e.stopPropagation();
-                const mouse = getMouseCoord(e);
-                if (mouse) {
-                  setDragState({
-                    drawingId: d.id,
-                    pointIndex: idx,
-                    startMouse: { x: mouse.x, y: mouse.y },
-                    initialPoints: [...d.points],
-                  });
-                }
-              }}
-            />
+            <g key={idx}>
+              {/* Invisible large 24x24 hit target for effortless anchor grabbing */}
+              <rect
+                x={pt.x - 12}
+                y={pt.y - 12}
+                width={24}
+                height={24}
+                fill="transparent"
+                className="pointer-events-auto cursor-move"
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  const mouse = getMouseCoord(e);
+                  if (mouse) {
+                    setDragState({
+                      drawingId: d.id,
+                      pointIndex: idx,
+                      startMouse: { x: mouse.x, y: mouse.y },
+                      initialPoints: [...d.points],
+                    });
+                  }
+                }}
+              />
+              {/* Visible 10x10 anchor handle box */}
+              <rect
+                x={pt.x - 5}
+                y={pt.y - 5}
+                width={10}
+                height={10}
+                fill="#ffffff"
+                stroke="#2962ff"
+                strokeWidth={2}
+                className="pointer-events-none"
+              />
+            </g>
           ))}
       </g>
     );
@@ -1142,7 +1250,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   return (
     <div
       className={`absolute inset-0 z-[15] overflow-hidden ${
-        isDrawingToolActive || inProgressDrawing || activeSetup?.active || selectedId
+        isDrawingToolActive || inProgressDrawing || activeSetup?.active || selectedId || dragState !== null || draggingSetupLine !== null
           ? 'pointer-events-auto'
           : 'pointer-events-none'
       }`}
@@ -1152,8 +1260,8 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         className={`w-full h-full select-none ${
           isDrawingToolActive
             ? 'cursor-crosshair pointer-events-auto'
-            : inProgressDrawing || activeSetup?.active
-            ? 'pointer-events-auto'
+            : inProgressDrawing || activeSetup?.active || dragState !== null || draggingSetupLine !== null
+            ? 'pointer-events-auto cursor-move'
             : 'pointer-events-none'
         }`}
         onMouseDown={handleMouseDown}

@@ -133,7 +133,17 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
       yToPrice: (y: number) => {
         if (y === undefined || y === null || isNaN(y) || !seriesRef.current) return null;
         try {
-          return series.coordinateToPrice(y);
+          const directPrice = series.coordinateToPrice(y);
+          if (directPrice !== null) return directPrice;
+
+          // Extrapolate linearly if out-of-bounds (e.g. fast vertical swipe)
+          const pTop = series.coordinateToPrice(10);
+          const pBottom = series.coordinateToPrice(100);
+          if (pTop !== null && pBottom !== null && pBottom !== pTop) {
+            const pricePerPixel = (pBottom - pTop) / 90;
+            return pTop + (y - 10) * pricePerPixel;
+          }
+          return null;
         } catch {
           return null;
         }
