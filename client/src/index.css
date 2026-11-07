@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-main: #131722;
+    --bg-surface: #1e222d;
+    --bg-hover: #2a2e39;
+    --border-color: #2a2e39;
+    --text-primary: #d1d4dc;
+    --text-secondary: #787b86;
+    --bull-green: #089981;
+    --bear-red: #f23645;
+    --accent-blue: #2962ff;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    background-color: #131722;
+    color: #d1d4dc;
+    font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif;
+    overflow: hidden;
+    user-select: none;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Custom TradingView-style dark scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #131722;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a2e39;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #363c4e;
+}
+
+/* Numeric tabular figures for prices */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
