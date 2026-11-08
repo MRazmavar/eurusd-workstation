@@ -179,6 +179,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   // Refs for window drag listener to eliminate stale closures
   const dragStateRef = useRef<typeof dragState>(dragState);
   const draggingSetupLineRef = useRef<typeof draggingSetupLine>(draggingSetupLine);
+  const draggingTradeLineRef = useRef<typeof draggingTradeLine>(draggingTradeLine);
   const drawingsRef = useRef<DrawingObject[]>(drawings);
   const activeSetupRef = useRef<DraggableTradeSetup | null | undefined>(activeSetup);
   const transformerRef = useRef<CoordinateTransformer>(transformer);
@@ -190,6 +191,10 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   useEffect(() => {
     draggingSetupLineRef.current = draggingSetupLine;
   }, [draggingSetupLine]);
+
+  useEffect(() => {
+    draggingTradeLineRef.current = draggingTradeLine;
+  }, [draggingTradeLine]);
 
   useEffect(() => {
     drawingsRef.current = drawings;
@@ -233,7 +238,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     const rawTime = trans.xToTime(screenX);
     const rawPrice = trans.yToPrice(screenY);
     const fallbackTime = rawTime ?? (cList.length > 0 ? cList[cList.length - 1].time : 0);
-    const fallbackPrice = rawPrice ?? 1.0850;
+    const fallbackPrice = rawPrice ?? (cList.length > 0 ? cList[cList.length - 1].close : 1.11380);
 
     // Holding Ctrl dynamically inverts the magnet mode
     const effectiveMode: MagnetMode = isCtrl
@@ -399,7 +404,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
 
   // High-performance global window drag tracking: handles move at ANY speed without dropping
   useEffect(() => {
-    if (!dragState && !draggingSetupLine) return;
+    if (!dragState && !draggingSetupLine && !draggingTradeLine) return;
 
     const handleWindowMouseMove = (e: MouseEvent) => {
       const mouse = getMouseCoord(e);
@@ -418,7 +423,16 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         return;
       }
 
-      // 2. Dragging Drawing Anchor Handle or Entire Object
+      // 2. Dragging Confirmed Open Trade Line (SL / TP)
+      if (draggingTradeLineRef.current && onModifyTrade) {
+        const rounded = Number(mouse.price.toFixed(5));
+        onModifyTrade(draggingTradeLineRef.current.tradeId, {
+          [draggingTradeLineRef.current.lineType]: rounded,
+        });
+        return;
+      }
+
+      // 3. Dragging Drawing Anchor Handle or Entire Object
       const currentDrag = dragStateRef.current;
       if (currentDrag) {
         const target = drawingsRef.current.find(d => d.id === currentDrag.drawingId);
@@ -486,6 +500,9 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
       if (draggingSetupLineRef.current) {
         setDraggingSetupLine(null);
       }
+      if (draggingTradeLineRef.current) {
+        setDraggingTradeLine(null);
+      }
     };
 
     window.addEventListener('mousemove', handleWindowMouseMove);
@@ -495,7 +512,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
       window.removeEventListener('mousemove', handleWindowMouseMove);
       window.removeEventListener('mouseup', handleWindowMouseUp);
     };
-  }, [dragState !== null || draggingSetupLine !== null, onUpdate, onUpdateSetup]);
+  }, [dragState !== null || draggingSetupLine !== null || draggingTradeLine !== null, onUpdate, onUpdateSetup, onModifyTrade]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     const mouse = getMouseCoord(e);
@@ -804,7 +821,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     const activeTrades = trades.filter(t => t.status === 'OPEN' || t.status === 'PENDING');
     if (activeTrades.length === 0) return null;
 
-    const effectiveMarketPrice = currentPrice || (candles.length > 0 ? candles[candles.length - 1].close : 1.08500);
+    const effectiveMarketPrice = currentPrice || (candles.length > 0 ? candles[candles.length - 1].close : 1.11380);
 
     return (
       <g className="open-trades-layer select-none">
@@ -1244,103 +1261,161 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           fillOpacity={0.15}
         />
 
-        {/* 1. Take Profit Horizontal Line */}
-        <line
-          x1={0}
-          y1={tpY}
-          x2="100%"
-          y2={tpY}
-          stroke="#089981"
-          strokeWidth={2}
-          strokeDasharray="4,4"
-          className="cursor-ns-resize"
-        />
-        <g transform={`translate(16, ${tpY - 12})`} className="cursor-ns-resize">
-          <rect
-            width={280}
-            height={24}
-            rx={4}
-            fill="#089981"
-            className="shadow-lg"
+        {/* 1. Take Profit Horizontal Line & Interactive Drag Hit Target */}
+        <g
+          data-testid="on-chart-setup-tp"
+          className="cursor-ns-resize pointer-events-auto"
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            setDraggingSetupLine('tp');
+          }}
+        >
+          {/* 24px wide invisible hit area */}
+          <line
+            x1={0}
+            y1={tpY}
+            x2="100%"
+            y2={tpY}
+            stroke="transparent"
+            strokeWidth={24}
           />
-          <circle cx={10} cy={12} r={3} fill="#fff" />
-          <text
-            x={22}
-            y={16}
-            fill="#ffffff"
-            fontSize={11}
-            fontWeight="bold"
-            fontFamily="monospace"
-          >
-            TP: {activeSetup.tpPrice.toFixed(5)} (+{tpPips}p | +${activeSetup.rewardUsd.toFixed(2)})
-          </text>
+          <line
+            x1={0}
+            y1={tpY}
+            x2="100%"
+            y2={tpY}
+            stroke="#089981"
+            strokeWidth={2}
+            strokeDasharray="4,4"
+          />
+          <g transform={`translate(16, ${tpY - 12})`}>
+            <rect
+              width={280}
+              height={24}
+              rx={4}
+              fill="#089981"
+              className="shadow-lg"
+            />
+            <circle cx={10} cy={12} r={3} fill="#fff" />
+            <text
+              x={22}
+              y={16}
+              fill="#ffffff"
+              fontSize={11}
+              fontWeight="bold"
+              fontFamily="monospace"
+              className="pointer-events-none"
+            >
+              TP: {activeSetup.tpPrice.toFixed(5)} (+{tpPips}p | +${activeSetup.rewardUsd.toFixed(2)})
+            </text>
+          </g>
         </g>
 
-        {/* 2. Entry Horizontal Line */}
-        <line
-          x1={0}
-          y1={entryY}
-          x2="100%"
-          y2={entryY}
-          stroke="#2962ff"
-          strokeWidth={2.5}
-          className="cursor-ns-resize"
-        />
-        <g transform={`translate(16, ${entryY - 12})`} className="cursor-ns-resize">
-          <rect
-            width={260}
-            height={24}
-            rx={4}
-            fill="#2962ff"
-            className="shadow-lg"
+        {/* 2. Entry Horizontal Line & Interactive Drag Hit Target */}
+        <g
+          data-testid="on-chart-setup-entry"
+          className="cursor-ns-resize pointer-events-auto"
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            setDraggingSetupLine('entry');
+          }}
+        >
+          {/* 24px wide invisible hit area */}
+          <line
+            x1={0}
+            y1={entryY}
+            x2="100%"
+            y2={entryY}
+            stroke="transparent"
+            strokeWidth={24}
           />
-          <circle cx={10} cy={12} r={3} fill="#fff" />
-          <text
-            x={22}
-            y={16}
-            fill="#ffffff"
-            fontSize={11}
-            fontWeight="bold"
-            fontFamily="monospace"
-          >
-            ENTRY ({activeSetup.type}): {activeSetup.entryPrice.toFixed(5)} [Drag to adjust]
-          </text>
+          <line
+            x1={0}
+            y1={entryY}
+            x2="100%"
+            y2={entryY}
+            stroke="#2962ff"
+            strokeWidth={2.5}
+          />
+          <g transform={`translate(16, ${entryY - 12})`}>
+            <rect
+              width={260}
+              height={24}
+              rx={4}
+              fill="#2962ff"
+              className="shadow-lg"
+            />
+            <circle cx={10} cy={12} r={3} fill="#fff" />
+            <text
+              x={22}
+              y={16}
+              fill="#ffffff"
+              fontSize={11}
+              fontWeight="bold"
+              fontFamily="monospace"
+              className="pointer-events-none"
+            >
+              ENTRY ({activeSetup.type}): {activeSetup.entryPrice.toFixed(5)} [Drag to move]
+            </text>
+          </g>
         </g>
 
-        {/* 3. Stop Loss Horizontal Line */}
-        <line
-          x1={0}
-          y1={slY}
-          x2="100%"
-          y2={slY}
-          stroke="#f23645"
-          strokeWidth={2}
-          strokeDasharray="4,4"
-          className="cursor-ns-resize"
-        />
-        <g transform={`translate(16, ${slY - 12})`} className="cursor-ns-resize">
-          <rect
-            width={310}
-            height={24}
-            rx={4}
-            fill="#f23645"
-            className="shadow-lg"
+        {/* 3. Stop Loss Horizontal Line & Interactive Drag Hit Target */}
+        <g
+          data-testid="on-chart-setup-sl"
+          className="cursor-ns-resize pointer-events-auto"
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            setDraggingSetupLine('sl');
+          }}
+        >
+          {/* 24px wide invisible hit area */}
+          <line
+            x1={0}
+            y1={slY}
+            x2="100%"
+            y2={slY}
+            stroke="transparent"
+            strokeWidth={24}
           />
-          <circle cx={10} cy={12} r={3} fill="#fff" />
-          <text
-            x={22}
-            y={16}
-            fill="#ffffff"
-            fontSize={11}
-            fontWeight="bold"
-            fontFamily="monospace"
-          >
-            SL: {activeSetup.slPrice.toFixed(5)} (-{slPips}p | -${activeSetup.riskUsd.toFixed(2)}{activeSetup.riskPercent ? ` [${activeSetup.riskPercent.toFixed(1)}%]` : ''})
-          </text>
+          <line
+            x1={0}
+            y1={slY}
+            x2="100%"
+            y2={slY}
+            stroke="#f23645"
+            strokeWidth={2}
+            strokeDasharray="4,4"
+          />
+          <g transform={`translate(16, ${slY - 12})`}>
+            <rect
+              width={310}
+              height={24}
+              rx={4}
+              fill="#f23645"
+              className="shadow-lg"
+            />
+            <circle cx={10} cy={12} r={3} fill="#fff" />
+            <text
+              x={22}
+              y={16}
+              fill="#ffffff"
+              fontSize={11}
+              fontWeight="bold"
+              fontFamily="monospace"
+              className="pointer-events-none"
+            >
+              SL: {activeSetup.slPrice.toFixed(5)} (-{slPips}p | -${activeSetup.riskUsd.toFixed(2)}{activeSetup.riskPercent ? ` [${activeSetup.riskPercent.toFixed(1)}%]` : ''})
+            </text>
+          </g>
         </g>
 
         {/* Central Risk / Reward Badge & Action Buttons */}
-        <g transform={`translate(290, ${entryY - 16})`} className="pointer-events-auto">
+        <g
+          transform={`translate(290, ${entryY - 16})`}
+          className="pointer-events-auto"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
           <rect
             width={430}
             height={32}
@@ -1357,6 +1432,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             fontSize={11}
             fontWeight="bold"
             fontFamily="sans-serif"
+            className="pointer-events-none"
           >
             R:R 1 : {activeSetup.riskReward.toFixed(2)} | {activeSetup.lotSize} Lots{activeSetup.riskPercent ? ` (${activeSetup.riskPercent.toFixed(1)}% Risk)` : ''}
           </text>
@@ -1366,13 +1442,14 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             transform="translate(285, 4)"
             className="cursor-pointer"
             data-testid="on-chart-confirm-setup-btn"
+            onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               onConfirmSetup?.();
             }}
           >
             <rect width={75} height={24} rx={4} fill="#089981" />
-            <text x={37} y={16} fill="#ffffff" fontSize={11} fontWeight="bold" textAnchor="middle">
+            <text x={37} y={16} fill="#ffffff" fontSize={11} fontWeight="bold" textAnchor="middle" className="pointer-events-none">
               ✓ Confirm
             </text>
           </g>
@@ -1382,13 +1459,14 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             transform="translate(365, 4)"
             className="cursor-pointer"
             data-testid="on-chart-cancel-setup-btn"
+            onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               onCancelSetup?.();
             }}
           >
             <rect width={60} height={24} rx={4} fill="#2a2e39" stroke="#f23645" strokeWidth={1} />
-            <text x={30} y={16} fill="#f23645" fontSize={11} fontWeight="bold" textAnchor="middle">
+            <text x={30} y={16} fill="#f23645" fontSize={11} fontWeight="bold" textAnchor="middle" className="pointer-events-none">
               ✕ Cancel
             </text>
           </g>

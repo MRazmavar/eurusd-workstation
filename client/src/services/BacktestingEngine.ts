@@ -117,8 +117,8 @@ export class BacktestingEngine {
   public startTradeSetup(
     type: 'BUY' | 'SELL',
     currentPrice: number,
-    defaultSlPips: number = 20,
-    defaultTpPips: number = 40,
+    defaultSlPips: number = 5,
+    defaultTpPips: number = 5,
     customLotSize?: number,
     sizingMode: 'risk_percent' | 'lot_size' = 'lot_size',
     riskPercent: number = 1.0,
@@ -149,7 +149,7 @@ export class BacktestingEngine {
 
     const riskUsd = Number((defaultSlPips * 10 * lotSize).toFixed(2));
     const rewardUsd = Number((defaultTpPips * 10 * lotSize).toFixed(2));
-    const riskReward = defaultSlPips > 0 ? Number((defaultTpPips / defaultSlPips).toFixed(2)) : 2.0;
+    const riskReward = defaultSlPips > 0 ? Number((defaultTpPips / defaultSlPips).toFixed(2)) : 1.0;
     const calculatedRiskPercent = balance > 0 ? Number(((riskUsd / balance) * 100).toFixed(2)) : riskPercent;
 
     this.activeSetup = {
@@ -172,12 +172,54 @@ export class BacktestingEngine {
   public updateTradeSetup(updates: Partial<DraggableTradeSetup>, accountBalance?: number) {
     if (!this.activeSetup) return;
 
-    const updated = { ...this.activeSetup, ...updates };
     const balance = accountBalance || this.getAccountBalance();
+    const updated = { ...this.activeSetup, ...updates };
+
+    // 1. If type flipped (BUY <-> SELL), flip the SL and TP relative to entry to preserve the bracket!
+    if (updates.type && updates.type !== this.activeSetup.type) {
+      const curSlPips = Math.max(1, Math.round(Math.abs(this.activeSetup.entryPrice - this.activeSetup.slPrice) / 0.0001));
+      const curTpPips = Math.max(1, Math.round(Math.abs(this.activeSetup.tpPrice - this.activeSetup.entryPrice) / 0.0001));
+      const slDist = curSlPips * 0.0001;
+      const tpDist = curTpPips * 0.0001;
+
+      if (updates.type === 'BUY') {
+        updated.slPrice = Number((updated.entryPrice - slDist).toFixed(5));
+        updated.tpPrice = Number((updated.entryPrice + tpDist).toFixed(5));
+      } else {
+        updated.slPrice = Number((updated.entryPrice + slDist).toFixed(5));
+        updated.tpPrice = Number((updated.entryPrice - tpDist).toFixed(5));
+      }
+    }
+
+    // 2. If entryPrice was dragged individually (without explicit slPrice/tpPrice),
+    // move the entire bracket (Entry + SL + TP) together so pip distances are maintained!
+    if (updates.entryPrice !== undefined && updates.slPrice === undefined && updates.tpPrice === undefined) {
+      const oldEntry = this.activeSetup.entryPrice;
+      const deltaPrice = updates.entryPrice - oldEntry;
+      updated.slPrice = Number((this.activeSetup.slPrice + deltaPrice).toFixed(5));
+      updated.tpPrice = Number((this.activeSetup.tpPrice + deltaPrice).toFixed(5));
+    }
+
+    // 3. Bound validation: keep SL and TP on valid sides of Entry (min 0.5 pip buffer)
+    if (updated.type === 'BUY') {
+      if (updates.slPrice !== undefined) {
+        updated.slPrice = Math.min(Number((updated.entryPrice - 0.00005).toFixed(5)), updated.slPrice);
+      }
+      if (updates.tpPrice !== undefined) {
+        updated.tpPrice = Math.max(Number((updated.entryPrice + 0.00005).toFixed(5)), updated.tpPrice);
+      }
+    } else {
+      if (updates.slPrice !== undefined) {
+        updated.slPrice = Math.max(Number((updated.entryPrice + 0.00005).toFixed(5)), updated.slPrice);
+      }
+      if (updates.tpPrice !== undefined) {
+        updated.tpPrice = Math.min(Number((updated.entryPrice - 0.00005).toFixed(5)), updated.tpPrice);
+      }
+    }
 
     // Recalculate pips
-    const slPips = Math.abs(updated.entryPrice - updated.slPrice) / 0.0001;
-    const tpPips = Math.abs(updated.tpPrice - updated.entryPrice) / 0.0001;
+    const slPips = Math.max(0.5, Math.abs(updated.entryPrice - updated.slPrice) / 0.0001);
+    const tpPips = Math.max(0.5, Math.abs(updated.tpPrice - updated.entryPrice) / 0.0001);
 
     // If in risk_percent sizing mode and slPrice or entryPrice was dragged (without direct lot size update):
     // dynamically recalculate lotSize according to stop loss size!
@@ -188,13 +230,12 @@ export class BacktestingEngine {
       updates.lotSize === undefined
     ) {
       const targetRiskUsd = balance * (updated.riskPercent / 100);
-      const safeSl = Math.max(0.5, slPips);
-      updated.lotSize = Math.max(0.01, Number((targetRiskUsd / (safeSl * 10)).toFixed(2)));
+      updated.lotSize = Math.max(0.01, Number((targetRiskUsd / (slPips * 10)).toFixed(2)));
     }
 
     updated.riskUsd = Number((slPips * 10 * updated.lotSize).toFixed(2));
     updated.rewardUsd = Number((tpPips * 10 * updated.lotSize).toFixed(2));
-    updated.riskReward = slPips > 0 ? Number((tpPips / slPips).toFixed(2)) : 0;
+    updated.riskReward = slPips > 0 ? Number((tpPips / slPips).toFixed(2)) : 1.0;
     if (balance > 0 && updated.sizingMode !== 'risk_percent') {
       updated.riskPercent = Number(((updated.riskUsd / balance) * 100).toFixed(2));
     }

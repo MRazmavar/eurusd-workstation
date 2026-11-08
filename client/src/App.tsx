@@ -806,9 +806,9 @@ export const App: React.FC = () => {
               onDuplicateDrawing={handleDuplicateDrawing}
               onShowToast={showToast}
               trades={trades}
-              currentPrice={visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : (quote?.bid || 1.08500)}
+              currentPrice={visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : (quote?.bid || (masterCandles.length > 0 ? masterCandles[masterCandles.length - 1].close : 1.11380))}
               onCloseTrade={(tradeId) => {
-                const curP = visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : (quote?.bid || 1.08500);
+                const curP = visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : (quote?.bid || (masterCandles.length > 0 ? masterCandles[masterCandles.length - 1].close : 1.11380));
                 const time = replayEngine.getCurrentCandle()?.time || Math.floor(Date.now() / 1000);
                 backtestingEngine.closeTrade(tradeId, curP, time, 'MANUAL');
                 showToast('Closed Position from Chart');
@@ -846,7 +846,7 @@ export const App: React.FC = () => {
           onDeleteDrawing={handleDeleteDrawing}
           selectedDrawingId={selectedDrawingId}
           currentReplayCandleTime={replayEngine.getCurrentCandle()?.time}
-          currentChartPrice={visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : undefined}
+          currentChartPrice={visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : (masterCandles.length > 0 ? masterCandles[masterCandles.length - 1].close : (quote?.bid || 1.11380))}
           settings={settings}
           balance={currentBalance}
           equity={currentEquity}

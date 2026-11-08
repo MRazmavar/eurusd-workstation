@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { Quote, DrawingObject, Trade, UserSettings, DraggableTradeSetup } from '../types';
 import { backtestingEngine } from '../services/BacktestingEngine';
+import { replayEngine } from '../services/ReplayEngine';
 
 interface RightSidebarProps {
   quote: Quote | null;
@@ -68,8 +69,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const [sizingMode, setSizingMode] = useState<'risk_percent' | 'lot_size'>('risk_percent');
   const [riskPercent, setRiskPercent] = useState<number>(() => settings.default_risk_percent || 1.0);
   const [lotSize, setLotSize] = useState<number>(() => settings.default_lot_size || 1.0);
-  const [slPips, setSlPips] = useState<number>(20);
-  const [tpPips, setTpPips] = useState<number>(40);
+  const [slPips, setSlPips] = useState<number>(5);
+  const [tpPips, setTpPips] = useState<number>(5);
   const [tradeNotes, setTradeNotes] = useState<string>('');
 
   // Active draggable on-chart setup
@@ -93,9 +94,25 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   }, []);
 
   const effectiveBalance = balance || settings.initial_balance || 10000;
-  const currentPrice = currentChartPrice || (quote ? quote.bid : 1.08500);
+
+  // Authoritative real-time live price: Replay candle price takes priority when replay is active,
+  // followed by currentChartPrice (latest visible candle close), followed by live quote.
+  const getActiveLivePrice = (): number => {
+    if (currentReplayCandleTime || replayEngine.isActive()) {
+      const replayCandle = replayEngine.getCurrentCandle();
+      if (replayCandle) return replayCandle.close;
+      if (currentChartPrice) return currentChartPrice;
+    }
+    if (currentChartPrice) return currentChartPrice;
+    if (quote) {
+      return orderType === 'BUY' ? quote.ask : quote.bid;
+    }
+    return 1.11380;
+  };
+
+  const currentPrice = getActiveLivePrice();
   const baseEntryPrice = execType === 'MARKET'
-    ? (orderType === 'BUY' ? (quote?.ask || currentPrice) : (quote?.bid || currentPrice))
+    ? currentPrice
     : (Number(customPrice) || currentPrice);
 
   const entryPrice = chartSetup?.active ? chartSetup.entryPrice : baseEntryPrice;
@@ -128,11 +145,18 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     if (chartSetup && chartSetup.active) {
       backtestingEngine.cancelTradeSetup();
     } else {
+      // Always place entry at the current live chart price with 5 pips SL and 5 pips TP!
+      const freshLivePrice = getActiveLivePrice();
+      const defaultPips = 5;
+      setSlPips(defaultPips);
+      setTpPips(defaultPips);
+      setCustomPrice(freshLivePrice);
+
       backtestingEngine.startTradeSetup(
         orderType,
-        entryPrice,
-        slPips,
-        tpPips,
+        freshLivePrice,
+        defaultPips,
+        defaultPips,
         effectiveLotSize,
         sizingMode,
         riskPercent,
