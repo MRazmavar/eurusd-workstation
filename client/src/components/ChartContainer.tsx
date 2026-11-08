@@ -135,15 +135,30 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
           if (list && list.length > 0) {
             const len = list.length;
             if (len === 1) return chart.timeScale().logicalToCoordinate(0 as any);
-            const step = (list[len - 1].time - list[0].time) / Math.max(1, len - 1);
-            if (step <= 0) return chart.timeScale().logicalToCoordinate(0 as any);
+
+            // Timeframe step determination
+            let tfSec = 60;
+            if (len > 1) {
+              tfSec = Math.max(1, list[len - 1].time - list[len - 2].time);
+            }
 
             if (t <= list[0].time) {
-              const logIdx = (t - list[0].time) / step;
+              const logIdx = (t - list[0].time) / tfSec;
               return chart.timeScale().logicalToCoordinate(logIdx as any);
             } else if (t >= list[len - 1].time) {
-              const logIdx = len - 1 + (t - list[len - 1].time) / step;
-              return chart.timeScale().logicalToCoordinate(logIdx as any);
+              const logIdx = len - 1 + (t - list[len - 1].time) / tfSec;
+              const coordAhead = chart.timeScale().logicalToCoordinate(logIdx as any);
+              if (coordAhead !== null && !isNaN(coordAhead) && coordAhead > 0) {
+                return coordAhead;
+              }
+              // Pixel-based extrapolation fallback so future/close boundaries never return 0 or null
+              const lastCandleX = chart.timeScale().timeToCoordinate(list[len - 1].time as unknown as Time);
+              const prevCandleX = len > 1 ? chart.timeScale().timeToCoordinate(list[len - 2].time as unknown as Time) : null;
+              if (lastCandleX !== null && prevCandleX !== null && lastCandleX > prevCandleX) {
+                const pxPerSec = (lastCandleX - prevCandleX) / tfSec;
+                return lastCandleX + (t - list[len - 1].time) * pxPerSec;
+              }
+              return coordAhead;
             } else {
               // Binary search for surrounding bar
               let low = 0, high = len - 1;

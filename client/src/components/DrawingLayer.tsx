@@ -64,6 +64,7 @@ interface DrawingLayerProps {
   indicators?: IndicatorConfig[];
   timezone?: string;
   sessionsActive?: boolean;
+  currentReplayTimestamp?: number | null;
 }
 
 export const DrawingLayer: React.FC<DrawingLayerProps> = ({
@@ -101,6 +102,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   indicators,
   timezone = 'UTC',
   sessionsActive = true,
+  currentReplayTimestamp,
 }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null);
@@ -823,7 +825,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     if (sessionsInd && !sessionsInd.visible) return null;
 
     // Compute active session blocks across visible candles
-    const blocks = computeSessionBlocks(candles);
+    const blocks = computeSessionBlocks(candles, currentReplayTimestamp);
     if (blocks.length === 0) return null;
 
     return (
@@ -858,9 +860,12 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
 
           // Staggered badge positioning: attached directly to session rectangle
           const isShield = block.session.id === 'shield_area';
+          const isActive = block.status === 'ACTIVE';
           const badgeY = boxTop > 46
-            ? (isShield ? boxTop - 44 : boxTop - 22)
+            ? (isShield ? boxTop - 46 : boxTop - 24)
             : (isShield ? boxTop + 24 : boxTop + 4);
+
+          const badgeWidth = isActive ? 185 : (isShield ? 155 : 145);
 
           return (
             <g key={block.key} data-testid={`session-block-${block.session.id}`}>
@@ -871,9 +876,9 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 width={width}
                 height={boxHeight}
                 fill={block.session.color}
-                fillOpacity={block.session.fillOpacity}
-                stroke={block.session.borderColor}
-                strokeWidth={1.5}
+                fillOpacity={isActive ? Math.min(0.28, block.session.fillOpacity * 1.4) : block.session.fillOpacity}
+                stroke={isActive ? '#10b981' : block.session.borderColor}
+                strokeWidth={isActive ? 2 : 1.5}
                 rx={2}
                 data-testid={`session-rect-${block.session.id}`}
               />
@@ -906,6 +911,28 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 />
               )}
 
+              {/* Projected remaining duration for active session */}
+              {isActive && (() => {
+                const xEnd = transformer.timeToX(block.endTime);
+                if (xEnd !== null && xEnd > boxRight) {
+                  return (
+                    <rect
+                      x={boxRight}
+                      y={boxTop}
+                      width={Math.max(4, xEnd - boxRight)}
+                      height={boxHeight}
+                      fill={block.session.color}
+                      fillOpacity={block.session.fillOpacity * 0.35}
+                      stroke={block.session.borderColor}
+                      strokeWidth={1}
+                      strokeDasharray="3,3"
+                      data-testid={`session-projected-${block.session.id}`}
+                    />
+                  );
+                }
+                return null;
+              })()}
+
               {/* Session Highest High Horizontal Line */}
               <line
                 x1={boxLeft}
@@ -930,30 +957,119 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 opacity={0.8}
               />
 
-              {/* Session Top Badge Pill */}
-              {boxLeft > -150 && boxLeft < 2200 && (
+              {/* Active Session Real-Time Breakout Levels & Price Badges */}
+              {isActive && (
+                <g data-testid={`session-active-levels-${block.session.id}`}>
+                  {/* High Breakout Line */}
+                  <line
+                    x1={boxRight}
+                    y1={boxTop}
+                    x2={Math.min(dimensions.width - 60, boxRight + 55)}
+                    y2={boxTop}
+                    stroke={block.session.borderColor}
+                    strokeWidth={1.5}
+                    strokeDasharray="3,3"
+                  />
+                  <g transform={`translate(${Math.min(dimensions.width - 55, boxRight + 4)}, ${boxTop - 8})`}>
+                    <rect
+                      width={50}
+                      height={16}
+                      rx={3}
+                      fill={block.session.badgeBg}
+                      stroke={block.session.badgeBorder}
+                      strokeWidth={1}
+                      className="shadow-sm"
+                    />
+                    <text
+                      x={25}
+                      y={11.5}
+                      fill={block.session.badgeText}
+                      fontSize={9}
+                      fontFamily="monospace"
+                      fontWeight="bold"
+                      textAnchor="middle"
+                    >
+                      {block.high.toFixed(5)}
+                    </text>
+                  </g>
+
+                  {/* Low Breakout Line */}
+                  <line
+                    x1={boxRight}
+                    y1={boxBottom}
+                    x2={Math.min(dimensions.width - 60, boxRight + 55)}
+                    y2={boxBottom}
+                    stroke={block.session.borderColor}
+                    strokeWidth={1.5}
+                    strokeDasharray="3,3"
+                  />
+                  <g transform={`translate(${Math.min(dimensions.width - 55, boxRight + 4)}, ${boxBottom - 8})`}>
+                    <rect
+                      width={50}
+                      height={16}
+                      rx={3}
+                      fill={block.session.badgeBg}
+                      stroke={block.session.badgeBorder}
+                      strokeWidth={1}
+                      className="shadow-sm"
+                    />
+                    <text
+                      x={25}
+                      y={11.5}
+                      fill={block.session.badgeText}
+                      fontSize={9}
+                      fontFamily="monospace"
+                      fontWeight="bold"
+                      textAnchor="middle"
+                    >
+                      {block.low.toFixed(5)}
+                    </text>
+                  </g>
+                </g>
+              )}
+
+              {/* Session Top Badge Pill with real-time pip range and live indicator */}
+              {boxLeft > -150 && boxLeft < dimensions.width + 150 && (
                 <g
                   transform={`translate(${Math.max(10, boxLeft + 6)}, ${badgeY})`}
                   data-testid={`session-badge-${block.session.id}`}
                 >
+                  <title>{`${block.session.name} | Range: ${block.pips}p | High: ${block.high.toFixed(5)} | Low: ${block.low.toFixed(5)} | Status: ${block.status}`}</title>
                   <rect
-                    width={block.session.id === 'shield_area' ? 112 : (block.session.id === 'asia_full' ? 96 : 92)}
-                    height={20}
+                    width={badgeWidth}
+                    height={22}
                     rx={4}
                     fill={block.session.badgeBg}
-                    stroke={block.session.badgeBorder}
-                    strokeWidth={block.session.id === 'shield_area' ? 1.5 : 1}
-                    className="shadow-sm"
+                    stroke={isActive ? '#10b981' : block.session.badgeBorder}
+                    strokeWidth={isActive ? 1.5 : (block.session.id === 'shield_area' ? 1.5 : 1)}
+                    className="shadow-md"
                   />
                   <text
-                    x={6}
-                    y={14}
+                    x={8}
+                    y={15}
                     fill={block.session.badgeText}
                     fontSize={10}
                     fontWeight="bold"
                     fontFamily="sans-serif"
                   >
                     {block.session.shortLabel}
+                  </text>
+                  {isActive && (
+                    <g transform={`translate(${isShield ? 104 : (block.session.id === 'asia_full' ? 88 : 84)}, 5)`}>
+                      <circle cx={4} cy={6} r={3} fill="#10b981" />
+                      <text x={10} y={9.5} fill="#10b981" fontSize={8.5} fontWeight="bold" fontFamily="sans-serif">LIVE</text>
+                    </g>
+                  )}
+                  <text
+                    x={badgeWidth - 8}
+                    y={15}
+                    fill={isActive ? '#34d399' : '#9ca3af'}
+                    fontSize={9.5}
+                    fontWeight="bold"
+                    fontFamily="monospace"
+                    textAnchor="end"
+                  >
+                    {block.pips > 0 ? `${block.pips}p` : ''}
                   </text>
                 </g>
               )}

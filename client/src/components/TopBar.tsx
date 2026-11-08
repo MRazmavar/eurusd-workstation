@@ -50,6 +50,7 @@ interface TopBarProps {
   onOpenBalanceModal?: () => void;
   onOpenQuickTimeframe?: () => void;
   sessionsIndicatorActive?: boolean;
+  activeSessionLabel?: string;
   onToggleSessionsIndicator?: () => void;
   timezone?: string;
   onTimezoneChange?: (tz: string) => void;
@@ -101,6 +102,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenBalanceModal,
   onOpenQuickTimeframe,
   sessionsIndicatorActive = true,
+  activeSessionLabel,
   onToggleSessionsIndicator,
   timezone = 'UTC',
   onTimezoneChange,
@@ -370,13 +372,20 @@ export const TopBar: React.FC<TopBarProps> = ({
         >
           <Clock size={13} className={sessionsIndicatorActive ? 'text-purple-400' : 'text-gray-400'} />
           <span className="font-semibold">Sessions</span>
-          <span
-            className={`text-[9px] px-1 py-0.2 rounded font-mono font-bold ${
-              sessionsIndicatorActive ? 'bg-[#8b5cf6] text-white' : 'bg-gray-700 text-gray-300'
-            }`}
-          >
-            {sessionsIndicatorActive ? 'ON' : 'OFF'}
-          </span>
+          {sessionsIndicatorActive && activeSessionLabel ? (
+            <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-bold bg-[#10b981]/25 text-[#10b981] border border-[#10b981]/40 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#10b981] animate-pulse" />
+              {activeSessionLabel}
+            </span>
+          ) : (
+            <span
+              className={`text-[9px] px-1 py-0.2 rounded font-mono font-bold ${
+                sessionsIndicatorActive ? 'bg-[#8b5cf6] text-white' : 'bg-gray-700 text-gray-300'
+              }`}
+            >
+              {sessionsIndicatorActive ? 'ON' : 'OFF'}
+            </span>
+          )}
         </button>
 
         {/* Forex Factory News Events Toggle Button */}

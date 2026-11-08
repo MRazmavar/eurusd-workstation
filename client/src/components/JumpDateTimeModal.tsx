@@ -10,6 +10,7 @@ interface JumpDateTimeModalProps {
   onClose: () => void;
   onJumpToTime: (timestampSec: number) => void;
   candles: Candle[];
+  timezone?: string;
 }
 
 export const JumpDateTimeModal: React.FC<JumpDateTimeModalProps> = ({
@@ -17,6 +18,7 @@ export const JumpDateTimeModal: React.FC<JumpDateTimeModalProps> = ({
   onClose,
   onJumpToTime,
   candles,
+  timezone = 'UTC',
 }) => {
   const [selectedDateTime, setSelectedDateTime] = useState<string>('');
 
@@ -25,11 +27,16 @@ export const JumpDateTimeModal: React.FC<JumpDateTimeModalProps> = ({
       // Default to roughly 100 bars ago or midpoint
       const midIdx = Math.max(0, candles.length - 100);
       const targetTime = candles[midIdx].time * 1000;
-      const d = new Date(targetTime);
-      const iso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-      setSelectedDateTime(iso);
+      if (timezone === 'UTC') {
+        const iso = new Date(targetTime).toISOString().slice(0, 16);
+        setSelectedDateTime(iso);
+      } else {
+        const d = new Date(targetTime);
+        const iso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+        setSelectedDateTime(iso);
+      }
     }
-  }, [candles, isOpen]);
+  }, [candles, isOpen, timezone]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -44,19 +51,45 @@ export const JumpDateTimeModal: React.FC<JumpDateTimeModalProps> = ({
   const minCandle = candles[0];
   const maxCandle = candles[candles.length - 1];
 
-  const minIso = new Date(minCandle.time * 1000 - new Date(minCandle.time * 1000).getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  const maxIso = new Date(maxCandle.time * 1000 - new Date(maxCandle.time * 1000).getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  const minIso = timezone === 'UTC'
+    ? new Date(minCandle.time * 1000).toISOString().slice(0, 16)
+    : new Date(minCandle.time * 1000 - new Date(minCandle.time * 1000).getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  const maxIso = timezone === 'UTC'
+    ? new Date(maxCandle.time * 1000).toISOString().slice(0, 16)
+    : new Date(maxCandle.time * 1000 - new Date(maxCandle.time * 1000).getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 
   const handlePreset = (offsetBars: number) => {
     const idx = Math.max(0, candles.length - 1 - offsetBars);
-    const d = new Date(candles[idx].time * 1000);
-    const iso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-    setSelectedDateTime(iso);
+    const targetTime = candles[idx].time * 1000;
+    if (timezone === 'UTC') {
+      const iso = new Date(targetTime).toISOString().slice(0, 16);
+      setSelectedDateTime(iso);
+    } else {
+      const d = new Date(targetTime);
+      const iso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      setSelectedDateTime(iso);
+    }
   };
 
   const handleApply = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedDateTime) return;
+
+    if (timezone === 'UTC') {
+      const parts = selectedDateTime.split(/[-T:]/);
+      if (parts.length >= 5) {
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10) - 1;
+        const d = parseInt(parts[2], 10);
+        const h = parseInt(parts[3], 10);
+        const min = parseInt(parts[4], 10);
+        const epochSec = Math.floor(Date.UTC(y, m, d, h, min) / 1000);
+        onJumpToTime(epochSec);
+        onClose();
+        return;
+      }
+    }
+
     const epochSec = Math.floor(new Date(selectedDateTime).getTime() / 1000);
     onJumpToTime(epochSec);
     onClose();

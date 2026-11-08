@@ -22,9 +22,10 @@ import {
   Wallet,
   Settings,
 } from 'lucide-react';
-import { Quote, DrawingObject, Trade, UserSettings, DraggableTradeSetup } from '../types';
+import { Quote, DrawingObject, Trade, UserSettings, DraggableTradeSetup, Candle } from '../types';
 import { backtestingEngine } from '../services/BacktestingEngine';
 import { replayEngine } from '../services/ReplayEngine';
+import { getSessionStatusesForTime } from '../utils/sessions';
 
 interface RightSidebarProps {
   quote: Quote | null;
@@ -40,6 +41,7 @@ interface RightSidebarProps {
   equity?: number;
   onOpenBalanceModal?: () => void;
   onOpenDrawingProperties?: (d: DrawingObject) => void;
+  candles?: Candle[];
 }
 
 type TabType = 'market' | 'order' | 'objects' | 'alerts';
@@ -58,9 +60,18 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   equity,
   onOpenBalanceModal,
   onOpenDrawingProperties,
+  candles = [],
 }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('order');
+
+  const effectiveRefTime = currentReplayCandleTime ?? (
+    candles.length > 0 ? candles[candles.length - 1].time : (quote?.timestamp ? Math.floor(new Date(quote.timestamp).getTime() / 1000) : Math.floor(Date.now() / 1000))
+  );
+
+  const sessionSummaries = React.useMemo(() => {
+    return getSessionStatusesForTime(effectiveRefTime, candles);
+  }, [effectiveRefTime, candles]);
 
   // Trade ticket form state
   const [orderType, setOrderType] = useState<'BUY' | 'SELL'>('BUY');
@@ -648,72 +659,102 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
           </div>
         )}
 
-        {/* 2. MARKET WATCH */}
-        {activeTab === 'market' && quote && (
+        {/* 2. MARKET WATCH & FOREX SESSIONS */}
+        {activeTab === 'market' && (
           <div className="space-y-3">
-            <div className="bg-[#1e222d] p-3 rounded border border-[#2a2e39] space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="font-bold text-sm text-white">EUR/USD</span>
-                <span className="text-[10px] text-gray-400">{quote.provider}</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-center pt-1">
-                <div className="bg-[#131722] p-2 rounded border border-[#2a2e39]">
-                  <span className="text-gray-400 text-[10px] block">BID</span>
-                  <span className="font-mono text-base font-bold text-[#089981]">
-                    {quote.bid.toFixed(5)}
-                  </span>
+            {quote && (
+              <div className="bg-[#1e222d] p-3 rounded border border-[#2a2e39] space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-sm text-white">EUR/USD</span>
+                  <span className="text-[10px] text-gray-400">{quote.provider}</span>
                 </div>
-                <div className="bg-[#131722] p-2 rounded border border-[#2a2e39]">
-                  <span className="text-gray-400 text-[10px] block">ASK</span>
-                  <span className="font-mono text-base font-bold text-[#f23645]">
-                    {quote.ask.toFixed(5)}
-                  </span>
+                <div className="grid grid-cols-2 gap-2 text-center pt-1">
+                  <div className="bg-[#131722] p-2 rounded border border-[#2a2e39]">
+                    <span className="text-gray-400 text-[10px] block">BID</span>
+                    <span className="font-mono text-base font-bold text-[#089981]">
+                      {quote.bid.toFixed(5)}
+                    </span>
+                  </div>
+                  <div className="bg-[#131722] p-2 rounded border border-[#2a2e39]">
+                    <span className="text-gray-400 text-[10px] block">ASK</span>
+                    <span className="font-mono text-base font-bold text-[#f23645]">
+                      {quote.ask.toFixed(5)}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Daily Stats */}
-            <div className="bg-[#1e222d] p-3 rounded border border-[#2a2e39] space-y-2 text-[11px]">
-              <div className="flex justify-between text-gray-400">
-                <span>Daily High</span>
-                <span className="font-mono text-white">{quote.high.toFixed(5)}</span>
+            {quote && (
+              <div className="bg-[#1e222d] p-3 rounded border border-[#2a2e39] space-y-2 text-[11px]">
+                <div className="flex justify-between text-gray-400">
+                  <span>Daily High</span>
+                  <span className="font-mono text-white">{quote.high.toFixed(5)}</span>
+                </div>
+                <div className="flex justify-between text-gray-400">
+                  <span>Daily Low</span>
+                  <span className="font-mono text-white">{quote.low.toFixed(5)}</span>
+                </div>
+                <div className="flex justify-between text-gray-400">
+                  <span>Spread</span>
+                  <span className="font-mono text-white">{quote.spread.toFixed(1)} pips</span>
+                </div>
+                <div className="flex justify-between text-gray-400">
+                  <span>Change %</span>
+                  <span className={`font-mono ${quote.change >= 0 ? 'text-[#089981]' : 'text-[#f23645]'}`}>
+                    {quote.changePercent.toFixed(2)}%
+                  </span>
+                </div>
+                <div className="flex justify-between text-gray-400">
+                  <span>Market Status</span>
+                  <span className={quote.market_status === 'OPEN' ? 'text-[#089981] font-bold' : 'text-amber-400 font-bold'}>
+                    {quote.market_status === 'OPEN' ? 'OPEN' : 'WEEKEND CLOSED'}
+                  </span>
+                </div>
               </div>
-              <div className="flex justify-between text-gray-400">
-                <span>Daily Low</span>
-                <span className="font-mono text-white">{quote.low.toFixed(5)}</span>
-              </div>
-              <div className="flex justify-between text-gray-400">
-                <span>Spread</span>
-                <span className="font-mono text-white">{quote.spread.toFixed(1)} pips</span>
-              </div>
-              <div className="flex justify-between text-gray-400">
-                <span>Change %</span>
-                <span className={`font-mono ${quote.change >= 0 ? 'text-[#089981]' : 'text-[#f23645]'}`}>
-                  {quote.changePercent.toFixed(2)}%
-                </span>
-              </div>
-              <div className="flex justify-between text-gray-400">
-                <span>Market Status</span>
-                <span className={quote.market_status === 'OPEN' ? 'text-[#089981] font-bold' : 'text-amber-400 font-bold'}>
-                  {quote.market_status === 'OPEN' ? 'OPEN' : 'WEEKEND CLOSED'}
-                </span>
-              </div>
-            </div>
+            )}
 
-            {/* Forex Trading Sessions */}
-            <div className="bg-[#1e222d] p-3 rounded border border-[#2a2e39] space-y-2">
-              <span className="font-bold text-gray-200 block text-[11px]">Forex Trading Sessions (UTC)</span>
-              {[
-                { name: 'Asian (Tokyo)', times: '00:00 - 09:00', active: false },
-                { name: 'London', times: '07:00 - 16:00', active: true },
-                { name: 'New York', times: '12:00 - 21:00', active: false },
-                { name: 'London/NY Overlap', times: '12:00 - 16:00', active: false },
-              ].map((s) => (
-                <div key={s.name} className="flex justify-between items-center text-[10px]">
-                  <span className="text-gray-300">{s.name}</span>
-                  <div className="flex items-center space-x-1.5">
-                    <span className="text-gray-500 font-mono">{s.times}</span>
-                    <span className={`w-1.5 h-1.5 rounded-full ${s.active ? 'bg-[#089981]' : 'bg-gray-600'}`} />
+            {/* Forex Trading Sessions Indicator - Real-Time & Backtest Synchronized */}
+            <div className="bg-[#1e222d] p-3 rounded border border-[#2a2e39] space-y-2" data-testid="sidebar-sessions-widget">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-gray-200 block text-[11px] flex items-center gap-1.5">
+                  <Clock size={12} className="text-[#8b5cf6]" />
+                  <span>Forex Sessions (UTC)</span>
+                </span>
+                <span className="text-[10px] text-gray-400 font-mono">
+                  {currentReplayCandleTime ? 'Backtest Synced' : 'Live'}
+                </span>
+              </div>
+              {sessionSummaries.map((s) => (
+                <div key={s.session.id} className="p-1.5 rounded bg-[#131722]/60 border border-[#2a2e39]/50 space-y-1">
+                  <div className="flex justify-between items-center text-[11px]">
+                    <span className="font-medium text-gray-200 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.session.color }} />
+                      <span>{s.session.shortLabel}</span>
+                    </span>
+                    {s.status === 'ACTIVE' ? (
+                      <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-[#10b981]/20 text-[#10b981] border border-[#10b981]/40 flex items-center gap-1 animate-pulse">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#10b981]" />
+                        ACTIVE
+                      </span>
+                    ) : s.status === 'CLOSED' ? (
+                      <span className="text-gray-500 text-[10px] font-mono">CLOSED</span>
+                    ) : (
+                      <span className="text-amber-400/70 text-[10px] font-mono">UPCOMING</span>
+                    )}
+                  </div>
+                  <div className="flex justify-between items-center text-[10px] font-mono text-gray-400">
+                    <span>
+                      {String(s.session.startHourUtc).padStart(2, '0')}:00 - {String(s.session.endHourUtc).padStart(2, '0')}:00 UTC
+                    </span>
+                    {s.candleCount > 0 && s.high !== undefined && s.low !== undefined ? (
+                      <span className="text-[#38bdf8] font-semibold">
+                        {s.pips}p (H:{s.high.toFixed(5)} L:{s.low.toFixed(5)})
+                      </span>
+                    ) : (
+                      <span className="text-gray-600">-- pips</span>
+                    )}
                   </div>
                 </div>
               ))}

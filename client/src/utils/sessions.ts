@@ -121,15 +121,37 @@ export interface ComputedSessionBlock {
   lastCandleCloseTime: number;
   high: number;
   low: number;
+  pips: number;
+  candleCount: number;
+  status: 'ACTIVE' | 'CLOSED' | 'UPCOMING';
+  openPrice: number;
+  closePrice: number;
+}
+
+export interface SessionStatusSummary {
+  session: SessionConfig;
+  startTime: number;
+  endTime: number;
+  status: 'ACTIVE' | 'CLOSED' | 'UPCOMING';
+  high?: number;
+  low?: number;
+  pips?: number;
   candleCount: number;
 }
 
 /**
- * Computes all active session blocks across visible candles.
- * Boundaries are strictly derived from actual OHLC candle data.
+ * Computes all session blocks across visible candles with real-time status and price boundaries.
+ * Boundaries are strictly derived from actual OHLC candle data without look-ahead bias.
  */
-export const computeSessionBlocks = (candles: Candle[]): ComputedSessionBlock[] => {
+export const computeSessionBlocks = (
+  candles: Candle[],
+  currentReplayTime?: number | null
+): ComputedSessionBlock[] => {
   if (!candles || candles.length === 0) return [];
+
+  // Determine current active reference timestamp (latest revealed candle or current replay timestamp)
+  const lastCandle = candles[candles.length - 1];
+  const refTime = currentReplayTime ?? (lastCandle ? lastCandle.time : Math.floor(Date.now() / 1000));
 
   // Group candle timestamps by distinct UTC day
   const daysMap = new Map<number, Candle[]>();
@@ -154,8 +176,17 @@ export const computeSessionBlocks = (candles: Candle[]): ComputedSessionBlock[] 
       const startTime = midnightUtc + session.startHourUtc * 3600 + session.startMinuteUtc * 60;
       const endTime = midnightUtc + session.endHourUtc * 3600 + session.endMinuteUtc * 60;
 
+      // Determine real-time status relative to current timestamp
+      let status: 'ACTIVE' | 'CLOSED' | 'UPCOMING' = 'UPCOMING';
+      if (refTime >= endTime) {
+        status = 'CLOSED';
+      } else if (refTime >= startTime && refTime < endTime) {
+        status = 'ACTIVE';
+      }
+
       // Filter candles belonging strictly to this session
       const matchingCandles = dayCandles.filter(c => c.time >= startTime && c.time < endTime);
+
       if (matchingCandles.length > 0) {
         let maxHigh = -Infinity;
         let minLow = Infinity;
@@ -165,7 +196,7 @@ export const computeSessionBlocks = (candles: Candle[]): ComputedSessionBlock[] 
         }
 
         const firstCandle = matchingCandles[0];
-        const lastCandle = matchingCandles[matchingCandles.length - 1];
+        const lastMatchingCandle = matchingCandles[matchingCandles.length - 1];
 
         // Determine candle interval dynamically from consecutive candles
         let candleStep = 60;
@@ -176,7 +207,8 @@ export const computeSessionBlocks = (candles: Candle[]): ComputedSessionBlock[] 
         }
 
         // Closing time of final candle in this session
-        const lastCandleCloseTime = Math.min(endTime, lastCandle.time + candleStep);
+        const lastCandleCloseTime = Math.min(endTime, lastMatchingCandle.time + candleStep);
+        const pips = Number(((maxHigh - minLow) * 10000).toFixed(1));
 
         blocks.push({
           key: `${session.id}_${midnightUtc}`,
@@ -184,15 +216,100 @@ export const computeSessionBlocks = (candles: Candle[]): ComputedSessionBlock[] 
           startTime,
           endTime,
           firstCandleTime: firstCandle.time,
-          lastCandleTime: lastCandle.time,
+          lastCandleTime: lastMatchingCandle.time,
           lastCandleCloseTime,
           high: maxHigh,
           low: minLow,
+          pips,
           candleCount: matchingCandles.length,
+          status,
+          openPrice: firstCandle.open,
+          closePrice: lastMatchingCandle.close,
         });
+      } else if (status === 'ACTIVE' && dayCandles.length > 0) {
+        // If the session is active right now but candle hasn't closed yet, use current live candle
+        const curCandle = dayCandles[dayCandles.length - 1];
+        if (curCandle && curCandle.time >= startTime) {
+          const pips = Number(((curCandle.high - curCandle.low) * 10000).toFixed(1));
+          blocks.push({
+            key: `${session.id}_${midnightUtc}`,
+            session,
+            startTime,
+            endTime,
+            firstCandleTime: curCandle.time,
+            lastCandleTime: curCandle.time,
+            lastCandleCloseTime: curCandle.time + 60,
+            high: curCandle.high,
+            low: curCandle.low,
+            pips,
+            candleCount: 1,
+            status: 'ACTIVE',
+            openPrice: curCandle.open,
+            closePrice: curCandle.close,
+          });
+        }
       }
     }
   });
 
   return blocks;
+};
+
+/**
+ * Returns the session statuses and ranges for today's active day,
+ * synchronized with either live market or backtesting replay timestamp.
+ */
+export const getSessionStatusesForTime = (
+  refTimestamp: number,
+  candles: Candle[] = []
+): SessionStatusSummary[] => {
+  const d = new Date(refTimestamp * 1000);
+  const midnightUtc = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 1000;
+
+  // Filter candles belonging to today
+  const todayCandles = candles.filter(c => {
+    const cd = new Date(c.time * 1000);
+    const cMidnight = Date.UTC(cd.getUTCFullYear(), cd.getUTCMonth(), cd.getUTCDate()) / 1000;
+    return cMidnight === midnightUtc;
+  });
+
+  return FOREX_SESSIONS.map((session) => {
+    const startTime = midnightUtc + session.startHourUtc * 3600 + session.startMinuteUtc * 60;
+    const endTime = midnightUtc + session.endHourUtc * 3600 + session.endMinuteUtc * 60;
+
+    let status: 'ACTIVE' | 'CLOSED' | 'UPCOMING' = 'UPCOMING';
+    if (refTimestamp >= endTime) {
+      status = 'CLOSED';
+    } else if (refTimestamp >= startTime && refTimestamp < endTime) {
+      status = 'ACTIVE';
+    }
+
+    const matching = todayCandles.filter(c => c.time >= startTime && c.time < endTime && c.time <= refTimestamp);
+    if (matching.length > 0) {
+      let maxHigh = -Infinity;
+      let minLow = Infinity;
+      for (const mc of matching) {
+        if (mc.high > maxHigh) maxHigh = mc.high;
+        if (mc.low < minLow) minLow = mc.low;
+      }
+      return {
+        session,
+        startTime,
+        endTime,
+        status,
+        high: maxHigh,
+        low: minLow,
+        pips: Number(((maxHigh - minLow) * 10000).toFixed(1)),
+        candleCount: matching.length,
+      };
+    }
+
+    return {
+      session,
+      startTime,
+      endTime,
+      status,
+      candleCount: 0,
+    };
+  });
 };

@@ -37,6 +37,7 @@ import { FavoritesToolbar } from './components/FavoritesToolbar';
 import { NewsOverlay } from './components/NewsOverlay';
 import { DEFAULT_FAVORITE_TOOLS } from './utils/drawingTools';
 import { generateEconomicNewsEvents } from './utils/economicNews';
+import { getSessionStatusesForTime } from './utils/sessions';
 import { DraggableTradeSetup, ReplayMode, BacktestSession, EconomicNewsEvent } from './types';
 
 const DEFAULT_INDICATORS: IndicatorConfig[] = [
@@ -944,6 +945,15 @@ export const App: React.FC = () => {
     }
   };
 
+  const currentSessionRefTime = replayActive
+    ? (replayEngine.getCurrentCandle()?.time ?? (visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].time : Math.floor(Date.now() / 1000)))
+    : (visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].time : Math.floor(Date.now() / 1000));
+
+  const activeSessionSummary = React.useMemo(() => {
+    const summaries = getSessionStatusesForTime(currentSessionRefTime, visibleCandles);
+    return summaries.find(s => s.status === 'ACTIVE');
+  }, [currentSessionRefTime, visibleCandles]);
+
   return (
     <div className="flex flex-col h-screen w-screen bg-[#131722] text-[#d1d4dc] overflow-hidden select-none font-sans">
       {/* 1. TOP NAVIGATION BAR */}
@@ -971,6 +981,7 @@ export const App: React.FC = () => {
           setIsQuickTfModalOpen(true);
         }}
         sessionsIndicatorActive={indicators.find(i => i.type === 'SESSIONS')?.visible ?? true}
+        activeSessionLabel={activeSessionSummary?.session.shortLabel}
         onToggleSessionsIndicator={handleToggleSessions}
         timezone={settings.timezone}
         onTimezoneChange={handleTimezoneChange}
@@ -1103,6 +1114,7 @@ export const App: React.FC = () => {
               indicators={indicators}
               timezone={settings.timezone}
               sessionsActive={indicators.find(i => i.type === 'SESSIONS')?.visible ?? true}
+              currentReplayTimestamp={replayActive ? (replayEngine.getCurrentCandle()?.time || null) : null}
             />
 
             {/* Forex Factory Economic Calendar News Events Overlay */}
@@ -1156,6 +1168,7 @@ export const App: React.FC = () => {
           equity={currentEquity}
           onOpenBalanceModal={() => setIsBalanceModalOpen(true)}
           onOpenDrawingProperties={setEditingDrawing}
+          candles={visibleCandles}
         />
       </div>
 
@@ -1251,6 +1264,7 @@ export const App: React.FC = () => {
         onClose={() => setIsJumpDateTimeModalOpen(false)}
         onJumpToTime={handleJumpToTime}
         candles={masterCandles}
+        timezone={settings.timezone}
       />
 
       <DrawingPropertiesModal
