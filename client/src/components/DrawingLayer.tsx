@@ -884,7 +884,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         />
         <g transform={`translate(16, ${slY - 12})`} className="cursor-ns-resize">
           <rect
-            width={280}
+            width={310}
             height={24}
             rx={4}
             fill="#f23645"
@@ -899,14 +899,14 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             fontWeight="bold"
             fontFamily="monospace"
           >
-            SL: {activeSetup.slPrice.toFixed(5)} (-{slPips}p | -${activeSetup.riskUsd.toFixed(2)})
+            SL: {activeSetup.slPrice.toFixed(5)} (-{slPips}p | -${activeSetup.riskUsd.toFixed(2)}{activeSetup.riskPercent ? ` [${activeSetup.riskPercent.toFixed(1)}%]` : ''})
           </text>
         </g>
 
         {/* Central Risk / Reward Badge & Action Buttons */}
         <g transform={`translate(290, ${entryY - 16})`} className="pointer-events-auto">
           <rect
-            width={380}
+            width={430}
             height={32}
             rx={6}
             fill="#1e222d"
@@ -922,12 +922,12 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             fontWeight="bold"
             fontFamily="sans-serif"
           >
-            R:R 1 : {activeSetup.riskReward.toFixed(2)} | {activeSetup.lotSize} Lots
+            R:R 1 : {activeSetup.riskReward.toFixed(2)} | {activeSetup.lotSize} Lots{activeSetup.riskPercent ? ` (${activeSetup.riskPercent.toFixed(1)}% Risk)` : ''}
           </text>
 
           {/* Confirm Button directly on chart line */}
           <g
-            transform="translate(230, 4)"
+            transform="translate(285, 4)"
             className="cursor-pointer"
             onClick={(e) => {
               e.stopPropagation();
@@ -942,7 +942,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
 
           {/* Cancel Button directly on chart line */}
           <g
-            transform="translate(310, 4)"
+            transform="translate(365, 4)"
             className="cursor-pointer"
             onClick={(e) => {
               e.stopPropagation();

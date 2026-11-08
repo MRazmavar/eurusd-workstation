@@ -102,12 +102,42 @@ export class BacktestingEngine {
     return this.settings;
   }
 
+  public getAccountBalance(): number {
+    let balance = this.settings.initial_balance || 10000;
+    for (const t of this.trades) {
+      if (t.status === 'CLOSED') {
+        balance += (t.pnl || 0) - (t.commission || 0) - (t.spread_cost || 0);
+      }
+    }
+    return Number(balance.toFixed(2));
+  }
+
   // ---------------- Interactive On-Chart Draggable Setup ----------------
 
-  public startTradeSetup(type: 'BUY' | 'SELL', currentPrice: number, defaultSlPips: number = 20, defaultTpPips: number = 40) {
+  public startTradeSetup(
+    type: 'BUY' | 'SELL',
+    currentPrice: number,
+    defaultSlPips: number = 20,
+    defaultTpPips: number = 40,
+    customLotSize?: number,
+    sizingMode: 'risk_percent' | 'lot_size' = 'lot_size',
+    riskPercent: number = 1.0,
+    accountBalance?: number
+  ) {
     const slDistance = defaultSlPips * 0.0001;
     const tpDistance = defaultTpPips * 0.0001;
-    const lotSize = this.settings.default_lot_size || 1.0;
+    const balance = accountBalance || this.getAccountBalance();
+
+    let lotSize: number;
+    if (customLotSize !== undefined && customLotSize > 0) {
+      lotSize = customLotSize;
+    } else if (sizingMode === 'risk_percent') {
+      const targetRiskUsd = balance * (riskPercent / 100);
+      const safeSl = Math.max(0.5, defaultSlPips);
+      lotSize = Math.max(0.01, Number((targetRiskUsd / (safeSl * 10)).toFixed(2)));
+    } else {
+      lotSize = this.settings.default_lot_size || 1.0;
+    }
 
     const entryPrice = currentPrice;
     const slPrice = type === 'BUY'
@@ -117,9 +147,10 @@ export class BacktestingEngine {
       ? Number((entryPrice + tpDistance).toFixed(5))
       : Number((entryPrice - tpDistance).toFixed(5));
 
-    const riskUsd = defaultSlPips * 10 * lotSize;
-    const rewardUsd = defaultTpPips * 10 * lotSize;
+    const riskUsd = Number((defaultSlPips * 10 * lotSize).toFixed(2));
+    const rewardUsd = Number((defaultTpPips * 10 * lotSize).toFixed(2));
     const riskReward = defaultSlPips > 0 ? Number((defaultTpPips / defaultSlPips).toFixed(2)) : 2.0;
+    const calculatedRiskPercent = balance > 0 ? Number(((riskUsd / balance) * 100).toFixed(2)) : riskPercent;
 
     this.activeSetup = {
       active: true,
@@ -131,22 +162,42 @@ export class BacktestingEngine {
       riskUsd,
       rewardUsd,
       riskReward,
+      sizingMode,
+      riskPercent: sizingMode === 'risk_percent' ? riskPercent : calculatedRiskPercent,
       notes: '',
     };
     this.notifySetup();
   }
 
-  public updateTradeSetup(updates: Partial<DraggableTradeSetup>) {
+  public updateTradeSetup(updates: Partial<DraggableTradeSetup>, accountBalance?: number) {
     if (!this.activeSetup) return;
 
     const updated = { ...this.activeSetup, ...updates };
-    // Recalculate pips and risk/reward
+    const balance = accountBalance || this.getAccountBalance();
+
+    // Recalculate pips
     const slPips = Math.abs(updated.entryPrice - updated.slPrice) / 0.0001;
     const tpPips = Math.abs(updated.tpPrice - updated.entryPrice) / 0.0001;
+
+    // If in risk_percent sizing mode and slPrice or entryPrice was dragged (without direct lot size update):
+    // dynamically recalculate lotSize according to stop loss size!
+    if (
+      updated.sizingMode === 'risk_percent' &&
+      updated.riskPercent &&
+      (updates.slPrice !== undefined || updates.entryPrice !== undefined) &&
+      updates.lotSize === undefined
+    ) {
+      const targetRiskUsd = balance * (updated.riskPercent / 100);
+      const safeSl = Math.max(0.5, slPips);
+      updated.lotSize = Math.max(0.01, Number((targetRiskUsd / (safeSl * 10)).toFixed(2)));
+    }
 
     updated.riskUsd = Number((slPips * 10 * updated.lotSize).toFixed(2));
     updated.rewardUsd = Number((tpPips * 10 * updated.lotSize).toFixed(2));
     updated.riskReward = slPips > 0 ? Number((tpPips / slPips).toFixed(2)) : 0;
+    if (balance > 0 && updated.sizingMode !== 'risk_percent') {
+      updated.riskPercent = Number(((updated.riskUsd / balance) * 100).toFixed(2));
+    }
 
     this.activeSetup = updated;
     this.notifySetup();

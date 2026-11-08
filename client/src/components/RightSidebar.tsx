@@ -35,6 +35,8 @@ interface RightSidebarProps {
   currentReplayCandleTime?: number;
   currentChartPrice?: number;
   settings: UserSettings;
+  balance?: number;
+  equity?: number;
   onOpenBalanceModal?: () => void;
   onOpenDrawingProperties?: (d: DrawingObject) => void;
 }
@@ -51,6 +53,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   currentReplayCandleTime,
   currentChartPrice,
   settings,
+  balance,
+  equity,
   onOpenBalanceModal,
   onOpenDrawingProperties,
 }) => {
@@ -61,7 +65,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const [orderType, setOrderType] = useState<'BUY' | 'SELL'>('BUY');
   const [execType, setExecType] = useState<'MARKET' | 'LIMIT' | 'STOP'>('MARKET');
   const [customPrice, setCustomPrice] = useState<number | ''>('');
-  const [lotSize, setLotSize] = useState<number>(1.0);
+  const [sizingMode, setSizingMode] = useState<'risk_percent' | 'lot_size'>('risk_percent');
+  const [riskPercent, setRiskPercent] = useState<number>(() => settings.default_risk_percent || 1.0);
+  const [lotSize, setLotSize] = useState<number>(() => settings.default_lot_size || 1.0);
   const [slPips, setSlPips] = useState<number>(20);
   const [tpPips, setTpPips] = useState<number>(40);
   const [tradeNotes, setTradeNotes] = useState<string>('');
@@ -75,6 +81,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       if (setup && setup.active) {
         setOrderType(setup.type);
         setLotSize(setup.lotSize);
+        if (setup.sizingMode) setSizingMode(setup.sizingMode);
+        if (setup.riskPercent) setRiskPercent(setup.riskPercent);
         const slDiff = Math.abs(setup.entryPrice - setup.slPrice) / 0.0001;
         const tpDiff = Math.abs(setup.tpPrice - setup.entryPrice) / 0.0001;
         setSlPips(Math.max(1, Math.round(slDiff)));
@@ -84,6 +92,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     return unsub;
   }, []);
 
+  const effectiveBalance = balance || settings.initial_balance || 10000;
   const currentPrice = currentChartPrice || (quote ? quote.bid : 1.08500);
   const baseEntryPrice = execType === 'MARKET'
     ? (orderType === 'BUY' ? (quote?.ask || currentPrice) : (quote?.bid || currentPrice))
@@ -102,17 +111,55 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         ? Number((entryPrice + tpPips * 0.0001).toFixed(5))
         : Number((entryPrice - tpPips * 0.0001).toFixed(5)));
 
-  const effectiveSlPips = Math.abs(entryPrice - slPrice) / 0.0001;
-  const effectiveTpPips = Math.abs(tpPrice - entryPrice) / 0.0001;
-  const riskUsd = effectiveSlPips * 10 * lotSize;
-  const rewardUsd = effectiveTpPips * 10 * lotSize;
+  const effectiveSlPips = Math.max(0.1, Math.abs(entryPrice - slPrice) / 0.0001);
+  const effectiveTpPips = Math.max(0.1, Math.abs(tpPrice - entryPrice) / 0.0001);
+
+  // Position Sizing calculations
+  const targetRiskUsd = effectiveBalance * (riskPercent / 100);
+  const calculatedLotSize = Math.max(0.01, Number((targetRiskUsd / (effectiveSlPips * 10)).toFixed(2)));
+  const effectiveLotSize = sizingMode === 'risk_percent' ? calculatedLotSize : lotSize;
+
+  const riskUsd = Number((effectiveSlPips * 10 * effectiveLotSize).toFixed(2));
+  const rewardUsd = Number((effectiveTpPips * 10 * effectiveLotSize).toFixed(2));
+  const effectiveRiskPercent = effectiveBalance > 0 ? Number(((riskUsd / effectiveBalance) * 100).toFixed(2)) : riskPercent;
   const rrRatio = effectiveSlPips > 0 ? (effectiveTpPips / effectiveSlPips).toFixed(2) : '0';
 
   const toggleOnChartSetup = () => {
     if (chartSetup && chartSetup.active) {
       backtestingEngine.cancelTradeSetup();
     } else {
-      backtestingEngine.startTradeSetup(orderType, entryPrice, slPips, tpPips);
+      backtestingEngine.startTradeSetup(
+        orderType,
+        entryPrice,
+        slPips,
+        tpPips,
+        effectiveLotSize,
+        sizingMode,
+        riskPercent,
+        effectiveBalance
+      );
+    }
+  };
+
+  const handleLotSizeChange = (newLots: number) => {
+    setSizingMode('lot_size');
+    setLotSize(newLots);
+    const newRiskUsd = effectiveSlPips * 10 * newLots;
+    const newRiskPct = effectiveBalance > 0 ? Number(((newRiskUsd / effectiveBalance) * 100).toFixed(2)) : riskPercent;
+    setRiskPercent(newRiskPct);
+    if (chartSetup?.active) {
+      backtestingEngine.updateTradeSetup({ lotSize: newLots, sizingMode: 'lot_size', riskPercent: newRiskPct }, effectiveBalance);
+    }
+  };
+
+  const handleRiskPercentChange = (newPct: number) => {
+    setSizingMode('risk_percent');
+    setRiskPercent(newPct);
+    const newTarget = effectiveBalance * (newPct / 100);
+    const newLots = Math.max(0.01, Number((newTarget / (effectiveSlPips * 10)).toFixed(2)));
+    setLotSize(newLots);
+    if (chartSetup?.active) {
+      backtestingEngine.updateTradeSetup({ sizingMode: 'risk_percent', riskPercent: newPct, lotSize: newLots }, effectiveBalance);
     }
   };
 
@@ -134,7 +181,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       stop_price: execType === 'STOP' ? entryPrice : undefined,
       sl: slPrice,
       tp: tpPrice,
-      lotSize,
+      lotSize: effectiveLotSize,
       riskUsd,
       notes: tradeNotes,
       time,
@@ -340,41 +387,144 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               </div>
             </div>
 
-            {/* Position Size (Lots) */}
-            <div>
-              <div className="flex justify-between text-gray-300 mb-1">
-                <span>Lot Size (Standard)</span>
-                <span className="text-gray-400 text-[10px] font-mono">
-                  ${(lotSize * 10).toFixed(1)} / pip
-                </span>
-              </div>
-              <div className="flex space-x-1 mb-1">
-                {[0.1, 0.5, 1.0, 2.0].map((l) => (
+            {/* Sizing Mode Switch & Position Sizing Header */}
+            <div className="bg-[#1e222d] p-2.5 rounded border border-[#2a2e39] space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-gray-200 text-[11px]">Position Sizing</span>
+                <div className="flex bg-[#131722] p-0.5 rounded border border-[#2a2e39] text-[10px]">
                   <button
-                    key={l}
-                    onClick={() => setLotSize(l)}
-                    className={`flex-1 py-1 rounded text-[10px] font-mono border ${
-                      lotSize === l
-                        ? 'bg-[#2962ff] text-white border-[#2962ff]'
-                        : 'bg-[#1e222d] text-gray-300 border-[#2a2e39] hover:bg-[#2a2e39]'
+                    type="button"
+                    onClick={() => {
+                      setSizingMode('risk_percent');
+                      if (chartSetup?.active) {
+                        backtestingEngine.updateTradeSetup({ sizingMode: 'risk_percent', riskPercent }, effectiveBalance);
+                      }
+                    }}
+                    data-testid="sizing-mode-risk-btn"
+                    className={`px-2 py-0.5 rounded font-semibold transition-colors ${
+                      sizingMode === 'risk_percent'
+                        ? 'bg-[#2962ff] text-white shadow'
+                        : 'text-gray-400 hover:text-white'
                     }`}
                   >
-                    {l}
+                    Risk %
                   </button>
-                ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSizingMode('lot_size');
+                      if (chartSetup?.active) {
+                        backtestingEngine.updateTradeSetup({ sizingMode: 'lot_size', lotSize: effectiveLotSize }, effectiveBalance);
+                      }
+                    }}
+                    data-testid="sizing-mode-lot-btn"
+                    className={`px-2 py-0.5 rounded font-semibold transition-colors ${
+                      sizingMode === 'lot_size'
+                        ? 'bg-[#2962ff] text-white shadow'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    Fixed Lot
+                  </button>
+                </div>
               </div>
-              <input
-                type="number"
-                step="0.01"
-                min="0.01"
-                value={lotSize}
-                onChange={(e) => {
-                  const val = Math.max(0.01, parseFloat(e.target.value) || 0.01);
-                  setLotSize(val);
-                  if (chartSetup?.active) backtestingEngine.updateTradeSetup({ lotSize: val });
-                }}
-                className="w-full bg-[#1e222d] border border-[#2a2e39] rounded px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-[#2962ff]"
-              />
+
+              {/* If Risk % Mode Active */}
+              {sizingMode === 'risk_percent' ? (
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-gray-300 text-[11px]">
+                    <span>Risk Percentage</span>
+                    <span className="text-[#f23645] font-mono font-bold">
+                      ${targetRiskUsd.toFixed(2)} ({riskPercent}%)
+                    </span>
+                  </div>
+                  {/* Quick % chips */}
+                  <div className="flex space-x-1">
+                    {[0.5, 1.0, 2.0, 3.0, 5.0].map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => handleRiskPercentChange(p)}
+                        className={`flex-1 py-1 rounded text-[10px] font-mono border transition-colors ${
+                          riskPercent === p
+                            ? 'bg-[#2962ff] text-white border-[#2962ff]'
+                            : 'bg-[#131722] text-gray-300 border-[#2a2e39] hover:bg-[#2a2e39]'
+                        }`}
+                      >
+                        {p}%
+                      </button>
+                    ))}
+                  </div>
+                  <div className="relative flex items-center">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.05"
+                      max="100"
+                      value={riskPercent}
+                      onChange={(e) => {
+                        const val = Math.max(0.05, parseFloat(e.target.value) || 0.1);
+                        handleRiskPercentChange(val);
+                      }}
+                      data-testid="risk-percent-input"
+                      className="w-full bg-[#131722] border border-[#2a2e39] rounded px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-[#2962ff]"
+                    />
+                    <span className="absolute right-3 text-gray-400 text-xs font-mono">%</span>
+                  </div>
+
+                  {/* Auto-calculated Lot Size preview */}
+                  <div className="bg-[#131722] p-1.5 rounded border border-[#2a2e39] flex items-center justify-between text-[11px]">
+                    <span className="text-gray-400">Calculated Volume:</span>
+                    <span className="text-[#38bdf8] font-mono font-bold" data-testid="auto-calculated-lots">
+                      {calculatedLotSize.toFixed(2)} Lots (${(calculatedLotSize * 10).toFixed(2)}/pip)
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                /* Fixed Lot Mode */
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-gray-300 text-[11px]">
+                    <span>Lot Size (Standard)</span>
+                    <span className="text-gray-400 text-[10px] font-mono">
+                      ${(lotSize * 10).toFixed(1)} / pip
+                    </span>
+                  </div>
+                  <div className="flex space-x-1">
+                    {[0.1, 0.5, 1.0, 2.0].map((l) => (
+                      <button
+                        key={l}
+                        type="button"
+                        onClick={() => handleLotSizeChange(l)}
+                        className={`flex-1 py-1 rounded text-[10px] font-mono border transition-colors ${
+                          lotSize === l
+                            ? 'bg-[#2962ff] text-white border-[#2962ff]'
+                            : 'bg-[#131722] text-gray-300 border-[#2a2e39] hover:bg-[#2a2e39]'
+                        }`}
+                      >
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={lotSize}
+                    onChange={(e) => {
+                      const val = Math.max(0.01, parseFloat(e.target.value) || 0.01);
+                      handleLotSizeChange(val);
+                    }}
+                    data-testid="lot-size-input"
+                    className="w-full bg-[#131722] border border-[#2a2e39] rounded px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-[#2962ff]"
+                  />
+                  <div className="flex justify-between text-[10px] text-gray-400">
+                    <span>Equivalent Risk:</span>
+                    <span className="text-[#f23645] font-mono">
+                      ${(effectiveSlPips * 10 * lotSize).toFixed(2)} ({((effectiveSlPips * 10 * lotSize / effectiveBalance) * 100).toFixed(2)}%)
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Stop Loss (Pips) */}
@@ -386,21 +536,29 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               <input
                 type="number"
                 value={slPips}
+                data-testid="sl-pips-input"
                 onChange={(e) => {
                   const val = Math.max(1, parseInt(e.target.value) || 1);
                   setSlPips(val);
+                  const newSl = orderType === 'BUY'
+                    ? Number((entryPrice - val * 0.0001).toFixed(5))
+                    : Number((entryPrice + val * 0.0001).toFixed(5));
                   if (chartSetup?.active) {
-                    const newSl = orderType === 'BUY'
-                      ? Number((entryPrice - val * 0.0001).toFixed(5))
-                      : Number((entryPrice + val * 0.0001).toFixed(5));
-                    backtestingEngine.updateTradeSetup({ slPrice: newSl });
+                    if (sizingMode === 'risk_percent') {
+                      const newLots = Math.max(0.01, Number(((effectiveBalance * (riskPercent / 100)) / (val * 10)).toFixed(2)));
+                      backtestingEngine.updateTradeSetup({ slPrice: newSl, lotSize: newLots, sizingMode, riskPercent }, effectiveBalance);
+                    } else {
+                      backtestingEngine.updateTradeSetup({ slPrice: newSl }, effectiveBalance);
+                    }
                   }
                 }}
                 className="w-full bg-[#1e222d] border border-[#2a2e39] rounded px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-[#2962ff]"
               />
               <div className="text-[10px] text-gray-400 mt-0.5 flex justify-between">
                 <span>Est. Risk:</span>
-                <span className="text-[#f23645] font-mono font-semibold">-${riskUsd.toFixed(2)}</span>
+                <span className="text-[#f23645] font-mono font-semibold">
+                  -${riskUsd.toFixed(2)} ({effectiveRiskPercent.toFixed(2)}%)
+                </span>
               </div>
             </div>
 
@@ -413,6 +571,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               <input
                 type="number"
                 value={tpPips}
+                data-testid="tp-pips-input"
                 onChange={(e) => {
                   const val = Math.max(1, parseInt(e.target.value) || 1);
                   setTpPips(val);
@@ -420,7 +579,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                     const newTp = orderType === 'BUY'
                       ? Number((entryPrice + val * 0.0001).toFixed(5))
                       : Number((entryPrice - val * 0.0001).toFixed(5));
-                    backtestingEngine.updateTradeSetup({ tpPrice: newTp });
+                    backtestingEngine.updateTradeSetup({ tpPrice: newTp }, effectiveBalance);
                   }
                 }}
                 className="w-full bg-[#1e222d] border border-[#2a2e39] rounded px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-[#2962ff]"

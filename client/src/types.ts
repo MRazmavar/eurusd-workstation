@@ -177,6 +177,8 @@ export interface DraggableTradeSetup {
   riskUsd: number;
   rewardUsd: number;
   riskReward: number;
+  sizingMode?: 'risk_percent' | 'lot_size';
+  riskPercent?: number;
   notes?: string;
 }
 

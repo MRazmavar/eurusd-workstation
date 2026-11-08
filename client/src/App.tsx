@@ -832,6 +832,8 @@ export const App: React.FC = () => {
           currentReplayCandleTime={replayEngine.getCurrentCandle()?.time}
           currentChartPrice={visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : undefined}
           settings={settings}
+          balance={currentBalance}
+          equity={currentEquity}
           onOpenBalanceModal={() => setIsBalanceModalOpen(true)}
           onOpenDrawingProperties={setEditingDrawing}
         />
