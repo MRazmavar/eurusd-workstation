@@ -15,9 +15,10 @@ export type ChartType = 'candlestick' | 'hollow' | 'bar' | 'line' | 'area' | 'ba
 
 export type Timeframe =
   | '1s' | '5s' | '15s' | '30s'
-  | '1m' | '3m' | '5m' | '15m' | '30m' | '45m'
-  | '1h' | '2h' | '4h'
-  | '1D' | '1W' | '1M';
+  | '1m' | '3m' | '5m' | '15m' | '20m' | '30m' | '45m'
+  | '1h' | '2h' | '3h' | '4h'
+  | '1D' | '1W' | '1M'
+  | (string & {});
 
 export interface Quote {
   symbol: string;

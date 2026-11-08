@@ -8,7 +8,7 @@ from typing import List, Dict, Optional, Set, Tuple
 from fastapi import WebSocket
 from models import Candle, Quote, UserSettings, DataValidationReport
 from services.dukascopy_provider import DukascopyProvider
-from services.resampler import resample_candles, TIMEFRAME_SECONDS
+from services.resampler import resample_candles, parse_timeframe_seconds, TIMEFRAME_SECONDS
 from services.data_validator import DataValidator
 import database
 
@@ -51,20 +51,33 @@ class MarketDataService:
                 return cached
 
         # Determine base timeframe for resampling
+        tf_sec = parse_timeframe_seconds(timeframe)
         base_timeframe = timeframe
         need_resample = False
 
         if timeframe in ["1s", "5s", "15s", "30s"]:
             base_timeframe = "1m"
             need_resample = False
-        elif timeframe in ["3m"]:
+        elif timeframe in ["1m", "5m", "15m", "30m", "1h", "1D", "1d", "1W", "1w", "1M", "1mo"]:
+            base_timeframe = timeframe
+            need_resample = False
+        elif tf_sec < 60:
             base_timeframe = "1m"
             need_resample = True
-        elif timeframe in ["45m"]:
-            base_timeframe = "15m"
+        elif tf_sec < 300:
+            base_timeframe = "1m"
             need_resample = True
-        elif timeframe in ["2h", "4h"]:
+        elif tf_sec < 900:
+            base_timeframe = "5m" if (tf_sec % 300 == 0) else "1m"
+            need_resample = True
+        elif tf_sec < 3600:
+            base_timeframe = "5m" if (tf_sec % 300 == 0) else "1m"
+            need_resample = True
+        elif tf_sec < 86400:
             base_timeframe = "1h"
+            need_resample = True
+        else:
+            base_timeframe = "1D"
             need_resample = True
 
         raw_candles = self.dukascopy_provider.fetch_historical_candles(

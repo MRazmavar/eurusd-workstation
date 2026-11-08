@@ -43,6 +43,7 @@ interface TopBarProps {
   balance?: number;
   equity?: number;
   onOpenBalanceModal?: () => void;
+  onOpenQuickTimeframe?: () => void;
 }
 
 const TIMEFRAMES: { label: string; value: Timeframe }[] = [
@@ -84,6 +85,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   balance,
   equity,
   onOpenBalanceModal,
+  onOpenQuickTimeframe,
 }) => {
   const [showTfDropdown, setShowTfDropdown] = useState(false);
   const [showChartTypeDropdown, setShowChartTypeDropdown] = useState(false);
@@ -142,6 +144,18 @@ export const TopBar: React.FC<TopBarProps> = ({
               {tf}
             </button>
           ))}
+
+          {/* Active Custom Timeframe Pill if not in favorites */}
+          {!FAVORITE_TIMEFRAMES.includes(timeframe) && (
+            <button
+              onClick={() => onOpenQuickTimeframe?.()}
+              data-testid="topbar-custom-timeframe-pill"
+              className="px-2 py-1 rounded font-medium bg-[#2962ff] text-white shadow font-mono flex items-center space-x-1"
+              title={`Custom Timeframe: ${timeframe} (Click or type 0-9 to change)`}
+            >
+              <span>{timeframe}</span>
+            </button>
+          )}
 
           {/* Timeframes Dropdown Button */}
           <div className="relative">
@@ -208,6 +222,21 @@ export const TopBar: React.FC<TopBarProps> = ({
                     </span>
                   </button>
                 ))}
+
+                {/* Custom Interval trigger */}
+                <div className="p-1 border-t border-[#2a2e39] mt-1">
+                  <button
+                    onClick={() => {
+                      setShowTfDropdown(false);
+                      onOpenQuickTimeframe?.();
+                    }}
+                    data-testid="topbar-custom-interval-btn"
+                    className="w-full text-left px-2 py-1.5 rounded hover:bg-[#2962ff] text-white font-medium text-[11px] flex items-center justify-between transition-colors"
+                  >
+                    <span>Custom Interval...</span>
+                    <span className="text-[10px] text-gray-300 font-mono bg-black/40 px-1 py-0.5 rounded">0-9</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>

@@ -32,6 +32,7 @@ import { DataValidationModal } from './components/DataValidationModal';
 import { BalanceModal } from './components/BalanceModal';
 import { JumpDateTimeModal } from './components/JumpDateTimeModal';
 import { DrawingPropertiesModal } from './components/DrawingPropertiesModal';
+import { QuickTimeframeModal } from './components/QuickTimeframeModal';
 import { DraggableTradeSetup, ReplayMode, BacktestSession } from './types';
 
 const DEFAULT_INDICATORS: IndicatorConfig[] = [
@@ -182,6 +183,8 @@ export const App: React.FC = () => {
   const [isValidationModalOpen, setIsValidationModalOpen] = useState<boolean>(false);
   const [isBalanceModalOpen, setIsBalanceModalOpen] = useState<boolean>(false);
   const [isJumpDateTimeModalOpen, setIsJumpDateTimeModalOpen] = useState<boolean>(false);
+  const [isQuickTfModalOpen, setIsQuickTfModalOpen] = useState<boolean>(false);
+  const [quickTfInitialValue, setQuickTfInitialValue] = useState<string>('');
   const [isSelectingReplayCut, setIsSelectingReplayCut] = useState<boolean>(false);
   const [activeSetup, setActiveSetup] = useState<DraggableTradeSetup | null>(null);
 
@@ -527,6 +530,24 @@ export const App: React.FC = () => {
       if ((e.code === 'Delete' || e.code === 'Backspace') && selectedDrawingId) {
         handleDeleteDrawing(selectedDrawingId);
       }
+
+      // Quick Numeric Timeframe Jump: Typing 0-9 anywhere on the chart opens the Quick Timeframe Jump dialog
+      if (!isCtrlOrCmd && !e.altKey && /^[0-9]$/.test(e.key)) {
+        if (
+          !isIndicatorsModalOpen &&
+          !isSettingsModalOpen &&
+          !isSessionsModalOpen &&
+          !isValidationModalOpen &&
+          !isBalanceModalOpen &&
+          !isJumpDateTimeModalOpen &&
+          !editingDrawing &&
+          !isQuickTfModalOpen
+        ) {
+          e.preventDefault();
+          setQuickTfInitialValue(e.key);
+          setIsQuickTfModalOpen(true);
+        }
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -542,6 +563,14 @@ export const App: React.FC = () => {
     handleUndo,
     handleRedo,
     showToast,
+    isIndicatorsModalOpen,
+    isSettingsModalOpen,
+    isSessionsModalOpen,
+    isValidationModalOpen,
+    isBalanceModalOpen,
+    isJumpDateTimeModalOpen,
+    editingDrawing,
+    isQuickTfModalOpen,
   ]);
 
   // Drawing Actions
@@ -675,6 +704,10 @@ export const App: React.FC = () => {
         balance={currentBalance}
         equity={currentEquity}
         onOpenBalanceModal={() => setIsBalanceModalOpen(true)}
+        onOpenQuickTimeframe={() => {
+          setQuickTfInitialValue('');
+          setIsQuickTfModalOpen(true);
+        }}
       />
 
       {/* 2. MAIN WORKSPACE AREA */}
@@ -899,6 +932,16 @@ export const App: React.FC = () => {
         drawing={editingDrawing}
         onClose={() => setEditingDrawing(null)}
         onSave={(updated) => handleUpdateDrawing(updated, true)}
+      />
+
+      <QuickTimeframeModal
+        isOpen={isQuickTfModalOpen}
+        initialValue={quickTfInitialValue}
+        onClose={() => setIsQuickTfModalOpen(false)}
+        onSelectTimeframe={(newTf) => {
+          handleTimeframeChange(newTf as Timeframe);
+          showToast(`Timeframe changed to ${newTf}`);
+        }}
       />
     </div>
   );
