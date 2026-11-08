@@ -32,6 +32,7 @@ import {
   Layers,
   ChevronRight,
   Magnet,
+  Star,
 } from 'lucide-react';
 import { DrawingToolType, MagnetMode } from '../types';
 
@@ -45,6 +46,10 @@ interface LeftToolbarProps {
   hiddenAll: boolean;
   onToggleHideAll: () => void;
   onDeleteAll: () => void;
+  favoriteTools?: DrawingToolType[];
+  onToggleFavorite?: (tool: DrawingToolType) => void;
+  showFavoritesToolbar?: boolean;
+  onToggleShowFavoritesToolbar?: () => void;
 }
 
 interface ToolGroup {
@@ -155,6 +160,10 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
   hiddenAll,
   onToggleHideAll,
   onDeleteAll,
+  favoriteTools = [],
+  onToggleFavorite,
+  showFavoritesToolbar = true,
+  onToggleShowFavoritesToolbar,
 }) => {
   const [openFlyoutId, setOpenFlyoutId] = useState<string | null>(null);
   const [lastSelectedTools, setLastSelectedTools] = useState<Record<string, DrawingToolType>>({});
@@ -230,23 +239,48 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
                   {group.items.map((item) => {
                     const ItemIcon = item.icon;
                     const isSelected = activeTool === item.tool;
+                    const isFavorite = favoriteTools.includes(item.tool);
                     return (
-                      <button
+                      <div
                         key={item.tool}
-                        onClick={() => {
-                          setLastSelectedTools(prev => ({ ...prev, [group.id]: item.tool }));
-                          onSelectTool(item.tool);
-                          setOpenFlyoutId(null);
-                        }}
-                        className={`w-full flex items-center space-x-2.5 px-3 py-1.5 text-left transition-colors ${
+                        className={`w-full flex items-center justify-between px-2 py-1.5 transition-colors group/item ${
                           isSelected
                             ? 'bg-[#2962ff]/20 text-[#2962ff] font-semibold'
                             : 'text-gray-300 hover:bg-[#2a2e39] hover:text-white'
                         }`}
                       >
-                        <ItemIcon size={14} className={isSelected ? 'text-[#2962ff]' : 'text-gray-400'} />
-                        <span>{item.label}</span>
-                      </button>
+                        {/* Star Button in front of each tool */}
+                        <button
+                          type="button"
+                          data-testid={`star-tool-${item.tool}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleFavorite?.(item.tool);
+                          }}
+                          className="p-1 -ml-0.5 rounded text-gray-500 hover:text-amber-400 focus:outline-none transition-colors"
+                          title={isFavorite ? `Remove ${item.label} from favorites` : `Add ${item.label} to favorites`}
+                        >
+                          <Star
+                            size={13}
+                            className={isFavorite ? 'fill-amber-400 text-amber-400' : 'text-gray-500 group-hover/item:text-gray-400 hover:text-amber-400'}
+                          />
+                        </button>
+
+                        {/* Tool selection button */}
+                        <button
+                          type="button"
+                          data-testid={`select-tool-${item.tool}`}
+                          onClick={() => {
+                            setLastSelectedTools(prev => ({ ...prev, [group.id]: item.tool }));
+                            onSelectTool(item.tool);
+                            setOpenFlyoutId(null);
+                          }}
+                          className="flex-1 flex items-center space-x-2 text-left pl-1.5 truncate"
+                        >
+                          <ItemIcon size={14} className={isSelected ? 'text-[#2962ff]' : 'text-gray-400'} />
+                          <span className="truncate">{item.label}</span>
+                        </button>
+                      </div>
                     );
                   })}
                 </div>
@@ -376,6 +410,25 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
           title="Remove All Drawings"
         >
           <Trash2 size={15} />
+        </button>
+
+        {/* Toggle Favorites Toolbar */}
+        <button
+          type="button"
+          onClick={onToggleShowFavoritesToolbar}
+          data-testid="toggle-favorites-toolbar-btn"
+          className={`w-8 h-8 rounded flex items-center justify-center transition-colors ${
+            showFavoritesToolbar && favoriteTools.length > 0
+              ? 'text-amber-400 bg-amber-400/10 hover:bg-amber-400/20 shadow-sm'
+              : 'text-gray-400 hover:text-amber-400 hover:bg-[#1e222d]'
+          }`}
+          title={
+            showFavoritesToolbar && favoriteTools.length > 0
+              ? 'Hide Favorite Drawings Toolbar'
+              : 'Show Favorite Drawings Toolbar'
+          }
+        >
+          <Star size={15} className={showFavoritesToolbar && favoriteTools.length > 0 ? 'fill-amber-400' : ''} />
         </button>
       </div>
     </div>

@@ -33,6 +33,8 @@ import { BalanceModal } from './components/BalanceModal';
 import { JumpDateTimeModal } from './components/JumpDateTimeModal';
 import { DrawingPropertiesModal } from './components/DrawingPropertiesModal';
 import { QuickTimeframeModal } from './components/QuickTimeframeModal';
+import { FavoritesToolbar } from './components/FavoritesToolbar';
+import { DEFAULT_FAVORITE_TOOLS } from './utils/drawingTools';
 import { DraggableTradeSetup, ReplayMode, BacktestSession } from './types';
 
 const DEFAULT_INDICATORS: IndicatorConfig[] = [
@@ -186,6 +188,30 @@ export const App: React.FC = () => {
       localStorage.setItem('eurusd_saved_drawings', JSON.stringify(drawings));
     } catch {}
   }, [drawings]);
+
+  // Favorite Drawing Tools State (Persisted in localStorage)
+  const [favoriteTools, setFavoriteTools] = useState<DrawingToolType[]>(() => {
+    try {
+      const saved = localStorage.getItem('eurusd_favorite_tools');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch {}
+    return DEFAULT_FAVORITE_TOOLS;
+  });
+  const [showFavoritesToolbar, setShowFavoritesToolbar] = useState<boolean>(true);
+
+  const handleToggleFavorite = useCallback((tool: DrawingToolType) => {
+    setFavoriteTools(prev => {
+      const exists = prev.includes(tool);
+      const updated = exists ? prev.filter(t => t !== tool) : [...prev, tool];
+      try {
+        localStorage.setItem('eurusd_favorite_tools', JSON.stringify(updated));
+      } catch {}
+      showToast(exists ? `Removed ${tool.replace('_', ' ')} from favorites` : `Added ${tool.replace('_', ' ')} to favorites`);
+      return updated;
+    });
+  }, [showToast]);
 
   // Trades & Backtesting State
   const [trades, setTrades] = useState<Trade[]>([]);
@@ -829,6 +855,10 @@ export const App: React.FC = () => {
             setDrawings(prev => prev.map(d => ({ ...d, hidden: next })));
           }}
           onDeleteAll={handleDeleteAllDrawings}
+          favoriteTools={favoriteTools}
+          onToggleFavorite={handleToggleFavorite}
+          showFavoritesToolbar={showFavoritesToolbar}
+          onToggleShowFavoritesToolbar={() => setShowFavoritesToolbar(prev => !prev)}
         />
 
         {/* Center Chart Viewport with Interactive Drawing Layer */}
@@ -920,6 +950,17 @@ export const App: React.FC = () => {
               timezone={settings.timezone}
               sessionsActive={indicators.find(i => i.type === 'SESSIONS')?.visible ?? true}
             />
+
+            {/* Draggable Floating Favorite Tools Toolbar directly on Chart */}
+            {favoriteTools.length > 0 && showFavoritesToolbar && (
+              <FavoritesToolbar
+                favoriteTools={favoriteTools}
+                activeTool={activeTool}
+                onSelectTool={setActiveTool}
+                onToggleFavorite={handleToggleFavorite}
+                onClose={() => setShowFavoritesToolbar(false)}
+              />
+            )}
           </div>
 
           {/* Oscillator Sub-panels (e.g. RSI, MACD, etc.) */}
