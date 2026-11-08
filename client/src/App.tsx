@@ -31,6 +31,7 @@ import { SessionsModal } from './components/SessionsModal';
 import { DataValidationModal } from './components/DataValidationModal';
 import { BalanceModal } from './components/BalanceModal';
 import { JumpDateTimeModal } from './components/JumpDateTimeModal';
+import { DrawingPropertiesModal } from './components/DrawingPropertiesModal';
 import { DraggableTradeSetup, ReplayMode, BacktestSession } from './types';
 
 const DEFAULT_INDICATORS: IndicatorConfig[] = [
@@ -76,6 +77,7 @@ export const App: React.FC = () => {
   const [drawings, setDrawings] = useState<DrawingObject[]>([]);
   const [activeTool, setActiveTool] = useState<DrawingToolType>('crosshair');
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
+  const [editingDrawing, setEditingDrawing] = useState<DrawingObject | null>(null);
   const [magnetMode, setMagnetMode] = useState<MagnetMode>('weak');
   const [lockedAll, setLockedAll] = useState<boolean>(false);
   const [hiddenAll, setHiddenAll] = useState<boolean>(false);
@@ -460,6 +462,7 @@ export const App: React.FC = () => {
               isSelectingReplayCut={isSelectingReplayCut}
               onSelectReplayCutCandle={handleSelectReplayCutCandle}
               onCancelSelectReplayCut={() => setIsSelectingReplayCut(false)}
+              onOpenPropertiesModal={setEditingDrawing}
             />
           </div>
 
@@ -488,6 +491,7 @@ export const App: React.FC = () => {
           currentChartPrice={visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : undefined}
           settings={settings}
           onOpenBalanceModal={() => setIsBalanceModalOpen(true)}
+          onOpenDrawingProperties={setEditingDrawing}
         />
       </div>
 
@@ -568,6 +572,13 @@ export const App: React.FC = () => {
         onClose={() => setIsJumpDateTimeModalOpen(false)}
         onJumpToTime={handleJumpToTime}
         candles={masterCandles}
+      />
+
+      <DrawingPropertiesModal
+        isOpen={editingDrawing !== null}
+        drawing={editingDrawing}
+        onClose={() => setEditingDrawing(null)}
+        onSave={(updated) => handleUpdateDrawing(updated, true)}
       />
     </div>
   );

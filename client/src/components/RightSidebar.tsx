@@ -20,6 +20,7 @@ import {
   Clock,
   Crosshair,
   Wallet,
+  Settings,
 } from 'lucide-react';
 import { Quote, DrawingObject, Trade, UserSettings, DraggableTradeSetup } from '../types';
 import { backtestingEngine } from '../services/BacktestingEngine';
@@ -35,6 +36,7 @@ interface RightSidebarProps {
   currentChartPrice?: number;
   settings: UserSettings;
   onOpenBalanceModal?: () => void;
+  onOpenDrawingProperties?: (d: DrawingObject) => void;
 }
 
 type TabType = 'market' | 'order' | 'objects' | 'alerts';
@@ -50,6 +52,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   currentChartPrice,
   settings,
   onOpenBalanceModal,
+  onOpenDrawingProperties,
 }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('order');
@@ -570,6 +573,15 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                     </div>
 
                     <div className="flex items-center space-x-1" onClick={(e) => e.stopPropagation()}>
+                      {/* Properties / Settings */}
+                      <button
+                        onClick={() => onOpenDrawingProperties?.(d)}
+                        className="p-1 rounded text-gray-400 hover:text-white"
+                        title="Properties"
+                        data-testid={`drawing-props-btn-${d.id}`}
+                      >
+                        <Settings size={12} />
+                      </button>
                       {/* Hide/Show */}
                       <button
                         onClick={() => onUpdateDrawing({ ...d, hidden: !d.hidden })}

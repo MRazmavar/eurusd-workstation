@@ -65,6 +65,7 @@ interface DrawingLayerProps {
   isSelectingReplayCut?: boolean;
   onSelectReplayCutCandle?: (candle: Candle) => void;
   onCancelSelectReplayCut?: () => void;
+  onOpenPropertiesModal?: (drawing: DrawingObject) => void;
 }
 
 export const DrawingLayer: React.FC<DrawingLayerProps> = ({
@@ -89,6 +90,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   isSelectingReplayCut,
   onSelectReplayCutCandle,
   onCancelSelectReplayCut,
+  onOpenPropertiesModal,
 }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null);
@@ -933,12 +935,21 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     return (
       <g
         key={d.id}
+        data-testid={isTemp ? 'drawing-temp' : `drawing-object-${d.id}`}
         opacity={isTemp ? 0.75 : 1}
         className={!isDrawingToolActive && !isTemp ? 'pointer-events-auto cursor-pointer' : undefined}
         onClick={(e) => {
           if (!isDrawingToolActive && !isTemp) {
             e.stopPropagation();
             onSelect(d.id);
+          }
+        }}
+        onDoubleClick={(e) => {
+          if (!isDrawingToolActive && !isTemp) {
+            e.stopPropagation();
+            e.preventDefault();
+            onSelect(d.id);
+            onOpenPropertiesModal?.(d);
           }
         }}
         onMouseDown={(e) => {
@@ -1671,6 +1682,19 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
+        onDoubleClick={(e) => {
+          if (!isDrawingToolActive) {
+            const mouse = getMouseCoord(e);
+            if (mouse) {
+              const hit = DrawingEngine.hitTest({ x: mouse.x, y: mouse.y }, drawings, transformer, 14, selectedId);
+              if (hit) {
+                e.stopPropagation();
+                onSelect(hit.drawing.id);
+                onOpenPropertiesModal?.(hit.drawing);
+              }
+            }
+          }
+        }}
         onClick={(e) => {
           if (!isDrawingToolActive) {
             // Clicking empty space on SVG deselects the current object
@@ -1952,6 +1976,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             onSelect(dupl.id);
           }}
           onDelete={onDelete}
+          onOpenProperties={onOpenPropertiesModal}
         />
       )}
     </div>
