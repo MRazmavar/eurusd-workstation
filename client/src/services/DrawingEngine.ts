@@ -15,6 +15,10 @@ export interface CoordinateTransformer {
   priceToY: (price: number) => number | null;
   xToTime: (x: number) => number | null;
   yToPrice: (y: number) => number | null;
+  timeToLogical?: (time: number) => number | null;
+  logicalToTime?: (logical: number) => number | null;
+  xToLogical?: (x: number) => number | null;
+  logicalToX?: (logical: number) => number | null;
 }
 
 export class DrawingEngine {
@@ -69,7 +73,8 @@ export class DrawingEngine {
     mouse: ScreenPoint,
     drawings: DrawingObject[],
     transformer: CoordinateTransformer,
-    hitTolerance: number = 8
+    hitTolerance: number = 10,
+    selectedDrawingId?: string | null
   ): { drawing: DrawingObject; pointIndex?: number } | null {
     // Traverse backwards (topmost drawing first)
     for (let i = drawings.length - 1; i >= 0; i--) {
@@ -87,11 +92,13 @@ export class DrawingEngine {
 
       if (screenPoints.length === 0) continue;
 
-      // 1. Check control handles (points)
-      for (let pIdx = 0; pIdx < screenPoints.length; pIdx++) {
-        const dHandle = this.dist(mouse, screenPoints[pIdx]);
-        if (dHandle <= hitTolerance + 6) {
-          return { drawing: d, pointIndex: pIdx };
+      // 1. Check control handles (points) ONLY if this drawing is already selected!
+      if (selectedDrawingId === d.id) {
+        for (let pIdx = 0; pIdx < screenPoints.length; pIdx++) {
+          const dHandle = this.dist(mouse, screenPoints[pIdx]);
+          if (dHandle <= 8) {
+            return { drawing: d, pointIndex: pIdx };
+          }
         }
       }
 

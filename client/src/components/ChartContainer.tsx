@@ -157,6 +157,56 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
           return null;
         }
       },
+      timeToLogical: (t: number) => {
+        if (t === undefined || t === null || isNaN(t)) return null;
+        const list = candlesRef.current;
+        if (!list || list.length === 0) return null;
+        const len = list.length;
+        if (len === 1) return 0;
+        let low = 0, high = len - 1;
+        while (low <= high) {
+          const mid = Math.floor((low + high) / 2);
+          if (list[mid].time === t) return mid;
+          if (list[mid].time < t) low = mid + 1;
+          else high = mid - 1;
+        }
+        const i = Math.max(0, Math.min(len - 2, high));
+        const barDiff = Math.max(1, list[i + 1].time - list[i].time);
+        const frac = (t - list[i].time) / barDiff;
+        return i + frac;
+      },
+      logicalToTime: (logical: number) => {
+        if (logical === undefined || logical === null || isNaN(logical)) return null;
+        const list = candlesRef.current;
+        if (!list || list.length === 0) return null;
+        const len = list.length;
+        if (len === 1) return list[0].time;
+        const step = (list[len - 1].time - list[0].time) / Math.max(1, len - 1);
+        if (logical >= 0 && logical < len) {
+          const idx = Math.min(len - 1, Math.max(0, Math.round(logical)));
+          return list[idx].time;
+        } else if (logical >= len) {
+          return Math.round(list[len - 1].time + (logical - (len - 1)) * step);
+        } else {
+          return Math.round(list[0].time + logical * step);
+        }
+      },
+      xToLogical: (x: number) => {
+        if (x === undefined || x === null || isNaN(x)) return null;
+        try {
+          return chart.timeScale().coordinateToLogical(x as any);
+        } catch {
+          return null;
+        }
+      },
+      logicalToX: (logical: number) => {
+        if (logical === undefined || logical === null || isNaN(logical)) return null;
+        try {
+          return chart.timeScale().logicalToCoordinate(logical as any);
+        } catch {
+          return null;
+        }
+      },
     };
 
     onTransformerReady(transformer);

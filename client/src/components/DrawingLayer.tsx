@@ -50,7 +50,7 @@ interface DrawingLayerProps {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onAdd: (d: DrawingObject) => void;
-  onUpdate: (d: DrawingObject) => void;
+  onUpdate: (d: DrawingObject, persist?: boolean) => void;
   onDelete: (id: string) => void;
   onResetTool: () => void;
   magnetMode: MagnetMode;
@@ -105,6 +105,9 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     pointIndex?: number;
     startMouse: ScreenPoint;
     initialPoints: Point[];
+    initialLogicals?: number[];
+    startLogical?: number;
+    startPrice?: number;
   } | null>(null);
 
   // Dragging interactive trade setup lines ('entry' | 'sl' | 'tp')
@@ -399,23 +402,51 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         if (!target || target.locked) return;
 
         if (currentDrag.pointIndex !== undefined) {
-          // Dragging specific anchor point
+          // Dragging specific anchor point (rotate/resize)
           const updatedPts = [...target.points];
           updatedPts[currentDrag.pointIndex] = { time: mouse.time, price: mouse.price };
-          onUpdate({ ...target, points: updatedPts, updated_at: Date.now() });
+          onUpdate({ ...target, points: updatedPts, updated_at: Date.now() }, false);
         } else {
-          // Dragging entire body
+          // Dragging entire body: preserve exact bar distances and price differences
           const currentTransformer = transformerRef.current;
-          const startT = currentTransformer.xToTime(currentDrag.startMouse.x);
-          const startP = currentTransformer.yToPrice(currentDrag.startMouse.y);
-          if (startT !== null && startP !== null) {
-            const dt = mouse.time - startT;
-            const dp = mouse.price - startP;
-            const updatedPts = currentDrag.initialPoints.map(pt => ({
-              time: pt.time + dt,
-              price: Number((pt.price + dp).toFixed(5)),
-            }));
-            onUpdate({ ...target, points: updatedPts, updated_at: Date.now() });
+          const rect = svgRef.current?.getBoundingClientRect();
+          const rawX = e.clientX - (rect?.left || 0);
+          const rawY = e.clientY - (rect?.top || 0);
+
+          const curLogical = currentTransformer.xToLogical ? currentTransformer.xToLogical(rawX) : null;
+          const curPrice = currentTransformer.yToPrice ? currentTransformer.yToPrice(rawY) : null;
+
+          if (
+            curLogical !== null &&
+            curPrice !== null &&
+            currentDrag.startLogical !== undefined &&
+            currentDrag.startPrice !== undefined &&
+            currentDrag.initialLogicals
+          ) {
+            const deltaLogical = curLogical - currentDrag.startLogical;
+            const deltaPrice = curPrice - currentDrag.startPrice;
+
+            const updatedPts = currentDrag.initialPoints.map((pt, idx) => {
+              const baseLog = currentDrag.initialLogicals![idx];
+              const targetLog = baseLog + deltaLogical;
+              const targetTime = currentTransformer.logicalToTime ? (currentTransformer.logicalToTime(targetLog) ?? pt.time) : pt.time;
+              const targetPrice = Number((pt.price + deltaPrice).toFixed(5));
+              return { time: targetTime, price: targetPrice };
+            });
+
+            onUpdate({ ...target, points: updatedPts, updated_at: Date.now() }, false);
+          } else {
+            const startT = currentTransformer.xToTime(currentDrag.startMouse.x);
+            const startP = currentTransformer.yToPrice(currentDrag.startMouse.y);
+            if (startT !== null && startP !== null) {
+              const dt = mouse.time - startT;
+              const dp = mouse.price - startP;
+              const updatedPts = currentDrag.initialPoints.map(pt => ({
+                time: pt.time + dt,
+                price: Number((pt.price + dp).toFixed(5)),
+              }));
+              onUpdate({ ...target, points: updatedPts, updated_at: Date.now() }, false);
+            }
           }
         }
       }
@@ -423,6 +454,10 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
 
     const handleWindowMouseUp = () => {
       if (dragStateRef.current) {
+        const target = drawingsRef.current.find(d => d.id === dragStateRef.current?.drawingId);
+        if (target) {
+          onUpdate(target, true);
+        }
         setDragState(null);
       }
       if (draggingSetupLineRef.current) {
@@ -487,15 +522,27 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
 
     // 3. Selection / Object Move when cursor active
     if (!isDrawingToolActive) {
-      const hit = DrawingEngine.hitTest({ x: mouse.x, y: mouse.y }, drawings, transformer);
+      const hit = DrawingEngine.hitTest({ x: mouse.x, y: mouse.y }, drawings, transformer, 12, selectedId);
       if (hit) {
         onSelect(hit.drawing.id);
         if (!hit.drawing.locked) {
+          const rect = svgRef.current?.getBoundingClientRect();
+          const rawX = e.clientX - (rect?.left || 0);
+          const rawY = e.clientY - (rect?.top || 0);
+
+          const currentTransformer = transformerRef.current;
+          const startLog = currentTransformer.xToLogical ? currentTransformer.xToLogical(rawX) : null;
+          const startP = currentTransformer.yToPrice ? currentTransformer.yToPrice(rawY) : null;
+          const initLogs = hit.drawing.points.map(pt => currentTransformer.timeToLogical ? currentTransformer.timeToLogical(pt.time) ?? 0 : 0);
+
           setDragState({
             drawingId: hit.drawing.id,
             pointIndex: hit.pointIndex,
-            startMouse: { x: mouse.x, y: mouse.y },
+            startMouse: { x: rawX, y: rawY },
             initialPoints: [...hit.drawing.points],
+            initialLogicals: initLogs,
+            startLogical: startLog ?? 0,
+            startPrice: startP ?? 0,
           });
         }
       } else {
@@ -622,28 +669,8 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     }
 
     if (dragState) {
-      const target = drawings.find(d => d.id === dragState.drawingId);
-      if (!target || target.locked) return;
-
-      if (dragState.pointIndex !== undefined) {
-        // Dragging a specific handle
-        const updatedPts = [...target.points];
-        updatedPts[dragState.pointIndex] = { time: mouse.time, price: mouse.price };
-        onUpdate({ ...target, points: updatedPts, updated_at: Date.now() });
-      } else {
-        // Dragging entire body
-        const startT = transformer.xToTime(dragState.startMouse.x);
-        const startP = transformer.yToPrice(dragState.startMouse.y);
-        if (startT !== null && startP !== null) {
-          const dt = mouse.time - startT;
-          const dp = mouse.price - startP;
-          const updatedPts = dragState.initialPoints.map(p => ({
-            time: p.time + dt,
-            price: Number((p.price + dp).toFixed(5)),
-          }));
-          onUpdate({ ...target, points: updatedPts, updated_at: Date.now() });
-        }
-      }
+      // Handled globally by handleWindowMouseMove for maximum smoothness and escape resistance
+      return;
     }
   };
 
@@ -652,6 +679,10 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
       setDraggingSetupLine(null);
     }
     if (dragState) {
+      const target = drawings.find(d => d.id === dragState.drawingId);
+      if (target) {
+        onUpdate(target, true);
+      }
       setDragState(null);
     }
 
@@ -914,28 +945,49 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           if (!isDrawingToolActive && !isTemp && !d.locked) {
             e.stopPropagation();
             onSelect(d.id);
-            const mouse = getMouseCoord(e);
-            if (mouse) {
-              setDragState({
-                drawingId: d.id,
-                startMouse: { x: mouse.x, y: mouse.y },
-                initialPoints: [...d.points],
-              });
-            }
+            const rect = svgRef.current?.getBoundingClientRect();
+            const rawX = e.clientX - (rect?.left || 0);
+            const rawY = e.clientY - (rect?.top || 0);
+
+            const currentTransformer = transformerRef.current;
+            const startLog = currentTransformer.xToLogical ? currentTransformer.xToLogical(rawX) : null;
+            const startP = currentTransformer.yToPrice ? currentTransformer.yToPrice(rawY) : null;
+            const initLogs = d.points.map(pt => currentTransformer.timeToLogical ? currentTransformer.timeToLogical(pt.time) ?? 0 : 0);
+
+            setDragState({
+              drawingId: d.id,
+              startMouse: { x: rawX, y: rawY },
+              initialPoints: [...d.points],
+              initialLogicals: initLogs,
+              startLogical: startLog ?? 0,
+              startPrice: startP ?? 0,
+            });
           }
         }}
       >
         {/* Trendline */}
         {d.type === 'trendline' && screenPts.length >= 2 && (
-          <line
-            x1={screenPts[0].x}
-            y1={screenPts[0].y}
-            x2={screenPts[1].x}
-            y2={screenPts[1].y}
-            stroke={color}
-            strokeWidth={strokeWidth}
-            strokeDasharray={dashArray}
-          />
+          <g>
+            <line
+              x1={screenPts[0].x}
+              y1={screenPts[0].y}
+              x2={screenPts[1].x}
+              y2={screenPts[1].y}
+              stroke="transparent"
+              strokeWidth={Math.max(16, strokeWidth + 12)}
+              strokeLinecap="round"
+              className="cursor-move pointer-events-auto"
+            />
+            <line
+              x1={screenPts[0].x}
+              y1={screenPts[0].y}
+              x2={screenPts[1].x}
+              y2={screenPts[1].y}
+              stroke={color}
+              strokeWidth={strokeWidth}
+              strokeDasharray={dashArray}
+            />
+          </g>
         )}
 
         {/* Ray */}
@@ -944,16 +996,30 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           const dy = screenPts[1].y - screenPts[0].y;
           const len = Math.sqrt(dx * dx + dy * dy);
           const scale = len > 0 ? 3000 / len : 1;
+          const endX = screenPts[0].x + dx * scale;
+          const endY = screenPts[0].y + dy * scale;
           return (
-            <line
-              x1={screenPts[0].x}
-              y1={screenPts[0].y}
-              x2={screenPts[0].x + dx * scale}
-              y2={screenPts[0].y + dy * scale}
-              stroke={color}
-              strokeWidth={strokeWidth}
-              strokeDasharray={dashArray}
-            />
+            <g>
+              <line
+                x1={screenPts[0].x}
+                y1={screenPts[0].y}
+                x2={endX}
+                y2={endY}
+                stroke="transparent"
+                strokeWidth={Math.max(16, strokeWidth + 12)}
+                strokeLinecap="round"
+                className="cursor-move pointer-events-auto"
+              />
+              <line
+                x1={screenPts[0].x}
+                y1={screenPts[0].y}
+                x2={endX}
+                y2={endY}
+                stroke={color}
+                strokeWidth={strokeWidth}
+                strokeDasharray={dashArray}
+              />
+            </g>
           );
         })()}
 
@@ -963,16 +1029,32 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           const dy = screenPts[1].y - screenPts[0].y;
           const len = Math.sqrt(dx * dx + dy * dy);
           const scale = len > 0 ? 3000 / len : 1;
+          const startX = screenPts[0].x - dx * scale;
+          const startY = screenPts[0].y - dy * scale;
+          const endX = screenPts[1].x + dx * scale;
+          const endY = screenPts[1].y + dy * scale;
           return (
-            <line
-              x1={screenPts[0].x - dx * scale}
-              y1={screenPts[0].y - dy * scale}
-              x2={screenPts[1].x + dx * scale}
-              y2={screenPts[1].y + dy * scale}
-              stroke={color}
-              strokeWidth={strokeWidth}
-              strokeDasharray={dashArray}
-            />
+            <g>
+              <line
+                x1={startX}
+                y1={startY}
+                x2={endX}
+                y2={endY}
+                stroke="transparent"
+                strokeWidth={Math.max(16, strokeWidth + 12)}
+                strokeLinecap="round"
+                className="cursor-move pointer-events-auto"
+              />
+              <line
+                x1={startX}
+                y1={startY}
+                x2={endX}
+                y2={endY}
+                stroke={color}
+                strokeWidth={strokeWidth}
+                strokeDasharray={dashArray}
+              />
+            </g>
           );
         })()}
 
@@ -980,7 +1062,17 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         {d.type === 'trend_angle' && screenPts.length >= 2 && (() => {
           const angle = (Math.atan2(screenPts[1].y - screenPts[0].y, screenPts[1].x - screenPts[0].x) * 180) / Math.PI;
           return (
-            <>
+            <g>
+              <line
+                x1={screenPts[0].x}
+                y1={screenPts[0].y}
+                x2={screenPts[1].x}
+                y2={screenPts[1].y}
+                stroke="transparent"
+                strokeWidth={Math.max(16, strokeWidth + 12)}
+                strokeLinecap="round"
+                className="cursor-move pointer-events-auto"
+              />
               <line
                 x1={screenPts[0].x}
                 y1={screenPts[0].y}
@@ -1000,13 +1092,22 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
               >
                 {angle.toFixed(1)}°
               </text>
-            </>
+            </g>
           );
         })()}
 
         {/* Horizontal Line */}
         {d.type === 'horizontal_line' && screenPts.length >= 1 && (
           <g>
+            <line
+              x1={0}
+              y1={screenPts[0].y}
+              x2={3000}
+              y2={screenPts[0].y}
+              stroke="transparent"
+              strokeWidth={Math.max(16, strokeWidth + 12)}
+              className="cursor-move pointer-events-auto"
+            />
             <line
               x1={0}
               y1={screenPts[0].y}
@@ -1047,6 +1148,15 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
               y1={screenPts[0].y}
               x2={3000}
               y2={screenPts[0].y}
+              stroke="transparent"
+              strokeWidth={Math.max(16, strokeWidth + 12)}
+              className="cursor-move pointer-events-auto"
+            />
+            <line
+              x1={screenPts[0].x}
+              y1={screenPts[0].y}
+              x2={3000}
+              y2={screenPts[0].y}
               stroke={color}
               strokeWidth={strokeWidth}
               strokeDasharray={dashArray}
@@ -1057,15 +1167,26 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
 
         {/* Vertical Line */}
         {d.type === 'vertical_line' && screenPts.length >= 1 && (
-          <line
-            x1={screenPts[0].x}
-            y1={0}
-            x2={screenPts[0].x}
-            y2={3000}
-            stroke={color}
-            strokeWidth={strokeWidth}
-            strokeDasharray={dashArray}
-          />
+          <g>
+            <line
+              x1={screenPts[0].x}
+              y1={0}
+              x2={screenPts[0].x}
+              y2={3000}
+              stroke="transparent"
+              strokeWidth={Math.max(16, strokeWidth + 12)}
+              className="cursor-move pointer-events-auto"
+            />
+            <line
+              x1={screenPts[0].x}
+              y1={0}
+              x2={screenPts[0].x}
+              y2={3000}
+              stroke={color}
+              strokeWidth={strokeWidth}
+              strokeDasharray={dashArray}
+            />
+          </g>
         )}
 
         {/* Parallel Channel / Disjoint Channel / Regression Trend */}
@@ -1205,25 +1326,49 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
 
         {/* Arrow Line */}
         {d.type === 'arrow' && screenPts.length >= 2 && (
-          <line
-            x1={screenPts[0].x}
-            y1={screenPts[0].y}
-            x2={screenPts[1].x}
-            y2={screenPts[1].y}
-            stroke={color}
-            strokeWidth={strokeWidth}
-            markerEnd="url(#arrowhead)"
-          />
+          <g>
+            <line
+              x1={screenPts[0].x}
+              y1={screenPts[0].y}
+              x2={screenPts[1].x}
+              y2={screenPts[1].y}
+              stroke="transparent"
+              strokeWidth={Math.max(16, strokeWidth + 12)}
+              strokeLinecap="round"
+              className="cursor-move pointer-events-auto"
+            />
+            <line
+              x1={screenPts[0].x}
+              y1={screenPts[0].y}
+              x2={screenPts[1].x}
+              y2={screenPts[1].y}
+              stroke={color}
+              strokeWidth={strokeWidth}
+              markerEnd="url(#arrowhead)"
+            />
+          </g>
         )}
 
         {/* Polyline / Path */}
         {['polyline', 'path'].includes(d.type) && screenPts.length >= 2 && (
-          <polyline
-            points={screenPts.map(pt => `${pt.x},${pt.y}`).join(' ')}
-            fill="none"
-            stroke={color}
-            strokeWidth={strokeWidth}
-          />
+          <g>
+            <polyline
+              points={screenPts.map(pt => `${pt.x},${pt.y}`).join(' ')}
+              fill="none"
+              stroke="transparent"
+              strokeWidth={Math.max(16, strokeWidth + 12)}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="cursor-move pointer-events-auto"
+            />
+            <polyline
+              points={screenPts.map(pt => `${pt.x},${pt.y}`).join(' ')}
+              fill="none"
+              stroke={color}
+              strokeWidth={strokeWidth}
+              strokeLinejoin="round"
+            />
+          </g>
         )}
 
         {/* Long Position Analysis Tool */}
@@ -1468,43 +1613,42 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           </g>
         )}
 
-        {/* Selection Handles */}
+        {/* Selection Handles (Resize/Rotate Anchors) */}
         {isSelected &&
           !d.locked &&
           screenPts.map((pt, idx) => (
             <g key={idx}>
-              {/* Invisible large 24x24 hit target for effortless anchor grabbing */}
-              <rect
-                x={pt.x - 12}
-                y={pt.y - 12}
-                width={24}
-                height={24}
+              {/* Anchor handle hit target: 14x14 circular target */}
+              <circle
+                cx={pt.x}
+                cy={pt.y}
+                r={7}
                 fill="transparent"
-                className="pointer-events-auto cursor-move"
+                className="pointer-events-auto cursor-crosshair"
                 onMouseDown={(e) => {
                   e.stopPropagation();
                   e.preventDefault();
-                  const mouse = getMouseCoord(e);
-                  if (mouse) {
-                    setDragState({
-                      drawingId: d.id,
-                      pointIndex: idx,
-                      startMouse: { x: mouse.x, y: mouse.y },
-                      initialPoints: [...d.points],
-                    });
-                  }
+                  const rect = svgRef.current?.getBoundingClientRect();
+                  const rawX = e.clientX - (rect?.left || 0);
+                  const rawY = e.clientY - (rect?.top || 0);
+                  setDragState({
+                    drawingId: d.id,
+                    pointIndex: idx,
+                    startMouse: { x: rawX, y: rawY },
+                    initialPoints: [...d.points],
+                  });
                 }}
               />
-              {/* Visible 10x10 anchor handle box */}
+              {/* Visible anchor handle (8x8 white box with blue stroke) */}
               <rect
-                x={pt.x - 5}
-                y={pt.y - 5}
-                width={10}
-                height={10}
+                x={pt.x - 4}
+                y={pt.y - 4}
+                width={8}
+                height={8}
                 fill="#ffffff"
                 stroke="#2962ff"
-                strokeWidth={2}
-                className="pointer-events-none"
+                strokeWidth={1.5}
+                className="pointer-events-none shadow"
               />
             </g>
           ))}

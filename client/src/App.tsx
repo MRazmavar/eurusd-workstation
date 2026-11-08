@@ -253,22 +253,24 @@ export const App: React.FC = () => {
     marketClient.saveDrawing(newD);
   };
 
-  const handleUpdateDrawing = (updated: DrawingObject) => {
+  const handleUpdateDrawing = (updated: DrawingObject, persist: boolean = true) => {
     setDrawings(prev => prev.map(d => d.id === updated.id ? updated : d));
-    marketClient.saveDrawing(updated);
+    if (persist) {
+      marketClient.saveDrawing(updated);
+    }
   };
 
   // Handle clicking on chart canvas (select nearby drawing or deselect when clicking empty space)
   const handleChartClick = useCallback((point: { x: number; y: number }) => {
     if (activeTool !== 'crosshair' && activeTool !== 'arrow') return;
-    const hit = DrawingEngine.hitTest(point, drawings, transformer, 14);
+    const hit = DrawingEngine.hitTest(point, drawings, transformer, 14, selectedDrawingId);
     console.log('[App] handleChartClick at:', point, 'hit:', hit ? hit.drawing.id : 'none');
     if (hit) {
       setSelectedDrawingId(hit.drawing.id);
     } else {
       setSelectedDrawingId(null);
     }
-  }, [activeTool, drawings, transformer]);
+  }, [activeTool, drawings, transformer, selectedDrawingId]);
 
   const handleDeleteDrawing = (id: string) => {
     setDrawings(prev => prev.filter(d => d.id !== id));
