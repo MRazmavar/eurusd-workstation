@@ -109,6 +109,48 @@ export const formatTickMarkInTimezone = (
 };
 
 /**
+ * Formats a crosshair / candle badge timestamp according to timeframe and target timezone.
+ */
+export const formatBadgeTimeInTimezone = (
+  timeSec: number,
+  tf: string,
+  timeZone: string = 'UTC'
+): string => {
+  try {
+    const d = new Date(timeSec * 1000);
+    if (['1s', '5s', '15s', '30s'].includes(tf)) {
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      }).format(d);
+    }
+    if (['1d', '1D', '1w', '1W', '1mo', '1M'].includes(tf)) {
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(d);
+    }
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    return formatter.format(d).replace(',', '');
+  } catch {
+    const d = new Date(timeSec * 1000);
+    return d.toUTCString();
+  }
+};
+
+/**
  * Converts a UTC hour:minute into formatted string in target timezone.
  */
 export const formatSessionTimeRange = (

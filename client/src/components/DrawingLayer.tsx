@@ -17,7 +17,7 @@ import { DrawingEngine, CoordinateTransformer, ScreenPoint } from '../services/D
 import { DrawingToolbarPopup } from './DrawingToolbarPopup';
 import { Check, X as CloseIcon } from 'lucide-react';
 import { computeSessionBlocks } from '../utils/sessions';
-import { formatTimeInTimezone } from '../utils/timezone';
+import { formatTimeInTimezone, formatBadgeTimeInTimezone } from '../utils/timezone';
 
 export interface MagnetSnapInfo {
   isSnapped: boolean;
@@ -27,24 +27,6 @@ export interface MagnetSnapInfo {
   screenY: number;
   time: number;
   price: number;
-}
-
-function formatBadgeTime(timeSec: number, tf: string): string {
-  const d = new Date(timeSec * 1000);
-  const yyyy = d.getUTCFullYear();
-  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(d.getUTCDate()).padStart(2, '0');
-  const hh = String(d.getUTCHours()).padStart(2, '0');
-  const min = String(d.getUTCMinutes()).padStart(2, '0');
-  const ss = String(d.getUTCSeconds()).padStart(2, '0');
-
-  if (['1s', '5s', '15s', '30s'].includes(tf)) {
-    return `${hh}:${min}:${ss}`;
-  } else if (['1m', '3m', '5m', '15m', '30m', '45m', '1h', '2h', '4h'].includes(tf)) {
-    return `${mm}/${dd} ${hh}:${min}`;
-  } else {
-    return `${yyyy}-${mm}-${dd}`;
-  }
 }
 
 interface DrawingLayerProps {
@@ -2799,10 +2781,10 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                   stroke="#2962ff"
                   strokeWidth={1}
                 />
-                <g transform={`translate(${activeCrosshair.screenX + 10}, ${activeCrosshair.screenY - 10})`}>
+                <g transform={`translate(${Math.min(dimensions.width - 110, activeCrosshair.screenX + 10)}, ${Math.max(16, activeCrosshair.screenY - 12)})`}>
                   <rect
-                    width={22}
-                    height={16}
+                    width={96}
+                    height={18}
                     rx={3}
                     fill="#1e222d"
                     stroke="#2962ff"
@@ -2810,15 +2792,15 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                     className="shadow-md"
                   />
                   <text
-                    x={11}
-                    y={12}
+                    x={48}
+                    y={13}
                     fill="#38bdf8"
                     fontSize={10}
                     fontWeight="bold"
                     fontFamily="monospace"
                     textAnchor="middle"
                   >
-                    {activeCrosshair.snapType === 'High' ? 'H' : activeCrosshair.snapType === 'Low' ? 'L' : activeCrosshair.snapType === 'Open' ? 'O' : 'C'}
+                    {activeCrosshair.snapType ? `${activeCrosshair.snapType[0]} ` : ''}{formatBadgeTimeInTimezone(activeCrosshair.time, timeframe, timezone)}
                   </text>
                 </g>
               </g>
@@ -2877,7 +2859,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                   fontFamily="monospace"
                   textAnchor="middle"
                 >
-                  {formatBadgeTime(activeCrosshair.time, timeframe)}
+                  {formatBadgeTimeInTimezone(activeCrosshair.time, timeframe, timezone)}
                 </text>
               </g>
             )}
@@ -2914,7 +2896,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                     fontFamily="sans-serif"
                     textAnchor="middle"
                   >
-                    ✂️ Click to Cut & Replay from {formatBadgeTime(activeCrosshair.time, timeframe)}
+                    ✂️ Click to Cut & Replay from {formatBadgeTimeInTimezone(activeCrosshair.time, timeframe, timezone)}
                   </text>
                 </g>
               </g>

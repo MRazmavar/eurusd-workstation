@@ -806,6 +806,13 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
 
         {displayCandle && (
           <div className="flex items-center gap-x-2.5 text-[11px]">
+            <span
+              data-testid="legend-candle-time"
+              className="text-[#38bdf8] font-mono font-medium border-r border-[#2a2e39] pr-2.5"
+              title={`Candle time in ${timezone}`}
+            >
+              {formatTimeInTimezone(displayCandle.time, timezone, true)}
+            </span>
             <span>
               <span className="text-gray-500 font-sans mr-0.5">O</span>
               <span className={isUp ? 'text-[#089981]' : 'text-[#f23645]'}>{displayCandle.open.toFixed(5)}</span>
