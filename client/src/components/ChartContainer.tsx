@@ -17,6 +17,13 @@ import {
 import { Candle, ChartType, IndicatorConfig, Quote } from '../types';
 import { CoordinateTransformer } from '../services/DrawingEngine';
 import { IndicatorEngine } from '../services/IndicatorEngine';
+import { Globe } from 'lucide-react';
+import {
+  TIMEZONE_OPTIONS,
+  getTimezoneAbbr,
+  formatTimeInTimezone,
+  formatTickMarkInTimezone,
+} from '../utils/timezone';
 
 interface ChartContainerProps {
   candles: Candle[];
@@ -30,6 +37,8 @@ interface ChartContainerProps {
   onChartClick?: (point: { x: number; y: number }) => void;
   hoveredCandleOverride?: Candle | null;
   centerTrigger?: number;
+  timezone?: string;
+  onTimezoneChange?: (tz: string) => void;
 }
 
 export const ChartContainer: React.FC<ChartContainerProps> = ({
@@ -44,6 +53,8 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
   onChartClick,
   hoveredCandleOverride,
   centerTrigger,
+  timezone = 'UTC',
+  onTimezoneChange,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -54,6 +65,26 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
   const onChartClickRef = useRef(onChartClick);
   const timeframeRef = useRef(timeframe);
   const restoredTfMapRef = useRef<{ [tf: string]: boolean }>({});
+
+  const [isTzDropdownOpen, setIsTzDropdownOpen] = useState(false);
+  const tzDropdownRef = useRef<HTMLDivElement | null>(null);
+  const timezoneRef = useRef(timezone);
+
+  useEffect(() => {
+    timezoneRef.current = timezone;
+  }, [timezone]);
+
+  // Close timezone dropdown on outside click
+  useEffect(() => {
+    if (!isTzDropdownOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (tzDropdownRef.current && !tzDropdownRef.current.contains(e.target as Node)) {
+        setIsTzDropdownOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handleClickOutside);
+    return () => window.removeEventListener('mousedown', handleClickOutside);
+  }, [isTzDropdownOpen]);
 
   useEffect(() => {
     timeframeRef.current = timeframe;
@@ -286,10 +317,19 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
           bottom: 0.1,
         },
       },
+      localization: {
+        timeFormatter: (timestamp: number) => {
+          return formatTimeInTimezone(timestamp, timezoneRef.current, ['1d', '1w', '1mo'].includes(timeframeRef.current));
+        },
+      },
       timeScale: {
         borderColor: '#2a2e39',
         timeVisible: true,
         secondsVisible: true,
+        tickMarkFormatter: (time: any, tickMarkType: any) => {
+          const tSec = typeof time === 'number' ? time : (time?.timestamp || 0);
+          return formatTickMarkInTimezone(tSec, tickMarkType, timezoneRef.current);
+        },
       },
       handleScale: {
         mouseWheel: true,
@@ -421,6 +461,28 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
       chartRef.current = null;
     };
   }, []);
+
+  // Dynamically apply timezone localization to chart time axis and crosshair
+  useEffect(() => {
+    if (!chartRef.current) return;
+    try {
+      chartRef.current.applyOptions({
+        localization: {
+          timeFormatter: (timestamp: number) => {
+            return formatTimeInTimezone(timestamp, timezone, ['1d', '1w', '1mo'].includes(timeframeRef.current));
+          },
+        },
+        timeScale: {
+          tickMarkFormatter: (time: any, tickMarkType: any) => {
+            const tSec = typeof time === 'number' ? time : (time?.timestamp || 0);
+            return formatTickMarkInTimezone(tSec, tickMarkType, timezone);
+          },
+        },
+      });
+    } catch (e) {
+      console.warn('Error applying timezone options to chart:', e);
+    }
+  }, [timezone]);
 
   // Create & Update Main Series
   useEffect(() => {
@@ -690,6 +752,51 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
       </div>
 
       <div ref={containerRef} className="w-full h-full" />
+
+      {/* Bottom-Right TradingView-Style Timezone Switcher */}
+      <div className="absolute bottom-1 right-14 z-20" ref={tzDropdownRef}>
+        <button
+          type="button"
+          data-testid="chart-timezone-btn"
+          onClick={() => setIsTzDropdownOpen(prev => !prev)}
+          className="flex items-center space-x-1.5 px-2 py-0.5 rounded text-[11px] font-mono bg-[#1e222d]/90 hover:bg-[#2a2e39] text-gray-300 hover:text-white border border-[#2a2e39] transition-colors shadow"
+          title={`Current chart timezone: ${timezone}. Click to change.`}
+        >
+          <Globe className="w-3 h-3 text-[#2962ff]" />
+          <span>{getTimezoneAbbr(timezone)}</span>
+        </button>
+
+        {/* Timezone Dropdown Menu */}
+        {isTzDropdownOpen && (
+          <div
+            data-testid="timezone-dropdown"
+            className="absolute bottom-full right-0 mb-1 w-64 max-h-72 overflow-y-auto bg-[#1e222d] border border-[#2a2e39] rounded shadow-xl py-1 z-30 font-sans"
+          >
+            <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 border-b border-[#2a2e39]/60">
+              Select Chart Timezone
+            </div>
+            {TIMEZONE_OPTIONS.map((opt) => {
+              const isSelected = opt.value === timezone;
+              return (
+                <button
+                  key={opt.value}
+                  data-testid={`tz-option-${opt.value.replace('/', '_')}`}
+                  onClick={() => {
+                    onTimezoneChange?.(opt.value);
+                    setIsTzDropdownOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-[#2a2e39] transition-colors ${
+                    isSelected ? 'text-[#2962ff] bg-[#2962ff]/10 font-medium' : 'text-gray-300'
+                  }`}
+                >
+                  <span className="truncate">{opt.label}</span>
+                  <span className="text-[10px] text-gray-400 ml-2 font-mono flex-shrink-0">{opt.utcOffset}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

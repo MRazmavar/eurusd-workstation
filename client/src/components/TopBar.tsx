@@ -23,6 +23,8 @@ import {
   Wallet,
   Edit3,
   Dices,
+  Clock,
+  Globe,
 } from 'lucide-react';
 import { ChartType, Timeframe, Quote } from '../types';
 
@@ -46,6 +48,10 @@ interface TopBarProps {
   equity?: number;
   onOpenBalanceModal?: () => void;
   onOpenQuickTimeframe?: () => void;
+  sessionsIndicatorActive?: boolean;
+  onToggleSessionsIndicator?: () => void;
+  timezone?: string;
+  onTimezoneChange?: (tz: string) => void;
 }
 
 const TIMEFRAMES: { label: string; value: Timeframe }[] = [
@@ -89,6 +95,10 @@ export const TopBar: React.FC<TopBarProps> = ({
   equity,
   onOpenBalanceModal,
   onOpenQuickTimeframe,
+  sessionsIndicatorActive = true,
+  onToggleSessionsIndicator,
+  timezone = 'UTC',
+  onTimezoneChange,
 }) => {
   const [showTfDropdown, setShowTfDropdown] = useState(false);
   const [showChartTypeDropdown, setShowChartTypeDropdown] = useState(false);
@@ -337,14 +347,37 @@ export const TopBar: React.FC<TopBarProps> = ({
           <span className="font-semibold">Random Date</span>
         </button>
 
-        {/* Sessions Button */}
+        {/* Forex Sessions Indicator Toggle Button */}
+        <button
+          onClick={onToggleSessionsIndicator}
+          data-testid="topbar-sessions-btn"
+          className={`flex items-center space-x-1.5 px-2.5 py-1 rounded border transition-colors ${
+            sessionsIndicatorActive
+              ? 'bg-[#8b5cf6]/20 border-[#8b5cf6] text-purple-200 shadow-sm'
+              : 'bg-[#1e222d] border-[#2a2e39] text-gray-400 hover:text-white hover:border-[#363c4e]'
+          }`}
+          title="Toggle Forex Sessions indicator (Asia / Shield Area, Frankfurt 1h, London 1h, NY 1h)"
+        >
+          <Clock size={13} className={sessionsIndicatorActive ? 'text-purple-400' : 'text-gray-400'} />
+          <span className="font-semibold">Sessions</span>
+          <span
+            className={`text-[9px] px-1 py-0.2 rounded font-mono font-bold ${
+              sessionsIndicatorActive ? 'bg-[#8b5cf6] text-white' : 'bg-gray-700 text-gray-300'
+            }`}
+          >
+            {sessionsIndicatorActive ? 'ON' : 'OFF'}
+          </span>
+        </button>
+
+        {/* Saved Sessions Button */}
         <button
           onClick={onOpenSessions}
+          data-testid="topbar-saved-sessions-btn"
           className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-200 hover:text-white hover:border-[#363c4e]"
-          title="Manage Backtesting Sessions"
+          title="Manage Saved Backtesting Sessions"
         >
           <FolderOpen size={14} className="text-amber-400" />
-          <span>Sessions</span>
+          <span>Saved</span>
         </button>
 
         {/* Data Quality / Audit Button */}

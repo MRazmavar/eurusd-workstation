@@ -17,6 +17,21 @@ interface IndicatorsModalProps {
 
 const AVAILABLE_INDICATORS: Omit<IndicatorConfig, 'id' | 'visible'>[] = [
   {
+    type: 'SESSIONS',
+    name: 'Forex Sessions (NY 1h, Asia / Shield Area, London 1h, Frankfurt 1h)',
+    color: '#8b5cf6',
+    secondaryColor: '#06b6d4',
+    isOverlay: true,
+    params: {
+      showAsia: 1,
+      showShieldArea: 1,
+      showFrankfurt1h: 1,
+      showLondon1h: 1,
+      showNy1h: 1,
+      showHighLow: 1,
+    },
+  },
+  {
     type: 'SMA',
     name: 'Moving Average (SMA 20)',
     color: '#2962ff',

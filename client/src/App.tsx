@@ -37,6 +37,22 @@ import { DraggableTradeSetup, ReplayMode, BacktestSession } from './types';
 
 const DEFAULT_INDICATORS: IndicatorConfig[] = [
   {
+    id: 'ind_sessions',
+    type: 'SESSIONS',
+    name: 'Forex Sessions (NY 1h, Asia / Shield Area, London 1h, Frankfurt 1h)',
+    color: '#8b5cf6',
+    visible: true,
+    isOverlay: true,
+    params: {
+      showAsia: 1,
+      showShieldArea: 1,
+      showFrankfurt1h: 1,
+      showLondon1h: 1,
+      showNy1h: 1,
+      showHighLow: 1,
+    },
+  },
+  {
     id: 'ind_sma20',
     type: 'SMA',
     name: 'SMA (20)',
@@ -102,7 +118,14 @@ export const App: React.FC = () => {
   const [indicators, setIndicators] = useState<IndicatorConfig[]>(() => {
     try {
       const saved = localStorage.getItem('eurusd_saved_indicators');
-      return saved ? JSON.parse(saved) : DEFAULT_INDICATORS;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (!parsed.some((i: IndicatorConfig) => i.type === 'SESSIONS')) {
+          parsed.unshift(DEFAULT_INDICATORS[0]);
+        }
+        return parsed;
+      }
+      return DEFAULT_INDICATORS;
     } catch {
       return DEFAULT_INDICATORS;
     }
@@ -166,7 +189,7 @@ export const App: React.FC = () => {
 
   // Trades & Backtesting State
   const [trades, setTrades] = useState<Trade[]>([]);
-  const [settings, setSettings] = useState<UserSettings>({
+  const [settings, setSettings] = useState<UserSettings>(() => ({
     initial_balance: 10000,
     account_currency: 'USD',
     default_risk_percent: 1,
@@ -175,9 +198,38 @@ export const App: React.FC = () => {
     commission_per_lot: 3.5,
     slippage_pips: 0.2,
     active_provider: 'dukascopy',
-    timezone: 'UTC',
+    timezone: localStorage.getItem('eurusd_saved_timezone') || 'UTC',
     theme: 'dark',
-  });
+  }));
+
+  const handleTimezoneChange = useCallback((newTz: string) => {
+    setSettings(prev => {
+      const updated = { ...prev, timezone: newTz };
+      localStorage.setItem('eurusd_saved_timezone', newTz);
+      backtestingEngine.updateSettings(updated);
+      return updated;
+    });
+    showToast(`Timezone changed to ${newTz}`);
+  }, [showToast]);
+
+  const handleToggleSessions = useCallback(() => {
+    setIndicators(prev => {
+      const existing = prev.find(i => i.type === 'SESSIONS');
+      if (!existing) {
+        const next = [DEFAULT_INDICATORS[0], ...prev];
+        localStorage.setItem('eurusd_saved_indicators', JSON.stringify(next));
+        showToast('Forex Sessions Indicator: ON');
+        return next;
+      }
+      const next = prev.map(ind =>
+        ind.type === 'SESSIONS' ? { ...ind, visible: !ind.visible } : ind
+      );
+      localStorage.setItem('eurusd_saved_indicators', JSON.stringify(next));
+      const willBeVisible = !existing.visible;
+      showToast(`Forex Sessions Indicator: ${willBeVisible ? 'ON' : 'OFF'}`);
+      return next;
+    });
+  }, [showToast]);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
   const [isSessionsModalOpen, setIsSessionsModalOpen] = useState<boolean>(false);
   const [isValidationModalOpen, setIsValidationModalOpen] = useState<boolean>(false);
@@ -744,6 +796,10 @@ export const App: React.FC = () => {
           setQuickTfInitialValue('');
           setIsQuickTfModalOpen(true);
         }}
+        sessionsIndicatorActive={indicators.find(i => i.type === 'SESSIONS')?.visible ?? true}
+        onToggleSessionsIndicator={handleToggleSessions}
+        timezone={settings.timezone}
+        onTimezoneChange={handleTimezoneChange}
       />
 
       {/* 2. MAIN WORKSPACE AREA */}
@@ -812,6 +868,8 @@ export const App: React.FC = () => {
               onChartClick={handleChartClick}
               hoveredCandleOverride={hoveredCandle}
               centerTrigger={centerTrigger}
+              timezone={settings.timezone}
+              onTimezoneChange={handleTimezoneChange}
             />
 
             {/* Interactive Drawing Layer Canvas Overlay */}
@@ -858,6 +916,9 @@ export const App: React.FC = () => {
                 backtestingEngine.cancelTrade(tradeId);
                 showToast('Cancelled Pending Order');
               }}
+              indicators={indicators}
+              timezone={settings.timezone}
+              sessionsActive={indicators.find(i => i.type === 'SESSIONS')?.visible ?? true}
             />
           </div>
 
@@ -949,6 +1010,9 @@ export const App: React.FC = () => {
         settings={settings}
         onSave={(newSettings) => {
           setSettings(newSettings);
+          if (newSettings.timezone) {
+            localStorage.setItem('eurusd_saved_timezone', newSettings.timezone);
+          }
           backtestingEngine.updateSettings(newSettings);
         }}
       />

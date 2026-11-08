@@ -11,10 +11,13 @@ import {
   DraggableTradeSetup,
   MagnetMode,
   Trade,
+  IndicatorConfig,
 } from '../types';
 import { DrawingEngine, CoordinateTransformer, ScreenPoint } from '../services/DrawingEngine';
 import { DrawingToolbarPopup } from './DrawingToolbarPopup';
 import { Check, X as CloseIcon } from 'lucide-react';
+import { computeSessionBlocks } from '../utils/sessions';
+import { formatTimeInTimezone } from '../utils/timezone';
 
 export interface MagnetSnapInfo {
   isSnapped: boolean;
@@ -76,6 +79,9 @@ interface DrawingLayerProps {
   onCloseTrade?: (tradeId: string) => void;
   onModifyTrade?: (tradeId: string, updates: Partial<Trade>) => void;
   onCancelTrade?: (tradeId: string) => void;
+  indicators?: IndicatorConfig[];
+  timezone?: string;
+  sessionsActive?: boolean;
 }
 
 export const DrawingLayer: React.FC<DrawingLayerProps> = ({
@@ -110,6 +116,9 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   onCloseTrade,
   onModifyTrade,
   onCancelTrade,
+  indicators,
+  timezone = 'UTC',
+  sessionsActive = true,
 }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null);
@@ -812,6 +821,133 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         // If dist <= 8, it was a single click: leave inProgressDrawing active for click-to-click TV drawing!
       }
     }
+  };
+
+  // Render Forex Sessions & Killzones Overlay
+  const renderSessions = () => {
+    // Hide sessions on daily, weekly or monthly timeframes
+    if (['1d', '1w', '1mo'].includes(timeframe)) return null;
+
+    // Check if sessions indicator is active
+    if (!sessionsActive) return null;
+    const sessionsInd = indicators?.find(i => i.type === 'SESSIONS');
+    if (sessionsInd && !sessionsInd.visible) return null;
+
+    // Compute active session blocks across visible candles
+    const blocks = computeSessionBlocks(candles);
+    if (blocks.length === 0) return null;
+
+    return (
+      <g className="sessions-layer pointer-events-none select-none" data-testid="sessions-layer">
+        {blocks.map((block) => {
+          const x1 = transformer.timeToX(block.startTime);
+          const x2 = transformer.timeToX(block.endTime);
+
+          if (x1 === null && x2 === null) return null;
+
+          const safeX1 = x1 !== null ? x1 : -100;
+          const safeX2 = x2 !== null ? x2 : 2500;
+          const width = Math.max(4, safeX2 - safeX1);
+
+          const highY = transformer.priceToY(block.high);
+          const lowY = transformer.priceToY(block.low);
+
+          return (
+            <g key={block.key} data-testid={`session-block-${block.session.id}`}>
+              {/* Shaded Vertical Session Region */}
+              <rect
+                x={safeX1}
+                y={0}
+                width={width}
+                height="100%"
+                fill={block.session.color}
+                fillOpacity={block.session.fillOpacity}
+              />
+
+              {/* Start & End Vertical Boundaries */}
+              {x1 !== null && (
+                <line
+                  x1={x1}
+                  y1={0}
+                  x2={x1}
+                  y2="100%"
+                  stroke={block.session.borderColor}
+                  strokeWidth={1}
+                  strokeDasharray="4,4"
+                  opacity={0.65}
+                />
+              )}
+              {x2 !== null && (
+                <line
+                  x1={x2}
+                  y1={0}
+                  x2={x2}
+                  y2="100%"
+                  stroke={block.session.borderColor}
+                  strokeWidth={1}
+                  strokeDasharray="4,4"
+                  opacity={0.65}
+                />
+              )}
+
+              {/* Session High and Low Horizontal Lines */}
+              {highY !== null && (
+                <line
+                  x1={safeX1}
+                  y1={highY}
+                  x2={safeX2}
+                  y2={highY}
+                  stroke={block.session.borderColor}
+                  strokeWidth={1}
+                  strokeDasharray="2,2"
+                  opacity={0.65}
+                />
+              )}
+              {lowY !== null && (
+                <line
+                  x1={safeX1}
+                  y1={lowY}
+                  x2={safeX2}
+                  y2={lowY}
+                  stroke={block.session.borderColor}
+                  strokeWidth={1}
+                  strokeDasharray="2,2"
+                  opacity={0.65}
+                />
+              )}
+
+              {/* Session Top Badge Pill */}
+              {x1 !== null && x1 > -150 && x1 < 2200 && (
+                <g
+                  transform={`translate(${Math.max(10, x1 + 6)}, ${block.session.badgeYOffset})`}
+                  data-testid={`session-badge-${block.session.id}`}
+                >
+                  <rect
+                    width={block.session.id === 'shield_area' ? 112 : (block.session.id === 'asia_full' ? 96 : 92)}
+                    height={20}
+                    rx={4}
+                    fill={block.session.badgeBg}
+                    stroke={block.session.badgeBorder}
+                    strokeWidth={block.session.id === 'shield_area' ? 1.5 : 1}
+                    className="shadow-sm"
+                  />
+                  <text
+                    x={6}
+                    y={14}
+                    fill={block.session.badgeText}
+                    fontSize={10}
+                    fontWeight="bold"
+                    fontFamily="sans-serif"
+                  >
+                    {block.session.shortLabel}
+                  </text>
+                </g>
+              )}
+            </g>
+          );
+        })}
+      </g>
+    );
   };
 
   // Render Confirmed Active On-Chart Trades (Positions & Pending Orders)
@@ -2345,6 +2481,9 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             <polygon points="0 0, 10 3.5, 0 7" fill="#2962ff" />
           </marker>
         </defs>
+
+        {/* Forex Session Indicator Highlights */}
+        {renderSessions()}
 
         {/* Drawings */}
         {drawings.map(d => renderDrawing(d))}

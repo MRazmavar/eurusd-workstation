@@ -92,7 +92,8 @@ export interface IndicatorConfig {
   type:
     | 'SMA' | 'EMA' | 'VWAP' | 'BB' | 'RSI' | 'MACD'
     | 'STOCH' | 'ATR' | 'ADX' | 'CCI' | 'WILLIAMS_R'
-    | 'ICHIMOKU' | 'PSAR' | 'SUPERTREND' | 'VOLUME';
+    | 'ICHIMOKU' | 'PSAR' | 'SUPERTREND' | 'VOLUME'
+    | 'SESSIONS';
   name: string;
   visible: boolean;
   color: string;

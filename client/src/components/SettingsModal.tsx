@@ -4,6 +4,7 @@
 import React, { useState } from 'react';
 import { Settings, X, Save, ShieldCheck, Database, Sliders, Globe } from 'lucide-react';
 import { UserSettings } from '../types';
+import { TIMEZONE_OPTIONS } from '../utils/timezone';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -218,36 +219,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div>
                 <label className="text-gray-300 block mb-1">Chart Timezone</label>
                 <select
+                  data-testid="settings-timezone-select"
                   value={formData.timezone}
                   onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
-                  className="w-full bg-[#131722] border border-[#2a2e39] rounded px-3 py-2 text-white focus:outline-none focus:border-[#2962ff]"
+                  className="w-full bg-[#131722] border border-[#2a2e39] rounded px-3 py-2 text-white focus:outline-none focus:border-[#2962ff] text-xs font-mono"
                 >
-                  <option value="UTC">UTC (Coordinated Universal Time)</option>
-                  <option value="America/New_York">EST / EDT (New York)</option>
-                  <option value="Europe/London">GMT / BST (London)</option>
-                  <option value="Europe/Frankfurt">CET / CEST (Frankfurt / Paris)</option>
-                  <option value="Asia/Tokyo">JST (Tokyo)</option>
+                  {TIMEZONE_OPTIONS.map((tz) => (
+                    <option key={tz.value} value={tz.value}>
+                      {tz.label} ({tz.utcOffset})
+                    </option>
+                  ))}
                 </select>
               </div>
 
               <div className="p-3 bg-[#131722] rounded border border-[#2a2e39] space-y-2">
-                <span className="font-bold text-gray-200 block text-[11px]">Session Windows</span>
-                <div className="space-y-1 text-gray-400 text-[11px]">
-                  <div className="flex justify-between">
-                    <span>Asian Session (Tokyo):</span>
-                    <span className="font-mono text-white">00:00 - 09:00 UTC</span>
+                <span className="font-bold text-gray-200 block text-[11px]">Filtered Forex Session Windows</span>
+                <div className="space-y-1.5 text-gray-400 text-[11px]">
+                  <div className="flex justify-between items-center">
+                    <span className="text-cyan-400 font-semibold">🛡️ Shield Area (Asia 1st hour):</span>
+                    <span className="font-mono text-cyan-300 bg-cyan-950/40 px-1.5 py-0.5 rounded border border-cyan-800/40">00:00 - 01:00 UTC</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span>London Session:</span>
-                    <span className="font-mono text-white">07:00 - 16:00 UTC</span>
+                  <div className="flex justify-between items-center">
+                    <span className="text-purple-400 font-semibold">Asia Full Session:</span>
+                    <span className="font-mono text-purple-300 bg-purple-950/40 px-1.5 py-0.5 rounded border border-purple-800/40">00:00 - 08:00 UTC</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span>New York Session:</span>
-                    <span className="font-mono text-white">12:00 - 21:00 UTC</span>
+                  <div className="flex justify-between items-center">
+                    <span className="text-amber-400 font-semibold">Frankfurt Session (1st hour):</span>
+                    <span className="font-mono text-amber-300 bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-800/40">07:00 - 08:00 UTC</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span>London / NY Overlap:</span>
-                    <span className="font-mono text-[#2962ff] font-bold">12:00 - 16:00 UTC</span>
+                  <div className="flex justify-between items-center">
+                    <span className="text-blue-400 font-semibold">London Session (1st hour):</span>
+                    <span className="font-mono text-blue-300 bg-blue-950/40 px-1.5 py-0.5 rounded border border-blue-800/40">08:00 - 09:00 UTC</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-emerald-400 font-semibold">New York Open (1st hour):</span>
+                    <span className="font-mono text-emerald-300 bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-800/40">13:00 - 14:00 UTC</span>
                   </div>
                 </div>
               </div>
