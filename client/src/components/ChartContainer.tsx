@@ -439,6 +439,9 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
     });
 
     chartRef.current = chart;
+    if (typeof window !== 'undefined') {
+      (window as any).__EURUSD_CHART__ = chart;
+    }
 
     if (onChartInstanceReady) {
       onChartInstanceReady({
@@ -696,12 +699,8 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
       seriesRef.current.setData(barData);
     }
 
-    // Viewport position management across timeframe changes & replay
-    if (isReplayActive && candles.length > 0) {
-      centerOnLastCandle();
-    } else if (anchorTimestamp && candles.length > 0) {
-      centerOnTimestamp(anchorTimestamp);
-    } else if (!restoredTfMapRef.current[timeframe] && chartRef.current && candles.length > 0) {
+    // Restore saved viewport position on initial timeframe boot
+    if (!restoredTfMapRef.current[timeframe] && chartRef.current && candles.length > 0) {
       const savedRange = localStorage.getItem(`eurusd_logical_range_${timeframe}`);
       const savedTimeRange = localStorage.getItem(`eurusd_time_range_${timeframe}`);
       if (savedRange) {
