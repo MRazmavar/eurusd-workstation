@@ -28,6 +28,7 @@ interface ChartContainerProps {
   onCrosshairMove?: (param: { time?: number; price?: number; candle?: Candle }) => void;
   onChartInstanceReady?: (instance: { fitContent: () => void; resetScale: () => void }) => void;
   onChartClick?: (point: { x: number; y: number }) => void;
+  hoveredCandleOverride?: Candle | null;
 }
 
 export const ChartContainer: React.FC<ChartContainerProps> = ({
@@ -40,6 +41,7 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
   onCrosshairMove,
   onChartInstanceReady,
   onChartClick,
+  hoveredCandleOverride,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -179,11 +181,13 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
           color: '#787b86',
           width: 1,
           style: 3,
+          visible: false,
         },
         horzLine: {
           color: '#787b86',
           width: 1,
           style: 3,
+          visible: false,
         },
       },
       rightPriceScale: {
@@ -487,7 +491,9 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
     }
   }, [indicators, candles]);
 
-  const displayCandle = hoveredCandle || (candles.length > 0 ? candles[candles.length - 1] : null);
+  const displayCandle = hoveredCandleOverride !== undefined && hoveredCandleOverride !== null
+    ? hoveredCandleOverride
+    : (hoveredCandle || (candles.length > 0 ? candles[candles.length - 1] : null));
   const change = displayCandle ? displayCandle.close - displayCandle.open : 0;
   const changePercent = displayCandle && displayCandle.open ? (change / displayCandle.open) * 100 : 0;
   const rangePips = displayCandle ? (displayCandle.high - displayCandle.low) / 0.0001 : 0;

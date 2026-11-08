@@ -256,6 +256,10 @@ export class BacktestingEngine {
     return updated;
   }
 
+  public async cancelTrade(tradeId: string): Promise<Trade | null> {
+    return this.closeTrade(tradeId, 0, Math.floor(Date.now() / 1000), 'CANCELLED');
+  }
+
   public async closeTrade(
     tradeId: string,
     exitPrice: number,

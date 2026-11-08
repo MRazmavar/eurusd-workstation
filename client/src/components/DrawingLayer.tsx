@@ -2,17 +2,46 @@
  * Interactive SVG Drawing Overlay for TradingView-style technical analysis tools
  * and Draggable Trade Setup Lines (Entry, Stop Loss, Take Profit).
  */
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   DrawingObject,
   DrawingToolType,
   Point,
   Candle,
   DraggableTradeSetup,
+  MagnetMode,
 } from '../types';
 import { DrawingEngine, CoordinateTransformer, ScreenPoint } from '../services/DrawingEngine';
 import { DrawingToolbarPopup } from './DrawingToolbarPopup';
 import { Check, X as CloseIcon } from 'lucide-react';
+
+export interface MagnetSnapInfo {
+  isSnapped: boolean;
+  snapType?: 'High' | 'Low' | 'Open' | 'Close';
+  candle?: Candle;
+  screenX: number;
+  screenY: number;
+  time: number;
+  price: number;
+}
+
+function formatBadgeTime(timeSec: number, tf: string): string {
+  const d = new Date(timeSec * 1000);
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const min = String(d.getUTCMinutes()).padStart(2, '0');
+  const ss = String(d.getUTCSeconds()).padStart(2, '0');
+
+  if (['1s', '5s', '15s', '30s'].includes(tf)) {
+    return `${hh}:${min}:${ss}`;
+  } else if (['1m', '3m', '5m', '15m', '30m', '45m', '1h', '2h', '4h'].includes(tf)) {
+    return `${mm}/${dd} ${hh}:${min}`;
+  } else {
+    return `${yyyy}-${mm}-${dd}`;
+  }
+}
 
 interface DrawingLayerProps {
   drawings: DrawingObject[];
@@ -24,13 +53,15 @@ interface DrawingLayerProps {
   onUpdate: (d: DrawingObject) => void;
   onDelete: (id: string) => void;
   onResetTool: () => void;
-  magnetMode: boolean;
+  magnetMode: MagnetMode;
   candles: Candle[];
   timeframe: string;
   activeSetup?: DraggableTradeSetup | null;
   onUpdateSetup?: (setup: Partial<DraggableTradeSetup>) => void;
   onConfirmSetup?: () => void;
   onCancelSetup?: () => void;
+  externalMousePos?: { x: number; y: number } | null;
+  onHoverCandle?: (candle: Candle | null) => void;
 }
 
 export const DrawingLayer: React.FC<DrawingLayerProps> = ({
@@ -50,9 +81,16 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   onUpdateSetup,
   onConfirmSetup,
   onCancelSetup,
+  externalMousePos,
+  onHoverCandle,
 }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null);
+
+  // Crosshair & Magnet state
+  const [dimensions, setDimensions] = useState<{ width: number; height: number }>({ width: 1000, height: 600 });
+  const [isCtrlPressed, setIsCtrlPressed] = useState<boolean>(false);
+  const [activeCrosshair, setActiveCrosshair] = useState<MagnetSnapInfo | null>(null);
 
   // Drawing state
   const [inProgressDrawing, setInProgressDrawing] = useState<DrawingObject | null>(null);
@@ -70,6 +108,41 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   const isDrawingToolActive = activeTool !== 'crosshair' && activeTool !== 'arrow';
   const isSingleClickTool = ['horizontal_line', 'vertical_line', 'horizontal_ray', 'price_label'].includes(activeTool);
   const isThreePointTool = ['parallel_channel', 'flat_top_bottom', 'disjoint_channel', 'triangle'].includes(activeTool);
+
+  // ResizeObserver to track SVG viewport dimensions for exact scale badges
+  useEffect(() => {
+    if (!svgRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setDimensions({
+          width: entry.contentRect.width,
+          height: entry.contentRect.height,
+        });
+      }
+    });
+    observer.observe(svgRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  // TradingView-style Ctrl key listener: dynamically toggles Magnet snapping while held
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Control' || e.key === 'Meta') {
+        setIsCtrlPressed(true);
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Control' || e.key === 'Meta') {
+        setIsCtrlPressed(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
 
   // Refs for window drag listener to eliminate stale closures
   const dragStateRef = useRef<typeof dragState>(dragState);
@@ -114,45 +187,181 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [inProgressDrawing, selectedId, onResetTool, onSelect]);
 
-  // Snaps point to nearest OHLC if magnet mode is on
-  const snapPrice = (time: number, price: number): { time: number; price: number } => {
-    if (!magnetMode || candles.length === 0) return { time, price };
-    let closest = candles[0];
-    let minDiff = Math.abs(closest.time - time);
-    for (const c of candles) {
-      const diff = Math.abs(c.time - time);
-      if (diff < minDiff) {
-        minDiff = diff;
-        closest = c;
-      }
-    }
-    const levels = [closest.open, closest.high, closest.low, closest.close];
-    let bestLevel = levels[0];
-    let bestDist = Math.abs(price - bestLevel);
-    for (const lvl of levels) {
-      const d = Math.abs(price - lvl);
-      if (d < bestDist) {
-        bestDist = d;
-        bestLevel = lvl;
-      }
-    }
-    return { time: closest.time, price: bestLevel };
-  };
+  // TradingView-Grade Magnet Snapping Engine: snaps to High/Low wicks and Open/Close bodies
+  const calculateMagnetSnap = useCallback((
+    screenX: number,
+    screenY: number,
+    mode: MagnetMode,
+    isCtrl: boolean,
+    cList: Candle[],
+    trans: CoordinateTransformer
+  ): MagnetSnapInfo => {
+    const rawTime = trans.xToTime(screenX);
+    const rawPrice = trans.yToPrice(screenY);
+    const fallbackTime = rawTime ?? (cList.length > 0 ? cList[cList.length - 1].time : 0);
+    const fallbackPrice = rawPrice ?? 1.0850;
 
-  const getMouseCoord = (e: React.MouseEvent | MouseEvent): { x: number; y: number; time: number; price: number } | null => {
+    // Holding Ctrl dynamically inverts the magnet mode
+    const effectiveMode: MagnetMode = isCtrl
+      ? (mode === 'off' ? 'weak' : 'off')
+      : mode;
+
+    if (effectiveMode === 'off' || cList.length === 0 || rawTime === null || rawPrice === null) {
+      return {
+        isSnapped: false,
+        screenX,
+        screenY,
+        time: fallbackTime,
+        price: fallbackPrice,
+      };
+    }
+
+    // Binary search to find candle closest to rawTime
+    let low = 0;
+    let high = cList.length - 1;
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      if (cList[mid].time < rawTime) low = mid + 1;
+      else high = mid - 1;
+    }
+
+    const candidateIndices = [
+      Math.max(0, high),
+      Math.min(cList.length - 1, low),
+      Math.max(0, Math.min(cList.length - 1, high + 1)),
+      Math.max(0, Math.min(cList.length - 1, low - 1)),
+    ];
+
+    let bestCandle: Candle | null = null;
+    let minCandleDist = Infinity;
+
+    for (const idx of candidateIndices) {
+      const c = cList[idx];
+      const cx = trans.timeToX(c.time);
+      if (cx !== null) {
+        const d = Math.abs(cx - screenX);
+        if (d < minCandleDist) {
+          minCandleDist = d;
+          bestCandle = c;
+        }
+      }
+    }
+
+    if (!bestCandle) {
+      return {
+        isSnapped: false,
+        screenX,
+        screenY,
+        time: fallbackTime,
+        price: fallbackPrice,
+      };
+    }
+
+    const candleX = trans.timeToX(bestCandle.time) ?? screenX;
+    const dx = Math.abs(candleX - screenX);
+
+    const levels: { type: 'High' | 'Low' | 'Open' | 'Close'; price: number }[] = [
+      { type: 'High', price: bestCandle.high },
+      { type: 'Low', price: bestCandle.low },
+      { type: 'Open', price: bestCandle.open },
+      { type: 'Close', price: bestCandle.close },
+    ];
+
+    let bestLevel = levels[0];
+    let bestLevelY = trans.priceToY(bestLevel.price) ?? screenY;
+    let bestDist = Infinity;
+
+    for (const lvl of levels) {
+      const ly = trans.priceToY(lvl.price);
+      if (ly !== null) {
+        const dy = Math.abs(ly - screenY);
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestLevel = lvl;
+          bestLevelY = ly;
+        }
+      }
+    }
+
+    // Evaluate distance thresholds: Weak = within 35px Euclidean; Strong = within 55px bar column
+    const isWeakSnapped = effectiveMode === 'weak' && bestDist <= 35;
+    const isStrongSnapped = effectiveMode === 'strong' && dx <= 55;
+
+    if (isWeakSnapped || isStrongSnapped) {
+      return {
+        isSnapped: true,
+        snapType: bestLevel.type,
+        candle: bestCandle,
+        screenX: candleX,
+        screenY: bestLevelY,
+        time: bestCandle.time,
+        price: bestLevel.price,
+      };
+    }
+
+    return {
+      isSnapped: false,
+      candle: bestCandle,
+      screenX,
+      screenY,
+      time: fallbackTime,
+      price: fallbackPrice,
+    };
+  }, []);
+
+  const getMouseCoord = (e: React.MouseEvent | MouseEvent): {
+    x: number;
+    y: number;
+    time: number;
+    price: number;
+    snap: MagnetSnapInfo;
+  } | null => {
     if (!svgRef.current) return null;
     const rect = svgRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const rawX = e.clientX - rect.left;
+    const rawY = e.clientY - rect.top;
 
-    const currentTransformer = transformerRef.current;
-    const t = currentTransformer.xToTime(x);
-    const p = currentTransformer.yToPrice(y);
-    if (t === null || p === null) return null;
+    const snap = calculateMagnetSnap(
+      rawX,
+      rawY,
+      magnetMode,
+      isCtrlPressed,
+      candles,
+      transformerRef.current
+    );
 
-    const snapped = snapPrice(t, p);
-    return { x, y, time: snapped.time, price: snapped.price };
+    return {
+      x: snap.isSnapped ? snap.screenX : rawX,
+      y: snap.isSnapped ? snap.screenY : rawY,
+      time: snap.time,
+      price: snap.price,
+      snap,
+    };
   };
+
+  // Synchronize crosshair position and hovered candle from outside mouse movements (when SVG is transparent)
+  useEffect(() => {
+    if (externalMousePos) {
+      const snap = calculateMagnetSnap(
+        externalMousePos.x,
+        externalMousePos.y,
+        magnetMode,
+        isCtrlPressed,
+        candles,
+        transformer
+      );
+      setActiveCrosshair(snap);
+      if (onHoverCandle) {
+        onHoverCandle(snap.candle || null);
+      }
+    } else if (!inProgressDrawing && dragState === null && draggingSetupLine === null) {
+      setActiveCrosshair(null);
+      if (onHoverCandle) {
+        onHoverCandle(null);
+      }
+    }
+  }, [externalMousePos, magnetMode, isCtrlPressed, candles, transformer, calculateMagnetSnap, onHoverCandle, inProgressDrawing, dragState, draggingSetupLine]);
 
   // High-performance global window drag tracking: handles move at ANY speed without dropping
   useEffect(() => {
@@ -362,6 +571,11 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   const handleMouseMove = (e: React.MouseEvent) => {
     const mouse = getMouseCoord(e);
     if (!mouse) return;
+
+    setActiveCrosshair(mouse.snap);
+    if (onHoverCandle) {
+      onHoverCandle(mouse.snap.candle || null);
+    }
 
     // Handle dragging trade setup lines
     if (draggingSetupLine && activeSetup && onUpdateSetup) {
@@ -1249,22 +1463,14 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
 
   return (
     <div
-      className={`absolute inset-0 z-[15] overflow-hidden ${
-        isDrawingToolActive || inProgressDrawing || activeSetup?.active || selectedId || dragState !== null || draggingSetupLine !== null
-          ? 'pointer-events-auto'
-          : 'pointer-events-none'
-      }`}
+      className={`absolute inset-0 z-[15] overflow-hidden pointer-events-none`}
     >
       <svg
         ref={svgRef}
         data-testid="drawing-svg"
         className={`w-full h-full select-none ${
-          isDrawingToolActive
-            ? 'cursor-crosshair pointer-events-auto'
-            : inProgressDrawing || activeSetup?.active || dragState !== null || draggingSetupLine !== null
-            ? 'pointer-events-auto cursor-move'
-            : selectedId !== null
-            ? 'pointer-events-auto'
+          isDrawingToolActive || inProgressDrawing || dragState !== null || draggingSetupLine !== null
+            ? 'pointer-events-auto cursor-crosshair'
             : 'pointer-events-none'
         }`}
         onMouseDown={handleMouseDown}
@@ -1315,6 +1521,137 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
 
         {/* Draggable Trade Setup Lines */}
         {renderDraggableTradeSetup()}
+
+        {/* TradingView-Style Interactive Crosshair & Magnet Snapping */}
+        {activeTool !== 'arrow' && activeCrosshair && (
+          <g className="crosshair-layer pointer-events-none select-none">
+            {/* Horizontal Crosshair Line */}
+            <line
+              x1={0}
+              y1={activeCrosshair.screenY}
+              x2="100%"
+              y2={activeCrosshair.screenY}
+              stroke="#787b86"
+              strokeWidth={1}
+              strokeDasharray="3,3"
+              opacity={0.85}
+            />
+            {/* Vertical Crosshair Line */}
+            <line
+              x1={activeCrosshair.screenX}
+              y1={0}
+              x2={activeCrosshair.screenX}
+              y2="100%"
+              stroke="#787b86"
+              strokeWidth={1}
+              strokeDasharray="3,3"
+              opacity={0.85}
+            />
+
+            {/* Glowing Magnet Snap Target Ring & Level Badge */}
+            {activeCrosshair.isSnapped && (
+              <g data-testid="magnet-snap-indicator">
+                <circle
+                  cx={activeCrosshair.screenX}
+                  cy={activeCrosshair.screenY}
+                  r={8}
+                  fill="rgba(41, 98, 255, 0.25)"
+                  stroke="#2962ff"
+                  strokeWidth={2}
+                  className="animate-pulse"
+                />
+                <circle
+                  cx={activeCrosshair.screenX}
+                  cy={activeCrosshair.screenY}
+                  r={2.5}
+                  fill="#ffffff"
+                  stroke="#2962ff"
+                  strokeWidth={1}
+                />
+                <g transform={`translate(${activeCrosshair.screenX + 10}, ${activeCrosshair.screenY - 10})`}>
+                  <rect
+                    width={22}
+                    height={16}
+                    rx={3}
+                    fill="#1e222d"
+                    stroke="#2962ff"
+                    strokeWidth={1}
+                    className="shadow-md"
+                  />
+                  <text
+                    x={11}
+                    y={12}
+                    fill="#38bdf8"
+                    fontSize={10}
+                    fontWeight="bold"
+                    fontFamily="monospace"
+                    textAnchor="middle"
+                  >
+                    {activeCrosshair.snapType === 'High' ? 'H' : activeCrosshair.snapType === 'Low' ? 'L' : activeCrosshair.snapType === 'Open' ? 'O' : 'C'}
+                  </text>
+                </g>
+              </g>
+            )}
+
+            {/* Price Axis Badge on Right */}
+            {activeCrosshair.price !== null && !isNaN(activeCrosshair.price) && (
+              <g
+                transform={`translate(${dimensions.width - 76}, ${Math.max(4, Math.min(dimensions.height - 24, activeCrosshair.screenY - 10))})`}
+                data-testid="crosshair-price-badge"
+              >
+                <rect
+                  width={72}
+                  height={20}
+                  rx={3}
+                  fill={activeCrosshair.isSnapped ? '#2962ff' : '#1e222d'}
+                  stroke={activeCrosshair.isSnapped ? '#38bdf8' : '#2a2e39'}
+                  strokeWidth={1}
+                  className="shadow-lg"
+                />
+                <text
+                  x={36}
+                  y={14}
+                  fill="#ffffff"
+                  fontSize={11}
+                  fontWeight="bold"
+                  fontFamily="monospace"
+                  textAnchor="middle"
+                >
+                  {activeCrosshair.price.toFixed(5)}
+                </text>
+              </g>
+            )}
+
+            {/* Time Axis Badge on Bottom */}
+            {activeCrosshair.time !== null && (
+              <g
+                transform={`translate(${Math.max(10, Math.min(dimensions.width - 130, activeCrosshair.screenX - 55))}, ${dimensions.height - 24})`}
+                data-testid="crosshair-time-badge"
+              >
+                <rect
+                  width={110}
+                  height={20}
+                  rx={3}
+                  fill="#1e222d"
+                  stroke="#2a2e39"
+                  strokeWidth={1}
+                  className="shadow-lg"
+                />
+                <text
+                  x={55}
+                  y={14}
+                  fill="#d1d4dc"
+                  fontSize={10}
+                  fontWeight="medium"
+                  fontFamily="monospace"
+                  textAnchor="middle"
+                >
+                  {formatBadgeTime(activeCrosshair.time, timeframe)}
+                </text>
+              </g>
+            )}
+          </g>
+        )}
       </svg>
 
       {/* On-Chart Action Buttons for Active Trade Setup */}

@@ -35,6 +35,8 @@ export interface Quote {
   latency_ms?: number;
 }
 
+export type MagnetMode = 'off' | 'weak' | 'strong';
+
 export type DrawingToolType =
   // Cursor
   | 'crosshair' | 'arrow' | 'eraser'

@@ -31,14 +31,15 @@ import {
   Compass,
   Layers,
   ChevronRight,
+  Magnet,
 } from 'lucide-react';
-import { DrawingToolType } from '../types';
+import { DrawingToolType, MagnetMode } from '../types';
 
 interface LeftToolbarProps {
   activeTool: DrawingToolType;
   onSelectTool: (tool: DrawingToolType) => void;
-  magnetMode: boolean;
-  onToggleMagnet: () => void;
+  magnetMode: MagnetMode;
+  onToggleMagnet: (mode?: MagnetMode) => void;
   lockedAll: boolean;
   onToggleLockAll: () => void;
   hiddenAll: boolean;
@@ -258,17 +259,85 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
       {/* Bottom Global Modifiers */}
       <div className="flex flex-col space-y-1.5 w-full items-center border-t border-[#2a2e39] pt-2">
         {/* Magnet Mode */}
-        <button
-          onClick={onToggleMagnet}
-          className={`w-8 h-8 rounded flex items-center justify-center transition-colors ${
-            magnetMode
-              ? 'bg-[#2962ff] text-white'
-              : 'text-gray-400 hover:text-white hover:bg-[#1e222d]'
-          }`}
-          title="Magnet Mode (Snap to OHLC)"
-        >
-          <Compass size={16} />
-        </button>
+        <div className="relative">
+          <button
+            onClick={() => {
+              if (magnetMode === 'off') onToggleMagnet('weak');
+              else if (magnetMode === 'weak') onToggleMagnet('strong');
+              else onToggleMagnet('off');
+            }}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setOpenFlyoutId(openFlyoutId === 'magnet' ? null : 'magnet');
+            }}
+            className={`w-8 h-8 rounded flex items-center justify-center transition-all relative ${
+              magnetMode === 'weak'
+                ? 'bg-[#2962ff] text-white shadow-md shadow-[#2962ff]/40 ring-1 ring-[#38bdf8]'
+                : magnetMode === 'strong'
+                ? 'bg-[#00bcd4] text-black shadow-md shadow-[#00bcd4]/40 ring-1 ring-white'
+                : 'text-gray-400 hover:text-white hover:bg-[#1e222d]'
+            }`}
+            title={`Magnet Mode: ${magnetMode.toUpperCase()} (Click to cycle Off/Weak/Strong, Right-click for menu, Hold Ctrl to toggle)`}
+            data-testid="magnet-mode-button"
+          >
+            <Magnet size={16} />
+            {magnetMode === 'weak' && (
+              <span className="absolute -bottom-0.5 -right-0.5 bg-[#1e222d] text-[#38bdf8] text-[8px] font-black px-0.5 rounded leading-none border border-[#2962ff]">
+                W
+              </span>
+            )}
+            {magnetMode === 'strong' && (
+              <span className="absolute -bottom-0.5 -right-0.5 bg-[#131722] text-[#00bcd4] text-[8px] font-black px-0.5 rounded leading-none border border-[#00bcd4]">
+                S
+              </span>
+            )}
+          </button>
+
+          {/* Magnet Submenu */}
+          {openFlyoutId === 'magnet' && (
+            <div className="absolute left-10 bottom-0 bg-[#1e222d] border border-[#2a2e39] rounded shadow-2xl py-1 z-50 w-44 font-sans text-xs">
+              <div className="px-3 py-1 text-[10px] uppercase font-bold text-gray-500 border-b border-[#2a2e39]">
+                Magnet Snapping
+              </div>
+              <button
+                onClick={() => {
+                  onToggleMagnet('weak');
+                  setOpenFlyoutId(null);
+                }}
+                className={`w-full flex items-center justify-between px-3 py-1.5 text-left transition-colors ${
+                  magnetMode === 'weak' ? 'bg-[#2962ff]/20 text-[#38bdf8] font-bold' : 'text-gray-300 hover:bg-[#2a2e39]'
+                }`}
+              >
+                <span>Weak Magnet</span>
+                <span className="text-[10px] text-gray-400">Within 35px</span>
+              </button>
+              <button
+                onClick={() => {
+                  onToggleMagnet('strong');
+                  setOpenFlyoutId(null);
+                }}
+                className={`w-full flex items-center justify-between px-3 py-1.5 text-left transition-colors ${
+                  magnetMode === 'strong' ? 'bg-[#00bcd4]/20 text-[#00bcd4] font-bold' : 'text-gray-300 hover:bg-[#2a2e39]'
+                }`}
+              >
+                <span>Strong Magnet</span>
+                <span className="text-[10px] text-gray-400">Nearest Bar</span>
+              </button>
+              <button
+                onClick={() => {
+                  onToggleMagnet('off');
+                  setOpenFlyoutId(null);
+                }}
+                className={`w-full flex items-center justify-between px-3 py-1.5 text-left transition-colors ${
+                  magnetMode === 'off' ? 'bg-gray-800 text-white font-bold' : 'text-gray-400 hover:bg-[#2a2e39]'
+                }`}
+              >
+                <span>Magnet Off</span>
+                <span className="text-[10px] text-gray-500">Free Cursor</span>
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Lock All Drawings */}
         <button

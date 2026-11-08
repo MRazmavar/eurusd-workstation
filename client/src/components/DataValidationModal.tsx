@@ -5,13 +5,13 @@
  */
 import React, { useState, useEffect } from 'react';
 import { X, ShieldCheck, AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
-import { DataValidationReport } from '../types';
+import { DataValidationReport, Timeframe } from '../types';
 import { marketClient } from '../services/MarketDataClient';
 
 interface DataValidationModalProps {
   isOpen: boolean;
   onClose: () => void;
-  timeframe: string;
+  timeframe: Timeframe;
 }
 
 export const DataValidationModal: React.FC<DataValidationModalProps> = ({

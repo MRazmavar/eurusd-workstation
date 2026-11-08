@@ -12,6 +12,7 @@ import {
   IndicatorConfig,
   Trade,
   UserSettings,
+  MagnetMode,
 } from './types';
 import { marketClient } from './services/MarketDataClient';
 import { replayEngine, ReplaySpeed } from './services/ReplayEngine';
@@ -73,9 +74,11 @@ export const App: React.FC = () => {
   const [drawings, setDrawings] = useState<DrawingObject[]>([]);
   const [activeTool, setActiveTool] = useState<DrawingToolType>('crosshair');
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
-  const [magnetMode, setMagnetMode] = useState<boolean>(false);
+  const [magnetMode, setMagnetMode] = useState<MagnetMode>('weak');
   const [lockedAll, setLockedAll] = useState<boolean>(false);
   const [hiddenAll, setHiddenAll] = useState<boolean>(false);
+  const [chartMousePos, setChartMousePos] = useState<{ x: number; y: number } | null>(null);
+  const [hoveredCandle, setHoveredCandle] = useState<Candle | null>(null);
 
   // Indicators State
   const [indicators, setIndicators] = useState<IndicatorConfig[]>(DEFAULT_INDICATORS);
@@ -330,7 +333,13 @@ export const App: React.FC = () => {
           activeTool={activeTool}
           onSelectTool={setActiveTool}
           magnetMode={magnetMode}
-          onToggleMagnet={() => setMagnetMode(!magnetMode)}
+          onToggleMagnet={(mode) => {
+            if (mode) {
+              setMagnetMode(mode);
+            } else {
+              setMagnetMode(prev => (prev === 'off' ? 'weak' : prev === 'weak' ? 'strong' : 'off'));
+            }
+          }}
           lockedAll={lockedAll}
           onToggleLockAll={() => {
             const next = !lockedAll;
@@ -358,7 +367,20 @@ export const App: React.FC = () => {
           )}
 
           {/* Main Candlestick Chart */}
-          <div className="flex-1 relative">
+          <div
+            className="flex-1 relative"
+            onMouseMove={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setChartMousePos({
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top,
+              });
+            }}
+            onMouseLeave={() => {
+              setChartMousePos(null);
+              setHoveredCandle(null);
+            }}
+          >
             <ChartContainer
               candles={visibleCandles}
               chartType={chartType}
@@ -368,6 +390,7 @@ export const App: React.FC = () => {
               onTransformerReady={setTransformer}
               onChartInstanceReady={(inst) => { chartHelpersRef.current = inst; }}
               onChartClick={handleChartClick}
+              hoveredCandleOverride={hoveredCandle}
             />
 
             {/* Interactive Drawing Layer Canvas Overlay */}
@@ -388,6 +411,8 @@ export const App: React.FC = () => {
               onUpdateSetup={(updates) => backtestingEngine.updateTradeSetup(updates)}
               onConfirmSetup={() => backtestingEngine.confirmTradeSetup(replayEngine.getCurrentCandle()?.time || Math.floor(Date.now() / 1000))}
               onCancelSetup={() => backtestingEngine.cancelTradeSetup()}
+              externalMousePos={chartMousePos}
+              onHoverCandle={setHoveredCandle}
             />
           </div>
 
