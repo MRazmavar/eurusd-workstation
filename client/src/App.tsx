@@ -805,6 +805,22 @@ export const App: React.FC = () => {
               onCutDrawing={handleCutDrawing}
               onDuplicateDrawing={handleDuplicateDrawing}
               onShowToast={showToast}
+              trades={trades}
+              currentPrice={visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : (quote?.bid || 1.08500)}
+              onCloseTrade={(tradeId) => {
+                const curP = visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : (quote?.bid || 1.08500);
+                const time = replayEngine.getCurrentCandle()?.time || Math.floor(Date.now() / 1000);
+                backtestingEngine.closeTrade(tradeId, curP, time, 'MANUAL');
+                showToast('Closed Position from Chart');
+              }}
+              onModifyTrade={(tradeId, updates) => {
+                backtestingEngine.modifyTrade(tradeId, updates);
+                showToast('Updated Trade Level on Chart');
+              }}
+              onCancelTrade={(tradeId) => {
+                backtestingEngine.cancelTrade(tradeId);
+                showToast('Cancelled Pending Order');
+              }}
             />
           </div>
 

@@ -10,6 +10,7 @@ import {
   Candle,
   DraggableTradeSetup,
   MagnetMode,
+  Trade,
 } from '../types';
 import { DrawingEngine, CoordinateTransformer, ScreenPoint } from '../services/DrawingEngine';
 import { DrawingToolbarPopup } from './DrawingToolbarPopup';
@@ -70,6 +71,11 @@ interface DrawingLayerProps {
   onCutDrawing?: (drawing: DrawingObject) => void;
   onDuplicateDrawing?: (drawing: DrawingObject) => void;
   onShowToast?: (msg: string) => void;
+  trades?: Trade[];
+  currentPrice?: number;
+  onCloseTrade?: (tradeId: string) => void;
+  onModifyTrade?: (tradeId: string, updates: Partial<Trade>) => void;
+  onCancelTrade?: (tradeId: string) => void;
 }
 
 export const DrawingLayer: React.FC<DrawingLayerProps> = ({
@@ -99,6 +105,11 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   onCutDrawing,
   onDuplicateDrawing,
   onShowToast,
+  trades,
+  currentPrice,
+  onCloseTrade,
+  onModifyTrade,
+  onCancelTrade,
 }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null);
@@ -122,6 +133,8 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
 
   // Dragging interactive trade setup lines ('entry' | 'sl' | 'tp')
   const [draggingSetupLine, setDraggingSetupLine] = useState<'entry' | 'sl' | 'tp' | null>(null);
+  // Dragging confirmed active trade lines (SL or TP of an active trade)
+  const [draggingTradeLine, setDraggingTradeLine] = useState<{ tradeId: string; lineType: 'sl' | 'tp' } | null>(null);
 
   const selectedDrawing = drawings.find(d => d.id === selectedId) || null;
   const isDrawingToolActive = activeTool !== 'crosshair' && activeTool !== 'arrow';
@@ -705,6 +718,18 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
       return;
     }
 
+    // Handle dragging confirmed open trade lines (SL or TP)
+    if (draggingTradeLine && onModifyTrade) {
+      const newPrice = transformer.yToPrice(mouse.y);
+      if (newPrice !== null) {
+        const rounded = Number(newPrice.toFixed(5));
+        onModifyTrade(draggingTradeLine.tradeId, {
+          [draggingTradeLine.lineType]: rounded,
+        });
+      }
+      return;
+    }
+
     if (inProgressDrawing) {
       const pts = [...inProgressDrawing.points];
       pts[pts.length - 1] = { time: mouse.time, price: mouse.price };
@@ -721,6 +746,9 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   const handleMouseUp = (e: React.MouseEvent) => {
     if (draggingSetupLine) {
       setDraggingSetupLine(null);
+    }
+    if (draggingTradeLine) {
+      setDraggingTradeLine(null);
     }
     if (dragState) {
       const target = drawings.find(d => d.id === dragState.drawingId);
@@ -767,6 +795,414 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         // If dist <= 8, it was a single click: leave inProgressDrawing active for click-to-click TV drawing!
       }
     }
+  };
+
+  // Render Confirmed Active On-Chart Trades (Positions & Pending Orders)
+  const renderOpenTrades = () => {
+    if (!trades || trades.length === 0) return null;
+
+    const activeTrades = trades.filter(t => t.status === 'OPEN' || t.status === 'PENDING');
+    if (activeTrades.length === 0) return null;
+
+    const effectiveMarketPrice = currentPrice || (candles.length > 0 ? candles[candles.length - 1].close : 1.08500);
+
+    return (
+      <g className="open-trades-layer select-none">
+        {activeTrades.map((trade) => {
+          const entryY = transformer.priceToY(trade.entry_price);
+          const slY = trade.sl !== null && trade.sl !== undefined ? transformer.priceToY(trade.sl) : null;
+          const tpY = trade.tp !== null && trade.tp !== undefined ? transformer.priceToY(trade.tp) : null;
+
+          if (entryY === null) return null;
+
+          // Real-time calculation of PnL
+          const isBuy = trade.type === 'BUY';
+          const pipDiff = isBuy
+            ? (effectiveMarketPrice - trade.entry_price) / 0.0001
+            : (trade.entry_price - effectiveMarketPrice) / 0.0001;
+
+          const grossPnl = pipDiff * 10 * trade.lot_size;
+          const commission = trade.commission || 0;
+          const liveNetPnl = grossPnl - commission;
+          const isProfit = liveNetPnl >= 0;
+
+          // Pip distances for SL and TP
+          const slDiffPips = trade.sl ? Math.abs(trade.entry_price - trade.sl) / 0.0001 : 0;
+          const tpDiffPips = trade.tp ? Math.abs(trade.tp - trade.entry_price) / 0.0001 : 0;
+          const slLossUsd = slDiffPips * 10 * trade.lot_size;
+          const tpGainUsd = tpDiffPips * 10 * trade.lot_size;
+
+          const minRiskY = slY !== null ? Math.min(entryY, slY) : null;
+          const maxRiskY = slY !== null ? Math.max(entryY, slY) : null;
+          const minRewardY = tpY !== null ? Math.min(entryY, tpY) : null;
+          const maxRewardY = tpY !== null ? Math.max(entryY, tpY) : null;
+
+          return (
+            <g key={trade.id} data-testid={`on-chart-trade-${trade.id}`}>
+              {/* Shaded Profit & Risk Zones */}
+              {minRewardY !== null && maxRewardY !== null && (
+                <rect
+                  x={0}
+                  y={minRewardY}
+                  width="100%"
+                  height={Math.max(1, maxRewardY - minRewardY)}
+                  fill="#089981"
+                  fillOpacity={0.06}
+                  className="pointer-events-none"
+                />
+              )}
+              {minRiskY !== null && maxRiskY !== null && (
+                <rect
+                  x={0}
+                  y={minRiskY}
+                  width="100%"
+                  height={Math.max(1, maxRiskY - minRiskY)}
+                  fill="#f23645"
+                  fillOpacity={0.06}
+                  className="pointer-events-none"
+                />
+              )}
+
+              {/* 1. Take Profit (Target Point) Horizontal Line & Interactive Badge */}
+              {tpY !== null && trade.tp !== null && trade.tp !== undefined && (
+                <g data-testid={`on-chart-tp-${trade.id}`}>
+                  <line
+                    x1={0}
+                    y1={tpY}
+                    x2="100%"
+                    y2={tpY}
+                    stroke="#089981"
+                    strokeWidth={1.5}
+                    strokeDasharray="4,3"
+                    className="cursor-ns-resize pointer-events-auto"
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      setDraggingTradeLine({ tradeId: trade.id, lineType: 'tp' });
+                    }}
+                  />
+                  {/* Invisible wide hit area for easy dragging */}
+                  <line
+                    x1={0}
+                    y1={tpY}
+                    x2="100%"
+                    y2={tpY}
+                    stroke="transparent"
+                    strokeWidth={14}
+                    className="cursor-ns-resize pointer-events-auto"
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      setDraggingTradeLine({ tradeId: trade.id, lineType: 'tp' });
+                    }}
+                  />
+                  {/* TP Badge */}
+                  <g
+                    transform={`translate(24, ${tpY - 12})`}
+                    className="cursor-ns-resize pointer-events-auto"
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      setDraggingTradeLine({ tradeId: trade.id, lineType: 'tp' });
+                    }}
+                    data-testid={`on-chart-tp-badge-${trade.id}`}
+                  >
+                    <rect
+                      width={310}
+                      height={24}
+                      rx={4}
+                      fill="#089981"
+                      className="shadow-md"
+                    />
+                    <circle cx={10} cy={12} r={3} fill="#fff" />
+                    <text
+                      x={20}
+                      y={16}
+                      fill="#ffffff"
+                      fontSize={11}
+                      fontWeight="bold"
+                      fontFamily="monospace"
+                    >
+                      TP: {trade.tp.toFixed(5)} (+{tpDiffPips.toFixed(1)}p | +${tpGainUsd.toFixed(2)})
+                    </text>
+                  </g>
+                </g>
+              )}
+
+              {/* 2. Stop Loss (SL Point) Horizontal Line & Interactive Badge */}
+              {slY !== null && trade.sl !== null && trade.sl !== undefined && (
+                <g data-testid={`on-chart-sl-${trade.id}`}>
+                  <line
+                    x1={0}
+                    y1={slY}
+                    x2="100%"
+                    y2={slY}
+                    stroke="#f23645"
+                    strokeWidth={1.5}
+                    strokeDasharray="4,3"
+                    className="cursor-ns-resize pointer-events-auto"
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      setDraggingTradeLine({ tradeId: trade.id, lineType: 'sl' });
+                    }}
+                  />
+                  {/* Invisible wide hit area for easy dragging */}
+                  <line
+                    x1={0}
+                    y1={slY}
+                    x2="100%"
+                    y2={slY}
+                    stroke="transparent"
+                    strokeWidth={14}
+                    className="cursor-ns-resize pointer-events-auto"
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      setDraggingTradeLine({ tradeId: trade.id, lineType: 'sl' });
+                    }}
+                  />
+                  {/* SL Badge */}
+                  <g
+                    transform={`translate(24, ${slY - 12})`}
+                    className="cursor-ns-resize pointer-events-auto"
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      setDraggingTradeLine({ tradeId: trade.id, lineType: 'sl' });
+                    }}
+                    data-testid={`on-chart-sl-badge-${trade.id}`}
+                  >
+                    <rect
+                      width={310}
+                      height={24}
+                      rx={4}
+                      fill="#f23645"
+                      className="shadow-md"
+                    />
+                    <circle cx={10} cy={12} r={3} fill="#fff" />
+                    <text
+                      x={20}
+                      y={16}
+                      fill="#ffffff"
+                      fontSize={11}
+                      fontWeight="bold"
+                      fontFamily="monospace"
+                    >
+                      SL: {trade.sl.toFixed(5)} (-{slDiffPips.toFixed(1)}p | -${slLossUsd.toFixed(2)})
+                    </text>
+                  </g>
+                </g>
+              )}
+
+              {/* 3. Main Entry Point Horizontal Line */}
+              <line
+                x1={0}
+                y1={entryY}
+                x2="100%"
+                y2={entryY}
+                stroke={isBuy ? '#089981' : '#f23645'}
+                strokeWidth={2}
+                strokeDasharray={trade.status === 'PENDING' ? '6,4' : undefined}
+                className="pointer-events-none"
+              />
+
+              {/* Main Entry Interactive Information Badge with Real-Time PnL */}
+              <g
+                transform={`translate(24, ${entryY - 16})`}
+                className="pointer-events-auto select-none"
+                data-testid={`on-chart-entry-badge-${trade.id}`}
+              >
+                {/* Background Card */}
+                <rect
+                  width={trade.status === 'OPEN' ? 470 : 390}
+                  height={32}
+                  rx={6}
+                  fill="#1e222d"
+                  stroke={isBuy ? '#089981' : '#f23645'}
+                  strokeWidth={1.5}
+                  className="shadow-xl"
+                />
+
+                {/* Buy/Sell Direction Indicator Pill */}
+                <g transform="translate(6, 5)">
+                  <rect
+                    width={46}
+                    height={22}
+                    rx={4}
+                    fill={isBuy ? '#089981' : '#f23645'}
+                  />
+                  <text
+                    x={23}
+                    y={15}
+                    fill="#ffffff"
+                    fontSize={10}
+                    fontWeight="bold"
+                    textAnchor="middle"
+                  >
+                    {trade.type}
+                  </text>
+                </g>
+
+                {/* Trade Details & Entry Point */}
+                <text
+                  x={58}
+                  y={20}
+                  fill="#e0e3eb"
+                  fontSize={11}
+                  fontWeight="bold"
+                  fontFamily="monospace"
+                >
+                  {trade.lot_size.toFixed(2)}L @ {trade.entry_price.toFixed(5)}
+                </text>
+
+                {/* Real-Time Live Profit / Loss Display for OPEN trades */}
+                {trade.status === 'OPEN' ? (
+                  <g transform="translate(230, 5)" data-testid={`on-chart-pnl-${trade.id}`}>
+                    <rect
+                      width={125}
+                      height={22}
+                      rx={4}
+                      fill={isProfit ? '#089981' : '#f23645'}
+                      fillOpacity={0.2}
+                      stroke={isProfit ? '#089981' : '#f23645'}
+                      strokeWidth={1}
+                    />
+                    <text
+                      x={62}
+                      y={15}
+                      fill={isProfit ? '#26a69a' : '#ef5350'}
+                      fontSize={11}
+                      fontWeight="bold"
+                      fontFamily="monospace"
+                      textAnchor="middle"
+                    >
+                      {isProfit ? '+' : ''}${liveNetPnl.toFixed(2)} ({isProfit ? '+' : ''}{pipDiff.toFixed(1)}p)
+                    </text>
+                  </g>
+                ) : (
+                  /* Pending Order Tag */
+                  <g transform="translate(230, 5)">
+                    <rect
+                      width={80}
+                      height={22}
+                      rx={4}
+                      fill="#ff9800"
+                      fillOpacity={0.2}
+                      stroke="#ff9800"
+                      strokeWidth={1}
+                    />
+                    <text
+                      x={40}
+                      y={15}
+                      fill="#ffb74d"
+                      fontSize={10}
+                      fontWeight="bold"
+                      textAnchor="middle"
+                    >
+                      PENDING
+                    </text>
+                  </g>
+                )}
+
+                {/* Breakeven Button [BE] */}
+                {trade.status === 'OPEN' && trade.sl !== trade.entry_price && (
+                  <g
+                    transform="translate(362, 5)"
+                    className="cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onModifyTrade?.(trade.id, { sl: trade.entry_price });
+                      onShowToast?.(`Moved SL to Breakeven @ ${trade.entry_price.toFixed(5)}`);
+                    }}
+                  >
+                    <title>Move Stop Loss to Break-Even</title>
+                    <rect
+                      width={32}
+                      height={22}
+                      rx={4}
+                      fill="#2a2e39"
+                      stroke="#787b86"
+                      strokeWidth={1}
+                      className="hover:fill-[#363c4e] transition-colors"
+                    />
+                    <text
+                      x={16}
+                      y={15}
+                      fill="#e0e3eb"
+                      fontSize={10}
+                      fontWeight="bold"
+                      textAnchor="middle"
+                      className="pointer-events-none"
+                    >
+                      BE
+                    </text>
+                  </g>
+                )}
+
+                {/* Close Trade Action Button directly on the chart line */}
+                {trade.status === 'OPEN' ? (
+                  <g
+                    transform="translate(400, 5)"
+                    className="cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCloseTrade?.(trade.id);
+                    }}
+                    data-testid={`on-chart-close-btn-${trade.id}`}
+                  >
+                    <rect
+                      width={62}
+                      height={22}
+                      rx={4}
+                      fill="#2a2e39"
+                      stroke="#f23645"
+                      strokeWidth={1}
+                      className="hover:fill-[#f23645] transition-colors"
+                    />
+                    <text
+                      x={31}
+                      y={15}
+                      fill="#ffffff"
+                      fontSize={10}
+                      fontWeight="bold"
+                      textAnchor="middle"
+                      className="pointer-events-none"
+                    >
+                      ✕ Close
+                    </text>
+                  </g>
+                ) : (
+                  /* Cancel Pending Order */
+                  <g
+                    transform="translate(320, 5)"
+                    className="cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCancelTrade?.(trade.id);
+                    }}
+                  >
+                    <rect
+                      width={62}
+                      height={22}
+                      rx={4}
+                      fill="#2a2e39"
+                      stroke="#f23645"
+                      strokeWidth={1}
+                    />
+                    <text
+                      x={31}
+                      y={15}
+                      fill="#ffffff"
+                      fontSize={10}
+                      fontWeight="bold"
+                      textAnchor="middle"
+                      className="pointer-events-none"
+                    >
+                      ✕ Cancel
+                    </text>
+                  </g>
+                )}
+              </g>
+            </g>
+          );
+        })}
+      </g>
+    );
   };
 
   // Render Draggable Trade Setup Lines (Entry, SL, TP)
@@ -929,6 +1365,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           <g
             transform="translate(285, 4)"
             className="cursor-pointer"
+            data-testid="on-chart-confirm-setup-btn"
             onClick={(e) => {
               e.stopPropagation();
               onConfirmSetup?.();
@@ -944,6 +1381,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           <g
             transform="translate(365, 4)"
             className="cursor-pointer"
+            data-testid="on-chart-cancel-setup-btn"
             onClick={(e) => {
               e.stopPropagation();
               onCancelSetup?.();
@@ -1771,7 +2209,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         ref={svgRef}
         data-testid="drawing-svg"
         className={`w-full h-full select-none ${
-          isSelectingReplayCut || isDrawingToolActive || inProgressDrawing || dragState !== null || draggingSetupLine !== null
+          isSelectingReplayCut || isDrawingToolActive || inProgressDrawing || dragState !== null || draggingSetupLine !== null || draggingTradeLine !== null
             ? 'pointer-events-auto cursor-crosshair'
             : 'pointer-events-none'
         }`}
@@ -1833,6 +2271,9 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         {/* Drawings */}
         {drawings.map(d => renderDrawing(d))}
         {inProgressDrawing && renderDrawing(inProgressDrawing, true)}
+
+        {/* Confirmed Active Open Trades on Chart */}
+        {renderOpenTrades()}
 
         {/* Draggable Trade Setup Lines */}
         {renderDraggableTradeSetup()}
