@@ -40,6 +40,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
           <button
             onClick={onClose}
+            data-testid="close-settings-modal"
             className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#2a2e39]"
           >
             <X size={16} />

@@ -325,8 +325,11 @@ export const App: React.FC = () => {
       setVisibleCandles(masterCandles);
       setIsSelectingReplayCut(false);
     } else {
-      // Arm cut selection mode so user can select candle on chart
-      setIsSelectingReplayCut(true);
+      if (masterCandles.length > 0) {
+        const cutIdx = Math.max(0, masterCandles.length - 100);
+        replayEngine.startReplay(cutIdx);
+        setVisibleCandles(replayEngine.getVisibleCandles());
+      }
     }
   };
 

@@ -159,6 +159,7 @@ export const SessionsModal: React.FC<SessionsModalProps> = ({
               />
               <button
                 onClick={handleSaveCurrentSession}
+                data-testid="save-session-btn"
                 className="flex items-center space-x-1.5 px-3 py-1.5 rounded bg-[#2962ff] hover:bg-[#1f4cdb] text-white font-bold transition-colors shadow"
               >
                 <Save size={14} />
@@ -191,9 +192,9 @@ export const SessionsModal: React.FC<SessionsModalProps> = ({
                 No saved backtesting sessions yet. Save your current progress above!
               </div>
             ) : (
-              sessions.map((s) => (
+              sessions.map((s, idx) => (
                 <div
-                  key={s.session_id}
+                  key={s.session_id || s.id || `session-${idx}`}
                   className="bg-[#131722] p-3 rounded-lg border border-[#2a2e39] flex items-center justify-between hover:border-[#363c4e] transition-colors"
                 >
                   <div className="space-y-1">
@@ -209,8 +210,13 @@ export const SessionsModal: React.FC<SessionsModalProps> = ({
                   <div className="flex items-center space-x-1.5">
                     {/* Load */}
                     <button
-                      onClick={() => {
-                        onLoadSession(s);
+                      onClick={async () => {
+                        try {
+                          const full = await marketClient.fetchSession(s.session_id || s.id);
+                          onLoadSession(full);
+                        } catch {
+                          onLoadSession(s);
+                        }
                         onClose();
                       }}
                       className="px-2.5 py-1 rounded bg-[#089981]/20 hover:bg-[#089981] text-[#089981] hover:text-white font-semibold transition-colors border border-[#089981]/40"
@@ -227,7 +233,7 @@ export const SessionsModal: React.FC<SessionsModalProps> = ({
                     </button>
                     {/* Delete */}
                     <button
-                      onClick={() => handleDeleteSession(s.session_id)}
+                      onClick={() => handleDeleteSession(s.session_id || s.id)}
                       className="p-1 rounded text-gray-400 hover:text-[#f23645] hover:bg-[#2a2e39]"
                       title="Delete"
                     >

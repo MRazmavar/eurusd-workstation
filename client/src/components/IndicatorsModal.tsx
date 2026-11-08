@@ -145,6 +145,14 @@ export const IndicatorsModal: React.FC<IndicatorsModalProps> = ({
 }) => {
   const [search, setSearch] = useState('');
 
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    if (isOpen) window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const filtered = AVAILABLE_INDICATORS.filter((ind) =>
@@ -162,6 +170,7 @@ export const IndicatorsModal: React.FC<IndicatorsModalProps> = ({
           </div>
           <button
             onClick={onClose}
+            data-testid="close-indicators-modal"
             className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#2a2e39]"
           >
             <X size={16} />
@@ -275,6 +284,20 @@ export const IndicatorsModal: React.FC<IndicatorsModalProps> = ({
               })}
             </div>
           </div>
+        </div>
+
+        {/* Footer */}
+        <div className="h-11 border-t border-[#2a2e39] px-4 flex items-center justify-between bg-[#171b26]">
+          <span className="text-[11px] text-gray-400">
+            {activeIndicators.length} active indicator(s)
+          </span>
+          <button
+            onClick={onClose}
+            data-testid="done-indicators-btn"
+            className="px-4 py-1.5 rounded bg-[#2962ff] hover:bg-[#1f4cdb] text-white text-xs font-bold transition-colors"
+          >
+            Apply & Close
+          </button>
         </div>
       </div>
     </div>

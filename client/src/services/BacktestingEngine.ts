@@ -225,8 +225,12 @@ export class BacktestingEngine {
 
     this.trades = [trade, ...this.trades];
     this.saveState();
-    await marketClient.saveTrade(trade);
     this.notify();
+    try {
+      await marketClient.saveTrade(trade);
+    } catch (err) {
+      console.error('Failed to save trade to backend:', err);
+    }
     return trade;
   }
 
@@ -321,8 +325,12 @@ export class BacktestingEngine {
       ...this.trades.slice(idx + 1),
     ];
     this.saveState();
-    await marketClient.saveTrade(closed);
     this.notify();
+    try {
+      await marketClient.saveTrade(closed);
+    } catch (err) {
+      console.error('Failed to save closed trade to backend:', err);
+    }
     return closed;
   }
 

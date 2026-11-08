@@ -289,6 +289,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         <div className="flex items-center space-x-2">
           <button
             onClick={() => { setActiveTab('analytics'); setCollapsed(false); }}
+            data-testid="dock-tab-analytics"
             className={`px-2.5 py-1 rounded font-medium flex items-center space-x-1.5 ${
               activeTab === 'analytics' && !collapsed
                 ? 'bg-[#1e222d] text-[#2962ff] border border-[#2a2e39]'
@@ -301,6 +302,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
 
           <button
             onClick={() => { setActiveTab('positions'); setCollapsed(false); }}
+            data-testid="dock-tab-positions"
             className={`px-2.5 py-1 rounded font-medium flex items-center space-x-1.5 ${
               activeTab === 'positions' && !collapsed
                 ? 'bg-[#1e222d] text-[#2962ff] border border-[#2a2e39]'
@@ -317,6 +319,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
 
           <button
             onClick={() => { setActiveTab('history'); setCollapsed(false); }}
+            data-testid="dock-tab-history"
             className={`px-2.5 py-1 rounded font-medium flex items-center space-x-1.5 ${
               activeTab === 'history' && !collapsed
                 ? 'bg-[#1e222d] text-[#2962ff] border border-[#2a2e39]'
@@ -502,6 +505,8 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                             <td className="py-1.5 text-right">
                               <button
                                 onClick={() => handleClosePosition(t)}
+                                data-testid="close-trade-btn"
+                                title="Close Position"
                                 className="px-2 py-0.5 rounded bg-red-900/40 text-red-300 hover:bg-red-800 border border-red-800 text-[10px] font-sans"
                               >
                                 Close

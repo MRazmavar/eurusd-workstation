@@ -339,10 +339,36 @@ def get_session(session_id: str) -> Optional[BacktestSession]:
 def list_sessions() -> List[Dict[str, Any]]:
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, name, created_at, updated_at FROM sessions ORDER BY updated_at DESC")
+    cursor.execute("SELECT id, name, created_at, updated_at, data_json FROM sessions ORDER BY updated_at DESC")
     rows = cursor.fetchall()
     conn.close()
-    return [{"id": r["id"], "name": r["name"], "created_at": r["created_at"], "updated_at": r["updated_at"]} for r in rows]
+    result = []
+    for r in rows:
+        try:
+            parsed = json.loads(r["data_json"])
+            result.append({
+                "id": r["id"],
+                "session_id": r["id"],
+                "name": r["name"],
+                "created_at": r["created_at"],
+                "updated_at": r["updated_at"],
+                "timeframe": parsed.get("timeframe", "1h"),
+                "trades": parsed.get("trades", []),
+                "drawings": parsed.get("drawings", []),
+                "settings": parsed.get("settings", None)
+            })
+        except Exception:
+            result.append({
+                "id": r["id"],
+                "session_id": r["id"],
+                "name": r["name"],
+                "created_at": r["created_at"],
+                "updated_at": r["updated_at"],
+                "timeframe": "1h",
+                "trades": [],
+                "drawings": []
+            })
+    return result
 
 def delete_session(session_id: str) -> bool:
     conn = get_connection()

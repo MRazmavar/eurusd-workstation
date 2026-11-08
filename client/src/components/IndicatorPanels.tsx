@@ -120,18 +120,19 @@ const SinglePanel: React.FC<{
 
         {/* SVG MACD */}
         <div className="w-full h-16 relative">
-          <svg className="w-full h-full">
-            <line x1="0" y1="50%" x2="100%" y2="50%" stroke="#2a2e39" />
+          <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+            <line x1="0" y1="50" x2="100" y2="50" stroke="#2a2e39" />
             {macdData.length > 1 && (
               <polyline
                 fill="none"
                 stroke={indicator.color}
                 strokeWidth="1.5"
+                vectorEffect="non-scaling-stroke"
                 points={macdData
                   .map((d, i) => {
-                    const x = (i / (macdData.length - 1)) * 100;
-                    const y = 50 - (d.macd ?? 0) * 10000;
-                    return `${x}%,${Math.max(5, Math.min(95, y))}%`;
+                    const x = Number(((i / (macdData.length - 1)) * 100).toFixed(2));
+                    const y = Number(Math.max(5, Math.min(95, 50 - (d.macd ?? 0) * 10000)).toFixed(2));
+                    return `${x},${y}`;
                   })
                   .join(' ')}
               />

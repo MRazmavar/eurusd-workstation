@@ -188,6 +188,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         <div className="flex items-center space-x-1">
           <button
             onClick={() => setActiveTab('order')}
+            data-testid="sidebar-tab-order"
             className={`px-2 py-1 rounded font-medium flex items-center space-x-1 ${
               activeTab === 'order' ? 'bg-[#1e222d] text-[#2962ff]' : 'text-gray-400 hover:text-white'
             }`}
@@ -197,6 +198,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
           </button>
           <button
             onClick={() => setActiveTab('market')}
+            data-testid="sidebar-tab-market"
             className={`px-2 py-1 rounded font-medium flex items-center space-x-1 ${
               activeTab === 'market' ? 'bg-[#1e222d] text-[#2962ff]' : 'text-gray-400 hover:text-white'
             }`}
@@ -206,6 +208,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
           </button>
           <button
             onClick={() => setActiveTab('objects')}
+            data-testid="sidebar-tab-objects"
             className={`px-2 py-1 rounded font-medium flex items-center space-x-1 ${
               activeTab === 'objects' ? 'bg-[#1e222d] text-[#2962ff]' : 'text-gray-400 hover:text-white'
             }`}
