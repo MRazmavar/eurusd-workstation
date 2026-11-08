@@ -156,6 +156,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           {FAVORITE_TIMEFRAMES.map((tf) => (
             <button
               key={tf}
+              data-testid={`topbar-tf-${tf}`}
               onClick={() => onTimeframeChange(tf)}
               className={`px-2 py-1 rounded font-medium transition-colors ${
                 timeframe === tf

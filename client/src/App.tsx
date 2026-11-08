@@ -336,23 +336,88 @@ export const App: React.FC = () => {
     yToPrice: () => null,
   });
 
-  const chartHelpersRef = useRef<{ fitContent: () => void; resetScale: () => void; centerOnLastCandle?: () => void } | null>(null);
+  const [anchorTimestamp, setAnchorTimestamp] = useState<number | null>(null);
+  const timeframeRef = useRef<Timeframe>(timeframe);
+  useEffect(() => {
+    timeframeRef.current = timeframe;
+  }, [timeframe]);
 
-  // Load Historical Candles
-  const loadCandles = useCallback(async (tf: Timeframe) => {
+  const getTimeframeSeconds = (tf: string): number => {
+    if (tf.endsWith('s')) return parseInt(tf) || 30;
+    if (tf.endsWith('m')) return (parseInt(tf) || 1) * 60;
+    if (tf.endsWith('h')) return (parseInt(tf) || 1) * 3600;
+    if (tf.endsWith('D')) return (parseInt(tf) || 1) * 86400;
+    if (tf.endsWith('W')) return (parseInt(tf) || 1) * 604800;
+    return 3600;
+  };
+
+  const isTimestampInCandle = (ts: number, candle: Candle, tf: string): boolean => {
+    const dur = getTimeframeSeconds(tf);
+    return ts >= candle.time && ts < candle.time + dur;
+  };
+
+  const chartHelpersRef = useRef<{
+    fitContent: () => void;
+    resetScale: () => void;
+    centerOnLastCandle?: () => void;
+    centerOnTimestamp?: (timestamp: number) => void;
+    getVisibleCenterTime?: () => number | null;
+  } | null>(null);
+
+  const getQueryWindowForTimeframe = (tf: string, anchorTime: number) => {
+    const now = Math.floor(Date.now() / 1000);
+    let daysBefore = 30;
+    let daysAfter = 30;
+
+    if (tf.endsWith('s') || tf === '1m') {
+      daysBefore = 5;
+      daysAfter = 5;
+    } else if (['3m', '5m', '15m', '20m', '30m', '45m'].includes(tf)) {
+      daysBefore = 20;
+      daysAfter = 20;
+    } else if (['1h', '2h', '3h', '4h'].includes(tf)) {
+      daysBefore = 90;
+      daysAfter = 90;
+    } else {
+      daysBefore = 365;
+      daysAfter = 180;
+    }
+
+    const startTime = anchorTime - daysBefore * 86400;
+    const endTime = Math.min(now, anchorTime + daysAfter * 86400);
+    return { startTime, endTime };
+  };
+
+  // Load Historical Candles with anchor window support
+  const loadCandles = useCallback(async (tf: Timeframe, anchorTime?: number | null) => {
     setIsLoadingCandles(true);
     try {
-      const data = await marketClient.fetchCandles(tf);
+      let data: Candle[] = [];
+      const now = Math.floor(Date.now() / 1000);
+      const isHistorical = anchorTime && (replayEngine.isActive() || (now - anchorTime > 86400 * 3));
+
+      if (isHistorical && anchorTime) {
+        const { startTime, endTime } = getQueryWindowForTimeframe(tf, anchorTime);
+        data = await marketClient.fetchCandles(tf, undefined, startTime, endTime);
+        if (!data || data.length === 0) {
+          data = await marketClient.fetchCandles(tf);
+        }
+      } else {
+        data = await marketClient.fetchCandles(tf);
+      }
+
       setMasterCandles(data);
-      replayEngine.setMasterCandles(data);
+      replayEngine.setMasterCandles(data, anchorTime ?? undefined);
 
       if (!replayEngine.isActive()) {
         setVisibleCandles(data);
       } else {
         setVisibleCandles(replayEngine.getVisibleCandles());
       }
+      return data;
     } catch (e) {
       console.error('Failed to load candles:', e);
+      return [];
     } finally {
       setIsLoadingCandles(false);
     }
@@ -399,6 +464,12 @@ export const App: React.FC = () => {
       onCandleRevealed: (candle, visible) => {
         setVisibleCandles([...visible]);
         backtestingEngine.onCandleRevealed(candle);
+        setAnchorTimestamp(prev => {
+          if (prev && isTimestampInCandle(prev, candle, timeframeRef.current)) {
+            return prev;
+          }
+          return candle.time;
+        });
       },
       onStateChange: (st) => {
         setReplayActive(st.active);
@@ -419,10 +490,21 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // Handle Timeframe Change
-  const handleTimeframeChange = (newTf: Timeframe) => {
+  // Handle Timeframe Change with seamless anchor date/time preservation
+  const handleTimeframeChange = async (newTf: Timeframe) => {
+    let anchorTime: number | null = null;
+    if (replayEngine.isActive()) {
+      anchorTime = anchorTimestamp ?? replayEngine.getCurrentTimestamp();
+    } else {
+      anchorTime = chartHelpersRef.current?.getVisibleCenterTime?.() ?? null;
+    }
+
     setTimeframe(newTf);
-    loadCandles(newTf);
+    if (anchorTime) {
+      setAnchorTimestamp(anchorTime);
+    }
+    await loadCandles(newTf, anchorTime);
+    setCenterTrigger(prev => prev + 1);
   };
 
   // Drawing History & Undo/Redo Engine
@@ -439,15 +521,6 @@ export const App: React.FC = () => {
       .split('_')
       .map(w => w.charAt(0).toUpperCase() + w.slice(1))
       .join(' ');
-  };
-
-  const getTimeframeSeconds = (tf: string): number => {
-    if (tf.endsWith('s')) return parseInt(tf) || 30;
-    if (tf.endsWith('m')) return (parseInt(tf) || 1) * 60;
-    if (tf.endsWith('h')) return (parseInt(tf) || 1) * 3600;
-    if (tf.endsWith('D')) return (parseInt(tf) || 1) * 86400;
-    if (tf.endsWith('W')) return (parseInt(tf) || 1) * 604800;
-    return 3600;
   };
 
   const handleCopyDrawing = useCallback((target?: DrawingObject | null) => {
@@ -769,13 +842,16 @@ export const App: React.FC = () => {
   };
 
   const handleSelectReplayCutCandle = (candle: Candle) => {
+    setAnchorTimestamp(candle.time);
     replayEngine.startReplay(candle.time);
     setVisibleCandles(replayEngine.getVisibleCandles());
     setIsSelectingReplayCut(false);
     setCenterTrigger(prev => prev + 1);
   };
 
-  const handleJumpToTime = (epochSec: number) => {
+  const handleJumpToTime = async (epochSec: number) => {
+    setAnchorTimestamp(epochSec);
+    await loadCandles(timeframe, epochSec);
     replayEngine.startReplay(epochSec);
     setVisibleCandles(replayEngine.getVisibleCandles());
     setIsJumpDateTimeModalOpen(false);
@@ -783,37 +859,55 @@ export const App: React.FC = () => {
   };
 
   // Jump to Random Date in history for blind, unpredictable backtesting
-  const handleRandomDateReplay = () => {
-    if (masterCandles.length === 0) return;
-    const total = masterCandles.length;
-    // Leave context on the left (at least 30-50 bars)
-    // AND don't pick too close to the recent live market (exclude recent 120-200 bars or last 25%)
-    const minIdx = Math.min(Math.floor(total * 0.1), 50);
-    const excludeRecent = Math.max(50, Math.min(200, Math.floor(total * 0.25)));
-    const maxIdx = Math.max(minIdx + 10, total - excludeRecent);
-    const randomIdx = Math.floor(Math.random() * (maxIdx - minIdx + 1)) + minIdx;
-    const targetCandle = masterCandles[randomIdx];
+  const handleRandomDateReplay = async () => {
+    const now = Math.floor(Date.now() / 1000);
+    // Pick a random historical trading day between 15 days ago and 180 days ago
+    const minDaysAgo = 15;
+    const maxDaysAgo = 180;
+    const randomDaysAgo = Math.floor(Math.random() * (maxDaysAgo - minDaysAgo + 1)) + minDaysAgo;
+    let targetTime = now - randomDaysAgo * 86400;
 
-    replayEngine.startReplay(targetCandle.time);
-    const visible = replayEngine.getVisibleCandles();
-    setVisibleCandles(visible);
-    setIsSelectingReplayCut(false);
-    setCenterTrigger(prev => prev + 1);
+    // Adjust if target falls on weekend (Forex is closed Saturday/Sunday)
+    const targetDate = new Date(targetTime * 1000);
+    const day = targetDate.getUTCDay();
+    if (day === 0) { // Sunday -> push to Tuesday
+      targetTime += 2 * 86400;
+    } else if (day === 6) { // Saturday -> push to Friday
+      targetTime -= 86400;
+    }
 
-    const dateStr = new Date(targetCandle.time * 1000).toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-    showToast(`🎲 Jumped to Random Date: ${dateStr}`);
+    // Set hour to active London/NY session overlap (13:00 UTC)
+    targetDate.setUTCHours(13, 0, 0, 0);
+    targetTime = Math.floor(targetDate.getTime() / 1000);
+
+    setAnchorTimestamp(targetTime);
+    const loaded = await loadCandles(timeframe, targetTime);
+
+    if (loaded && loaded.length > 0) {
+      replayEngine.startReplay(targetTime);
+      const visible = replayEngine.getVisibleCandles();
+      setVisibleCandles(visible);
+      setIsSelectingReplayCut(false);
+      setCenterTrigger(prev => prev + 1);
+
+      const actualCandle = replayEngine.getCurrentCandle();
+      const displayTime = actualCandle ? actualCandle.time : targetTime;
+      const dateStr = new Date(displayTime * 1000).toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      showToast(`🎲 Jumped to Random Date: ${dateStr}`);
+    }
   };
 
   // Toggle Replay Mode
   const handleToggleReplay = () => {
     if (replayActive) {
       replayEngine.exitReplay();
+      setAnchorTimestamp(null);
       setVisibleCandles(masterCandles);
       setIsSelectingReplayCut(false);
       setCenterTrigger(prev => prev + 1);
@@ -821,6 +915,8 @@ export const App: React.FC = () => {
     } else {
       if (masterCandles.length > 0) {
         const cutIdx = Math.max(0, masterCandles.length - 100);
+        const cutTime = masterCandles[cutIdx].time;
+        setAnchorTimestamp(cutTime);
         replayEngine.startReplay(cutIdx);
         setVisibleCandles(replayEngine.getVisibleCandles());
         setCenterTrigger(prev => prev + 1);
@@ -954,6 +1050,8 @@ export const App: React.FC = () => {
               onChartClick={handleChartClick}
               hoveredCandleOverride={hoveredCandle}
               centerTrigger={centerTrigger}
+              anchorTimestamp={anchorTimestamp}
+              isReplayActive={replayActive}
               timezone={settings.timezone}
               onTimezoneChange={handleTimezoneChange}
             />

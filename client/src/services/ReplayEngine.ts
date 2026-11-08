@@ -36,8 +36,34 @@ export class ReplayEngine {
   private playIntervalId: any = null;
   private listeners: ReplayListener[] = [];
 
-  public setMasterCandles(candles: Candle[]) {
+  public setMasterCandles(candles: Candle[], preserveTimestamp?: number) {
+    const targetTime = preserveTimestamp !== undefined
+      ? preserveTimestamp
+      : (this.active ? (this.getCurrentCandle()?.time ?? null) : null);
+
     this.masterCandles = [...candles].sort((a, b) => a.time - b.time);
+
+    if (this.active && targetTime !== null && this.masterCandles.length > 0) {
+      // Find the candle where c.time <= targetTime (strictly preventing look-ahead bias into future bars)
+      let bestIdx = 0;
+      for (let i = 0; i < this.masterCandles.length; i++) {
+        if (this.masterCandles[i].time <= targetTime) {
+          bestIdx = i;
+        } else {
+          break;
+        }
+      }
+      this.currentIndex = bestIdx;
+      this.startIndex = Math.min(this.startIndex, this.currentIndex);
+      this.intrabarPhase = 3;
+      this.notifyState();
+      this.notifyCandle();
+    }
+  }
+
+  public getCurrentTimestamp(): number | null {
+    const cur = this.getCurrentCandle();
+    return cur ? cur.time : null;
   }
 
   public subscribe(listener: ReplayListener) {
@@ -301,3 +327,6 @@ export class ReplayEngine {
 }
 
 export const replayEngine = new ReplayEngine();
+if (typeof window !== 'undefined') {
+  (window as any).__replayEngine = replayEngine;
+}

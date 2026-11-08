@@ -161,11 +161,11 @@ class DukascopyProvider:
         ]
 
         if start_time and end_time:
-            dt_from = datetime.datetime.fromtimestamp(start_time, tz=datetime.timezone.utc).strftime("%Y-%m-%d")
-            dt_to = datetime.datetime.fromtimestamp(end_time, tz=datetime.timezone.utc).strftime("%Y-%m-%d")
+            dt_from = datetime.datetime.fromtimestamp(start_time, tz=datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            dt_to = datetime.datetime.fromtimestamp(end_time, tz=datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             cmd.extend(["--from", dt_from, "--to", dt_to])
         elif start_time:
-            dt_from = datetime.datetime.fromtimestamp(start_time, tz=datetime.timezone.utc).strftime("%Y-%m-%d")
+            dt_from = datetime.datetime.fromtimestamp(start_time, tz=datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             cmd.extend(["--from", dt_from, "--to", "now"])
         elif range_str:
             days = 7

@@ -43,17 +43,20 @@ class MarketDataService:
         if cache_key in self.candle_cache:
             return self.candle_cache[cache_key]
 
-        # Check SQLite persistent cache first if querying a bounded historical range
-        if start_time and end_time:
-            cached = database.get_cached_candles("EUR/USD", timeframe, start_time, end_time, limit)
-            if cached and len(cached) > 50:
-                self.candle_cache[cache_key] = cached
-                return cached
-
         # Determine base timeframe for resampling
         tf_sec = parse_timeframe_seconds(timeframe)
         base_timeframe = timeframe
         need_resample = False
+
+        # Check SQLite persistent cache first if querying a bounded historical range
+        if start_time and end_time:
+            cached = database.get_cached_candles("EUR/USD", timeframe, start_time, end_time, limit)
+            if cached and len(cached) > 50:
+                # Cache must actually cover the requested span up to near end_time (allowing for weekend gap)
+                tolerance = max(86400 * 3, tf_sec * 5)
+                if cached[-1].time >= (end_time - tolerance):
+                    self.candle_cache[cache_key] = cached
+                    return cached
 
         if timeframe in ["1s", "5s", "15s", "30s"]:
             base_timeframe = "1m"

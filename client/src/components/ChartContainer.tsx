@@ -33,10 +33,18 @@ interface ChartContainerProps {
   quote: Quote | null;
   onTransformerReady: (t: CoordinateTransformer) => void;
   onCrosshairMove?: (param: { time?: number; price?: number; candle?: Candle }) => void;
-  onChartInstanceReady?: (instance: { fitContent: () => void; resetScale: () => void; centerOnLastCandle?: () => void }) => void;
+  onChartInstanceReady?: (instance: {
+    fitContent: () => void;
+    resetScale: () => void;
+    centerOnLastCandle?: () => void;
+    centerOnTimestamp?: (timestamp: number) => void;
+    getVisibleCenterTime?: () => number | null;
+  }) => void;
   onChartClick?: (point: { x: number; y: number }) => void;
   hoveredCandleOverride?: Candle | null;
   centerTrigger?: number;
+  anchorTimestamp?: number | null;
+  isReplayActive?: boolean;
   timezone?: string;
   onTimezoneChange?: (tz: string) => void;
 }
@@ -53,6 +61,8 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
   onChartClick,
   hoveredCandleOverride,
   centerTrigger,
+  anchorTimestamp = null,
+  isReplayActive = false,
   timezone = 'UTC',
   onTimezoneChange,
 }) => {
@@ -65,6 +75,16 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
   const onChartClickRef = useRef(onChartClick);
   const timeframeRef = useRef(timeframe);
   const restoredTfMapRef = useRef<{ [tf: string]: boolean }>({});
+  const isReplayActiveRef = useRef(isReplayActive);
+  const anchorTimestampRef = useRef(anchorTimestamp);
+
+  useEffect(() => {
+    isReplayActiveRef.current = isReplayActive;
+  }, [isReplayActive]);
+
+  useEffect(() => {
+    anchorTimestampRef.current = anchorTimestamp;
+  }, [anchorTimestamp]);
 
   const [isTzDropdownOpen, setIsTzDropdownOpen] = useState(false);
   const tzDropdownRef = useRef<HTMLDivElement | null>(null);
@@ -272,14 +292,73 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
     updateTransformer();
   }, [updateTransformer]);
 
-  // Respond to centerTrigger to center the last candle and keep price in center of chart
+  const centerOnTimestamp = useCallback((targetTime: number) => {
+    if (!chartRef.current || !seriesRef.current) return;
+    const chart = chartRef.current;
+    const list = candlesRef.current;
+    if (!list || list.length === 0) return;
+
+    let closestIdx = -1;
+    let minDiff = Infinity;
+    for (let i = 0; i < list.length; i++) {
+      const diff = Math.abs(list[i].time - targetTime);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestIdx = i;
+      }
+    }
+
+    if (closestIdx !== -1) {
+      const leftBars = Math.min(45, Math.floor(closestIdx * 0.8));
+      const rightBars = 25;
+      const from = Math.max(0, closestIdx - leftBars);
+      const to = closestIdx + rightBars;
+      try {
+        chart.timeScale().setVisibleLogicalRange({ from, to });
+        chart.priceScale('right').applyOptions({ autoScale: true });
+      } catch (e) {
+        console.warn('Error centering on timestamp:', e);
+      }
+      updateTransformer();
+    }
+  }, [updateTransformer]);
+
+  const getVisibleCenterTime = useCallback(() => {
+    if (!chartRef.current) return null;
+    try {
+      const range = chartRef.current.timeScale().getVisibleRange();
+      if (range && range.from && range.to) {
+        const fromSec = typeof range.from === 'number' ? range.from : (range.from as any)?.timestamp;
+        const toSec = typeof range.to === 'number' ? range.to : (range.to as any)?.timestamp;
+        if (fromSec && toSec) {
+          const list = candlesRef.current;
+          if (list && list.length > 0) {
+            const lastTime = list[list.length - 1].time;
+            if (toSec >= lastTime - 60) {
+              return null; // viewing live edge
+            }
+          }
+          return Math.round((fromSec + toSec) / 2);
+        }
+      }
+    } catch {}
+    return null;
+  }, []);
+
+  // Respond to centerTrigger to center the last candle or anchor timestamp
   useEffect(() => {
     if (centerTrigger === undefined || centerTrigger === 0) return;
     const timer = setTimeout(() => {
-      centerOnLastCandle();
+      if (isReplayActiveRef.current) {
+        centerOnLastCandle();
+      } else if (anchorTimestampRef.current) {
+        centerOnTimestamp(anchorTimestampRef.current);
+      } else {
+        centerOnLastCandle();
+      }
     }, 40);
     return () => clearTimeout(timer);
-  }, [centerTrigger, centerOnLastCandle]);
+  }, [centerTrigger, centerOnLastCandle, centerOnTimestamp]);
 
   // Create chart instance
   useEffect(() => {
@@ -351,6 +430,8 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
         fitContent: () => chart.timeScale().fitContent(),
         resetScale: () => chart.timeScale().resetTimeScale(),
         centerOnLastCandle: () => centerOnLastCandle(),
+        centerOnTimestamp: (ts: number) => centerOnTimestamp(ts),
+        getVisibleCenterTime: () => getVisibleCenterTime(),
       });
     }
 
@@ -379,11 +460,15 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
         if (w > 0 && h > 0) {
           chartRef.current.applyOptions({ width: w, height: h });
         }
-        const savedRange = localStorage.getItem(`eurusd_logical_range_${timeframeRef.current}`);
-        if (savedRange) {
-          try {
-            chartRef.current.timeScale().setVisibleLogicalRange(JSON.parse(savedRange));
-          } catch {}
+        if (!isReplayActiveRef.current) {
+          const savedRange = localStorage.getItem(`eurusd_logical_range_${timeframeRef.current}`);
+          if (savedRange) {
+            try {
+              chartRef.current.timeScale().setVisibleLogicalRange(JSON.parse(savedRange));
+            } catch {}
+          }
+        } else {
+          centerOnLastCandle();
         }
         updateTransformer();
       }
@@ -596,8 +681,12 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
       seriesRef.current.setData(barData);
     }
 
-    // Restore remembered viewport position for this timeframe
-    if (!restoredTfMapRef.current[timeframe] && chartRef.current && candles.length > 0) {
+    // Viewport position management across timeframe changes & replay
+    if (isReplayActive && candles.length > 0) {
+      centerOnLastCandle();
+    } else if (anchorTimestamp && candles.length > 0) {
+      centerOnTimestamp(anchorTimestamp);
+    } else if (!restoredTfMapRef.current[timeframe] && chartRef.current && candles.length > 0) {
       const savedRange = localStorage.getItem(`eurusd_logical_range_${timeframe}`);
       const savedTimeRange = localStorage.getItem(`eurusd_time_range_${timeframe}`);
       if (savedRange) {
