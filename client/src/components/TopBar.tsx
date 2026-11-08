@@ -20,6 +20,8 @@ import {
   Layers,
   FolderOpen,
   ShieldCheck,
+  Wallet,
+  Edit3,
 } from 'lucide-react';
 import { ChartType, Timeframe, Quote } from '../types';
 
@@ -38,6 +40,9 @@ interface TopBarProps {
   onResetChart: () => void;
   onFitData: () => void;
   activeIndicatorsCount: number;
+  balance?: number;
+  equity?: number;
+  onOpenBalanceModal?: () => void;
 }
 
 const TIMEFRAMES: { label: string; value: Timeframe }[] = [
@@ -76,6 +81,9 @@ export const TopBar: React.FC<TopBarProps> = ({
   onResetChart,
   onFitData,
   activeIndicatorsCount,
+  balance,
+  equity,
+  onOpenBalanceModal,
 }) => {
   const [showTfDropdown, setShowTfDropdown] = useState(false);
   const [showChartTypeDropdown, setShowChartTypeDropdown] = useState(false);
@@ -274,6 +282,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         {/* Historical Candle Replay Toggle Button */}
         <button
           onClick={onToggleReplay}
+          data-testid="topbar-replay-btn"
           className={`flex items-center space-x-1.5 px-2.5 py-1 rounded border transition-colors ${
             replayActive
               ? 'bg-[#2962ff] text-white border-[#2962ff] shadow-md shadow-[#2962ff]/20'
@@ -308,6 +317,31 @@ export const TopBar: React.FC<TopBarProps> = ({
 
       {/* Right Controls: Auto-Scale, Reset, Status, Settings */}
       <div className="flex items-center space-x-2">
+        {/* Account Capital & Balance Widget */}
+        {balance !== undefined && (
+          <button
+            onClick={onOpenBalanceModal}
+            className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-[#1e222d] border border-[#2a2e39] hover:border-[#38bdf8] text-gray-200 hover:text-white transition-all text-xs font-mono group"
+            title="Click to view or change default account balance"
+            data-testid="topbar-balance-btn"
+          >
+            <Wallet size={14} className="text-[#089981] group-hover:text-[#38bdf8] transition-colors" />
+            <div className="flex items-center space-x-1">
+              <span className="text-gray-400 text-[10px]">BAL:</span>
+              <span className="font-bold text-white">${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </div>
+            {equity !== undefined && (
+              <div className="hidden lg:flex items-center space-x-1 pl-1.5 border-l border-[#2a2e39]">
+                <span className="text-gray-400 text-[10px]">EQ:</span>
+                <span className={`font-bold ${equity >= balance ? 'text-[#089981]' : 'text-[#f23645]'}`}>
+                  ${equity.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
+            <Edit3 size={11} className="text-gray-500 group-hover:text-white transition-colors ml-0.5" />
+          </button>
+        )}
+
         {/* Quick Viewport Helpers */}
         <button
           onClick={onFitData}

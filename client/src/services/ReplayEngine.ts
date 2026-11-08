@@ -5,7 +5,7 @@
  */
 import { Candle, ReplayMode } from '../types';
 
-export type ReplaySpeed = 0.5 | 1 | 2 | 5 | 10 | 20;
+export type ReplaySpeed = number;
 
 export interface ReplayStateEvent {
   active: boolean;
@@ -15,6 +15,7 @@ export interface ReplayStateEvent {
   mode: ReplayMode;
   total: number;
   speed: ReplaySpeed;
+  tickIntervalSec: number;
 }
 
 export interface ReplayListener {
@@ -31,6 +32,7 @@ export class ReplayEngine {
   private intrabarPhase: number = 3; // 0=Open, 1=Ext1, 2=Ext2, 3=Close
   private mode: ReplayMode = 'candle';
   private speed: ReplaySpeed = 1;
+  private tickIntervalSec: number = 1.0;
   private playIntervalId: any = null;
   private listeners: ReplayListener[] = [];
 
@@ -146,7 +148,7 @@ export class ReplayEngine {
     this.isPlaying = true;
     this.clearTimer();
 
-    const intervalMs = Math.max(50, Math.floor(1000 / this.speed));
+    const intervalMs = Math.max(50, Math.floor(this.tickIntervalSec * 1000));
     this.playIntervalId = setInterval(() => {
       this.stepForward(1);
       if (this.currentIndex >= this.masterCandles.length - 1 && this.intrabarPhase === 3) {
@@ -168,8 +170,26 @@ export class ReplayEngine {
     else this.play();
   }
 
+  public setTickInterval(sec: number) {
+    this.tickIntervalSec = Math.max(0.05, sec);
+    this.speed = Math.max(0.1, Number((1.0 / this.tickIntervalSec).toFixed(1)));
+    if (this.isPlaying) {
+      this.pause();
+      this.play();
+    } else {
+      this.notifyState();
+    }
+  }
+
+  public getTickInterval(): number {
+    return this.tickIntervalSec;
+  }
+
   public setSpeed(speed: ReplaySpeed) {
     this.speed = speed;
+    if (speed > 0) {
+      this.tickIntervalSec = 1.0 / speed;
+    }
     if (this.isPlaying) {
       this.pause();
       this.play();
@@ -266,6 +286,7 @@ export class ReplayEngine {
       mode: this.mode,
       total: this.masterCandles.length,
       speed: this.speed,
+      tickIntervalSec: this.tickIntervalSec,
     };
     this.listeners.forEach(l => l.onStateChange?.(state));
   }

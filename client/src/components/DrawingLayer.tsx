@@ -62,6 +62,9 @@ interface DrawingLayerProps {
   onCancelSetup?: () => void;
   externalMousePos?: { x: number; y: number } | null;
   onHoverCandle?: (candle: Candle | null) => void;
+  isSelectingReplayCut?: boolean;
+  onSelectReplayCutCandle?: (candle: Candle) => void;
+  onCancelSelectReplayCut?: () => void;
 }
 
 export const DrawingLayer: React.FC<DrawingLayerProps> = ({
@@ -83,6 +86,9 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   onCancelSetup,
   externalMousePos,
   onHoverCandle,
+  isSelectingReplayCut,
+  onSelectReplayCutCandle,
+  onCancelSelectReplayCut,
 }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null);
@@ -171,11 +177,13 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     transformerRef.current = transformer;
   }, [transformer]);
 
-  // Global escape key listener to cancel in-progress drawing
+  // Global escape key listener to cancel in-progress drawing or replay cut selection
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (inProgressDrawing) {
+        if (isSelectingReplayCut) {
+          onCancelSelectReplayCut?.();
+        } else if (inProgressDrawing) {
           setInProgressDrawing(null);
           onResetTool();
         } else if (selectedId) {
@@ -185,7 +193,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [inProgressDrawing, selectedId, onResetTool, onSelect]);
+  }, [inProgressDrawing, selectedId, isSelectingReplayCut, onResetTool, onSelect, onCancelSelectReplayCut]);
 
   // TradingView-Grade Magnet Snapping Engine: snaps to High/Low wicks and Open/Close bodies
   const calculateMagnetSnap = useCallback((
@@ -434,6 +442,19 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   const handleMouseDown = (e: React.MouseEvent) => {
     const mouse = getMouseCoord(e);
     if (!mouse) return;
+
+    // 0. Replay Cut selection mode: click candle to cut future bars and start replay
+    if (isSelectingReplayCut) {
+      const targetCandle = mouse.snap.candle || candles.find(c => {
+        const cx = transformer.timeToX(c.time);
+        return cx !== null && Math.abs(cx - mouse.x) <= 30;
+      }) || (candles.length > 0 ? candles[candles.length - 1] : null);
+
+      if (targetCandle) {
+        onSelectReplayCutCandle?.(targetCandle);
+      }
+      return;
+    }
 
     // 1. Check if user clicked on interactive trade setup lines
     if (activeSetup && activeSetup.active) {
@@ -808,9 +829,9 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         </g>
 
         {/* Central Risk / Reward Badge & Action Buttons */}
-        <g transform={`translate(320, ${entryY - 16})`}>
+        <g transform={`translate(290, ${entryY - 16})`} className="pointer-events-auto">
           <rect
-            width={240}
+            width={380}
             height={32}
             rx={6}
             fill="#1e222d"
@@ -828,6 +849,36 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           >
             R:R 1 : {activeSetup.riskReward.toFixed(2)} | {activeSetup.lotSize} Lots
           </text>
+
+          {/* Confirm Button directly on chart line */}
+          <g
+            transform="translate(230, 4)"
+            className="cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              onConfirmSetup?.();
+            }}
+          >
+            <rect width={75} height={24} rx={4} fill="#089981" />
+            <text x={37} y={16} fill="#ffffff" fontSize={11} fontWeight="bold" textAnchor="middle">
+              ✓ Confirm
+            </text>
+          </g>
+
+          {/* Cancel Button directly on chart line */}
+          <g
+            transform="translate(310, 4)"
+            className="cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              onCancelSetup?.();
+            }}
+          >
+            <rect width={60} height={24} rx={4} fill="#2a2e39" stroke="#f23645" strokeWidth={1} />
+            <text x={30} y={16} fill="#f23645" fontSize={11} fontWeight="bold" textAnchor="middle">
+              ✕ Cancel
+            </text>
+          </g>
         </g>
       </g>
     );
@@ -1469,7 +1520,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         ref={svgRef}
         data-testid="drawing-svg"
         className={`w-full h-full select-none ${
-          isDrawingToolActive || inProgressDrawing || dragState !== null || draggingSetupLine !== null
+          isSelectingReplayCut || isDrawingToolActive || inProgressDrawing || dragState !== null || draggingSetupLine !== null
             ? 'pointer-events-auto cursor-crosshair'
             : 'pointer-events-none'
         }`}
@@ -1650,26 +1701,85 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 </text>
               </g>
             )}
+            {/* Replay Cut Bar Indicator when Selecting Cut Point with Mouse */}
+            {isSelectingReplayCut && (
+              <g className="replay-cut-indicator pointer-events-none select-none" data-testid="replay-cut-indicator">
+                {/* Bright Red Vertical Cut Line */}
+                <line
+                  x1={activeCrosshair.screenX}
+                  y1={0}
+                  x2={activeCrosshair.screenX}
+                  y2="100%"
+                  stroke="#f23645"
+                  strokeWidth={2}
+                  strokeDasharray="4,4"
+                />
+                {/* Floating Cut Tooltip Banner */}
+                <g transform={`translate(${Math.max(10, Math.min(dimensions.width - 290, activeCrosshair.screenX - 140))}, 24)`}>
+                  <rect
+                    width={280}
+                    height={28}
+                    rx={6}
+                    fill="#1e222d"
+                    stroke="#f23645"
+                    strokeWidth={1.5}
+                    className="shadow-2xl"
+                  />
+                  <text
+                    x={140}
+                    y={18}
+                    fill="#f23645"
+                    fontSize={11}
+                    fontWeight="bold"
+                    fontFamily="sans-serif"
+                    textAnchor="middle"
+                  >
+                    ✂️ Click to Cut & Replay from {formatBadgeTime(activeCrosshair.time, timeframe)}
+                  </text>
+                </g>
+              </g>
+            )}
           </g>
         )}
       </svg>
 
+      {/* Replay Cut Active Banner */}
+      {isSelectingReplayCut && (
+        <div
+          data-testid="replay-cut-banner"
+          className="absolute top-12 left-1/2 -translate-x-1/2 flex items-center space-x-3 bg-[#1e222d] px-4 py-2 rounded-lg border border-[#f23645] shadow-2xl z-30 font-sans text-xs pointer-events-auto"
+        >
+          <span className="text-[#f23645] font-bold flex items-center space-x-1.5">
+            <span>✂️</span>
+            <span>JUMP TO BAR: Hover and click any candle to erase all future data</span>
+          </span>
+          <button
+            onClick={onCancelSelectReplayCut}
+            className="px-2 py-0.5 rounded bg-[#2a2e39] hover:bg-[#363c4e] text-gray-300 hover:text-white text-[11px] font-semibold"
+          >
+            Cancel (Esc)
+          </button>
+        </div>
+      )}
+
       {/* On-Chart Action Buttons for Active Trade Setup */}
       {activeSetup && activeSetup.active && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center space-x-2 bg-[#1e222d] p-1.5 rounded-lg border border-[#2a2e39] shadow-2xl z-30 font-sans text-xs">
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center space-x-2 bg-[#1e222d] p-1.5 rounded-lg border border-[#2a2e39] shadow-2xl z-30 font-sans text-xs pointer-events-auto">
           <span className="text-gray-300 font-semibold px-2">
             Confirm {activeSetup.type} Setup:
           </span>
           <button
             onClick={onConfirmSetup}
-            className="flex items-center space-x-1 px-3 py-1.5 rounded bg-[#089981] hover:bg-[#078570] text-white font-bold transition-colors shadow"
+            data-testid="confirm-order-btn"
+            className="flex items-center space-x-1 px-3 py-1.5 rounded bg-[#089981] hover:bg-[#078570] text-white font-bold transition-colors shadow cursor-pointer"
           >
             <Check size={14} />
             <span>Confirm Order</span>
           </button>
           <button
             onClick={onCancelSetup}
-            className="flex items-center space-x-1 px-3 py-1.5 rounded bg-[#2a2e39] hover:bg-[#363c4e] text-gray-300 hover:text-white font-medium transition-colors"
+            data-testid="cancel-order-btn"
+            className="flex items-center space-x-1 px-3 py-1.5 rounded bg-[#2a2e39] hover:bg-[#363c4e] text-gray-300 hover:text-white font-medium transition-colors cursor-pointer"
           >
             <CloseIcon size={14} />
             <span>Cancel</span>

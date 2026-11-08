@@ -19,6 +19,7 @@ import {
   Globe,
   Clock,
   Crosshair,
+  Wallet,
 } from 'lucide-react';
 import { Quote, DrawingObject, Trade, UserSettings, DraggableTradeSetup } from '../types';
 import { backtestingEngine } from '../services/BacktestingEngine';
@@ -33,6 +34,7 @@ interface RightSidebarProps {
   currentReplayCandleTime?: number;
   currentChartPrice?: number;
   settings: UserSettings;
+  onOpenBalanceModal?: () => void;
 }
 
 type TabType = 'market' | 'order' | 'objects' | 'alerts';
@@ -47,6 +49,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   currentReplayCandleTime,
   currentChartPrice,
   settings,
+  onOpenBalanceModal,
 }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('order');
@@ -227,6 +230,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               <span className="font-bold text-gray-200">EUR/USD Trade Order</span>
               <button
                 onClick={toggleOnChartSetup}
+                data-testid="on-chart-setup-btn"
                 className={`flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-semibold border transition-colors ${
                   chartSetup?.active
                     ? 'bg-[#2962ff] text-white border-[#2962ff]'
@@ -237,6 +241,24 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 <Crosshair size={12} />
                 <span>{chartSetup?.active ? 'Chart Lines ON' : 'On-Chart Setup'}</span>
               </button>
+            </div>
+
+            {/* Account Capital Card */}
+            <div className="bg-[#1e222d] px-2.5 py-1.5 rounded border border-[#2a2e39] flex items-center justify-between text-[11px] font-mono">
+              <div className="flex items-center space-x-1.5 text-gray-400">
+                <Wallet size={13} className="text-[#089981]" />
+                <span>Balance:</span>
+                <span className="text-white font-bold">${settings.initial_balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              {onOpenBalanceModal && (
+                <button
+                  onClick={onOpenBalanceModal}
+                  className="px-1.5 py-0.5 rounded bg-[#2a2e39] hover:bg-[#363c4e] text-gray-300 hover:text-white text-[10px] font-sans transition-colors"
+                  title="Change Initial Balance"
+                >
+                  Edit
+                </button>
+              )}
             </div>
 
             {/* Execution Type: Market / Limit / Stop */}

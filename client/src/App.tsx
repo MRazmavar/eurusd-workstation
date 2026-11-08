@@ -29,6 +29,8 @@ import { IndicatorPanels } from './components/IndicatorPanels';
 import { SettingsModal } from './components/SettingsModal';
 import { SessionsModal } from './components/SessionsModal';
 import { DataValidationModal } from './components/DataValidationModal';
+import { BalanceModal } from './components/BalanceModal';
+import { JumpDateTimeModal } from './components/JumpDateTimeModal';
 import { DraggableTradeSetup, ReplayMode, BacktestSession } from './types';
 
 const DEFAULT_INDICATORS: IndicatorConfig[] = [
@@ -101,12 +103,16 @@ export const App: React.FC = () => {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
   const [isSessionsModalOpen, setIsSessionsModalOpen] = useState<boolean>(false);
   const [isValidationModalOpen, setIsValidationModalOpen] = useState<boolean>(false);
+  const [isBalanceModalOpen, setIsBalanceModalOpen] = useState<boolean>(false);
+  const [isJumpDateTimeModalOpen, setIsJumpDateTimeModalOpen] = useState<boolean>(false);
+  const [isSelectingReplayCut, setIsSelectingReplayCut] = useState<boolean>(false);
   const [activeSetup, setActiveSetup] = useState<DraggableTradeSetup | null>(null);
 
   // Replay State
   const [replayActive, setReplayActive] = useState<boolean>(false);
   const [replayPlaying, setReplayPlaying] = useState<boolean>(false);
   const [replaySpeed, setReplaySpeed] = useState<ReplaySpeed>(1);
+  const [replayTickIntervalSec, setReplayTickIntervalSec] = useState<number>(1.0);
   const [replayCurrentIndex, setReplayCurrentIndex] = useState<number>(0);
   const [replayMode, setReplayMode] = useState<ReplayMode>('candle');
   const [intrabarPhase, setIntrabarPhase] = useState<number>(3);
@@ -188,6 +194,7 @@ export const App: React.FC = () => {
         setReplayPlaying(st.isPlaying);
         setReplayCurrentIndex(st.currentIndex);
         setReplaySpeed(st.speed);
+        setReplayTickIntervalSec(st.tickIntervalSec);
         setReplayMode(st.mode);
         setIntrabarPhase(st.intrabarPhase);
       },
@@ -275,15 +282,47 @@ export const App: React.FC = () => {
     marketClient.clearAllDrawings();
   };
 
+  // Account Balance & Equity Calculation
+  const netProfit = trades.reduce((acc, t) => acc + (t.pnl || 0), 0);
+  const currentBalance = settings.initial_balance + netProfit;
+  const openPnL = trades.filter(t => t.status === 'OPEN').reduce((acc, t) => {
+    if (!quote) return acc;
+    const curP = t.type === 'BUY' ? quote.bid : quote.ask;
+    const diff = t.type === 'BUY' ? curP - t.entry_price : t.entry_price - curP;
+    const pips = diff / 0.0001;
+    return acc + pips * 10 * t.lot_size - (t.commission || 0);
+  }, 0);
+  const currentEquity = currentBalance + openPnL;
+
+  const handleSaveBalance = (newBalance: number) => {
+    const updated = { ...settings, initial_balance: newBalance };
+    setSettings(updated);
+    backtestingEngine.updateSettings(updated);
+    marketClient.saveSettings(updated);
+    setIsBalanceModalOpen(false);
+  };
+
+  const handleSelectReplayCutCandle = (candle: Candle) => {
+    replayEngine.startReplay(candle.time);
+    setVisibleCandles(replayEngine.getVisibleCandles());
+    setIsSelectingReplayCut(false);
+  };
+
+  const handleJumpToTime = (epochSec: number) => {
+    replayEngine.startReplay(epochSec);
+    setVisibleCandles(replayEngine.getVisibleCandles());
+    setIsJumpDateTimeModalOpen(false);
+  };
+
   // Toggle Replay Mode
   const handleToggleReplay = () => {
     if (replayActive) {
       replayEngine.exitReplay();
       setVisibleCandles(masterCandles);
+      setIsSelectingReplayCut(false);
     } else {
-      // Start replay ~100 candles back or midpoint
-      const startIdx = Math.max(0, masterCandles.length - 150);
-      replayEngine.startReplay(startIdx);
+      // Arm cut selection mode so user can select candle on chart
+      setIsSelectingReplayCut(true);
     }
   };
 
@@ -324,6 +363,9 @@ export const App: React.FC = () => {
         onResetChart={() => chartHelpersRef.current?.resetScale()}
         onFitData={() => chartHelpersRef.current?.fitContent()}
         activeIndicatorsCount={indicators.filter(i => i.visible).length}
+        balance={currentBalance}
+        equity={currentEquity}
+        onOpenBalanceModal={() => setIsBalanceModalOpen(true)}
       />
 
       {/* 2. MAIN WORKSPACE AREA */}
@@ -413,6 +455,9 @@ export const App: React.FC = () => {
               onCancelSetup={() => backtestingEngine.cancelTradeSetup()}
               externalMousePos={chartMousePos}
               onHoverCandle={setHoveredCandle}
+              isSelectingReplayCut={isSelectingReplayCut}
+              onSelectReplayCutCandle={handleSelectReplayCutCandle}
+              onCancelSelectReplayCut={() => setIsSelectingReplayCut(false)}
             />
           </div>
 
@@ -440,6 +485,7 @@ export const App: React.FC = () => {
           currentReplayCandleTime={replayEngine.getCurrentCandle()?.time}
           currentChartPrice={visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : undefined}
           settings={settings}
+          onOpenBalanceModal={() => setIsBalanceModalOpen(true)}
         />
       </div>
 
@@ -456,6 +502,11 @@ export const App: React.FC = () => {
         currentPrice={quote ? quote.bid : 1.1143}
         settings={settings}
         onExitReplay={handleToggleReplay}
+        onStartSelectCut={() => setIsSelectingReplayCut(true)}
+        isSelectingCut={isSelectingReplayCut}
+        onOpenJumpDateTime={() => setIsJumpDateTimeModalOpen(true)}
+        replayTickIntervalSec={replayTickIntervalSec}
+        onOpenBalanceModal={() => setIsBalanceModalOpen(true)}
       />
 
       {/* 4. MODALS */}
@@ -501,6 +552,20 @@ export const App: React.FC = () => {
         isOpen={isValidationModalOpen}
         onClose={() => setIsValidationModalOpen(false)}
         timeframe={timeframe}
+      />
+
+      <BalanceModal
+        isOpen={isBalanceModalOpen}
+        onClose={() => setIsBalanceModalOpen(false)}
+        currentBalance={settings.initial_balance}
+        onSaveBalance={handleSaveBalance}
+      />
+
+      <JumpDateTimeModal
+        isOpen={isJumpDateTimeModalOpen}
+        onClose={() => setIsJumpDateTimeModalOpen(false)}
+        onJumpToTime={handleJumpToTime}
+        candles={masterCandles}
       />
     </div>
   );

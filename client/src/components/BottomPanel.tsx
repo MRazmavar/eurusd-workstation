@@ -18,6 +18,10 @@ import {
   Clock,
   ChevronDown,
   ChevronUp,
+  Scissors,
+  Calendar,
+  Edit3,
+  Wallet,
 } from 'lucide-react';
 import { Trade, UserSettings } from '../types';
 import { replayEngine, ReplaySpeed } from '../services/ReplayEngine';
@@ -36,6 +40,11 @@ interface BottomPanelProps {
   currentPrice: number;
   settings: UserSettings;
   onExitReplay: () => void;
+  onStartSelectCut?: () => void;
+  isSelectingCut?: boolean;
+  onOpenJumpDateTime?: () => void;
+  replayTickIntervalSec?: number;
+  onOpenBalanceModal?: () => void;
 }
 
 type BottomTab = 'analytics' | 'history' | 'positions';
@@ -52,6 +61,11 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   currentPrice,
   settings,
   onExitReplay,
+  onStartSelectCut,
+  isSelectingCut = false,
+  onOpenJumpDateTime,
+  replayTickIntervalSec = 1.0,
+  onOpenBalanceModal,
 }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<BottomTab>('analytics');
@@ -154,6 +168,34 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
 
           {/* Controls */}
           <div className="flex items-center space-x-1.5">
+            {/* Jump to Bar (Select with Mouse) */}
+            <button
+              onClick={onStartSelectCut}
+              className={`px-2 py-1 rounded flex items-center space-x-1 text-xs font-semibold transition-all ${
+                isSelectingCut
+                  ? 'bg-[#f23645] text-white shadow-lg shadow-[#f23645]/40 ring-1 ring-white animate-pulse'
+                  : 'bg-[#131722] border border-[#2a2e39] text-gray-200 hover:text-white hover:border-[#f23645]'
+              }`}
+              title="Jump to Bar: Click anywhere on chart to cut future bars and start replay"
+              data-testid="jump-to-bar-btn"
+            >
+              <Scissors size={13} className={isSelectingCut ? 'text-white' : 'text-[#f23645]'} />
+              <span>Jump to Bar</span>
+            </button>
+
+            {/* Jump to Date & Time Modal */}
+            <button
+              onClick={onOpenJumpDateTime}
+              className="px-2 py-1 rounded bg-[#131722] border border-[#2a2e39] hover:border-[#38bdf8] text-gray-200 hover:text-white flex items-center space-x-1 text-xs transition-colors"
+              title="Jump to specific date & time"
+              data-testid="jump-to-date-btn"
+            >
+              <Calendar size={13} className="text-[#38bdf8]" />
+              <span>Jump to Date</span>
+            </button>
+
+            <div className="h-4 w-[1px] bg-[#2a2e39] mx-1" />
+
             {/* Step Back */}
             <button
               onClick={() => replayEngine.stepBackward(1)}
@@ -190,28 +232,40 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
               <FastForward size={15} />
             </button>
 
-            {/* Speed Selector */}
-            <div className="flex items-center space-x-1 bg-[#131722] rounded px-1.5 py-0.5 border border-[#2a2e39] ml-2">
-              <span className="text-[10px] text-gray-400">Speed:</span>
-              {[0.5, 1, 2, 5, 10, 20].map((spd) => (
-                <button
-                  key={spd}
-                  onClick={() => replayEngine.setSpeed(spd as ReplaySpeed)}
-                  className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
-                    replaySpeed === spd
-                      ? 'bg-[#2962ff] text-white font-bold'
-                      : 'text-gray-400 hover:text-white'
-                  }`}
-                >
-                  {spd}x
-                </button>
-              ))}
+            {/* Tick Rate / Speed Selector */}
+            <div className="flex items-center space-x-1 bg-[#131722] rounded px-1.5 py-0.5 border border-[#2a2e39] ml-1">
+              <span className="text-[10px] text-gray-400">Tick Rate:</span>
+              {[
+                { label: '0.1s', sec: 0.1 },
+                { label: '0.25s', sec: 0.25 },
+                { label: '0.5s', sec: 0.5 },
+                { label: '1s', sec: 1.0 },
+                { label: '2s', sec: 2.0 },
+                { label: '3s', sec: 3.0 },
+                { label: '5s', sec: 5.0 },
+              ].map((t) => {
+                const isActive = Math.abs((replayTickIntervalSec ?? 1.0) - t.sec) < 0.05;
+                return (
+                  <button
+                    key={t.label}
+                    onClick={() => replayEngine.setTickInterval(t.sec)}
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-mono transition-colors ${
+                      isActive
+                        ? 'bg-[#2962ff] text-white font-bold shadow'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                    title={`Tick update every ${t.sec}s`}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Restart */}
             <button
               onClick={() => replayEngine.restart()}
-              className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#2a2e39] ml-2"
+              className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#2a2e39] ml-1"
               title="Restart from Replay Start"
             >
               <RotateCcw size={14} />
@@ -220,7 +274,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
             {/* Exit Replay */}
             <button
               onClick={onExitReplay}
-              className="px-2 py-0.5 rounded bg-red-900/40 text-red-300 hover:bg-red-800/60 border border-red-800 text-[11px] font-semibold flex items-center space-x-1 ml-2"
+              className="px-2 py-0.5 rounded bg-red-900/40 text-red-300 hover:bg-red-800/60 border border-red-800 text-[11px] font-semibold flex items-center space-x-1 ml-1"
               title="Exit Replay Mode"
             >
               <X size={13} />
@@ -276,6 +330,19 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
 
         {/* Right side: Balance and collapse toggle */}
         <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-1.5 text-[11px] font-mono text-gray-300 bg-[#1e222d] px-2 py-0.5 rounded border border-[#2a2e39]">
+            <span className="text-gray-400">Balance:</span>
+            <span className="text-white font-bold">${(settings.initial_balance + stats.netProfit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <button
+              onClick={onOpenBalanceModal}
+              className="p-0.5 rounded text-gray-400 hover:text-white transition-colors ml-0.5"
+              title="Change Default / Initial Balance"
+              data-testid="bottom-panel-balance-edit-btn"
+            >
+              <Edit3 size={11} />
+            </button>
+          </div>
+
           <div className="text-[11px] font-mono text-gray-300">
             <span>Net PnL: </span>
             <span className={stats.netProfit >= 0 ? 'text-[#089981] font-bold' : 'text-[#f23645] font-bold'}>
