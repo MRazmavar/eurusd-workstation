@@ -25,6 +25,7 @@ import {
   Dices,
   Clock,
   Globe,
+  Newspaper,
 } from 'lucide-react';
 import { ChartType, Timeframe, Quote } from '../types';
 
@@ -52,6 +53,10 @@ interface TopBarProps {
   onToggleSessionsIndicator?: () => void;
   timezone?: string;
   onTimezoneChange?: (tz: string) => void;
+  newsActive?: boolean;
+  onToggleNews?: () => void;
+  newsFilter?: 'ALL' | 'HIGH_ONLY';
+  onToggleNewsFilter?: () => void;
 }
 
 const TIMEFRAMES: { label: string; value: Timeframe }[] = [
@@ -99,6 +104,10 @@ export const TopBar: React.FC<TopBarProps> = ({
   onToggleSessionsIndicator,
   timezone = 'UTC',
   onTimezoneChange,
+  newsActive = true,
+  onToggleNews,
+  newsFilter = 'ALL',
+  onToggleNewsFilter,
 }) => {
   const [showTfDropdown, setShowTfDropdown] = useState(false);
   const [showChartTypeDropdown, setShowChartTypeDropdown] = useState(false);
@@ -366,6 +375,28 @@ export const TopBar: React.FC<TopBarProps> = ({
             }`}
           >
             {sessionsIndicatorActive ? 'ON' : 'OFF'}
+          </span>
+        </button>
+
+        {/* Forex Factory News Events Toggle Button */}
+        <button
+          onClick={onToggleNews}
+          data-testid="topbar-news-btn"
+          className={`flex items-center space-x-1.5 px-2.5 py-1 rounded border transition-colors ${
+            newsActive
+              ? 'bg-[#ef4444]/20 border-[#ef4444] text-red-200 shadow-sm'
+              : 'bg-[#1e222d] border-[#2a2e39] text-gray-400 hover:text-white hover:border-[#363c4e]'
+          }`}
+          title="Toggle Forex Factory Economic Calendar news releases on chart (Red High Impact & Yellow Medium Impact)"
+        >
+          <Newspaper size={13} className={newsActive ? 'text-red-400' : 'text-gray-400'} />
+          <span className="font-semibold">News</span>
+          <span
+            className={`text-[9px] px-1 py-0.2 rounded font-mono font-bold ${
+              newsActive ? 'bg-[#ef4444] text-white' : 'bg-gray-700 text-gray-300'
+            }`}
+          >
+            {newsActive ? 'ON' : 'OFF'}
           </span>
         </button>
 

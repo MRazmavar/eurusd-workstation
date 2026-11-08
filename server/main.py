@@ -8,10 +8,12 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Quer
 from fastapi.middleware.cors import CORSMiddleware
 from models import (
     Candle, Quote, Trade, DrawingObject, UserSettings,
-    TradingSessionInfo, DataValidationReport, BacktestSession
+    TradingSessionInfo, DataValidationReport, BacktestSession,
+    EconomicNewsEvent
 )
 from services.market_data_service import market_data_service
 from services.session_manager import get_current_sessions
+from services.economic_calendar import get_economic_events
 import database
 
 # Background worker for real-time market data streaming
@@ -100,6 +102,17 @@ def validate_market_data(
 @app.get("/api/market/sessions", response_model=List[TradingSessionInfo])
 def get_sessions():
     return get_current_sessions()
+
+@app.get("/api/market/news", response_model=List[EconomicNewsEvent])
+def get_news(
+    start_time: int = Query(..., description="Start epoch timestamp in seconds"),
+    end_time: int = Query(..., description="End epoch timestamp in seconds"),
+    min_impact: Optional[str] = Query(None, description="Optional minimum impact filter e.g. HIGH, MEDIUM")
+):
+    try:
+        return get_economic_events(start_time=start_time, end_time=end_time, min_impact=min_impact)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch economic events: {str(e)}")
 
 # ----------------- TRADES (BACKTESTING) -----------------
 

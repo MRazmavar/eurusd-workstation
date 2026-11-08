@@ -210,3 +210,18 @@ export interface DataValidationReport {
   errors: string[];
   warnings: string[];
 }
+
+export type NewsImpact = 'HIGH' | 'MEDIUM' | 'LOW';
+
+export interface EconomicNewsEvent {
+  id: string;
+  time: number;          // Unix timestamp in seconds
+  currency: 'USD' | 'EUR';
+  title: string;         // e.g. "Non-Farm Employment Change", "CPI m/m"
+  impact: NewsImpact;    // 'HIGH' (Red) | 'MEDIUM' (Yellow/Orange)
+  actual?: string;       // e.g. "254K"
+  forecast?: string;     // e.g. "175K"
+  previous?: string;     // e.g. "159K"
+  sentiment?: 'BULLISH' | 'BEARISH' | 'NEUTRAL'; // Relative to EUR/USD
+  description?: string;
+}

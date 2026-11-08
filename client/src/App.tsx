@@ -34,8 +34,10 @@ import { JumpDateTimeModal } from './components/JumpDateTimeModal';
 import { DrawingPropertiesModal } from './components/DrawingPropertiesModal';
 import { QuickTimeframeModal } from './components/QuickTimeframeModal';
 import { FavoritesToolbar } from './components/FavoritesToolbar';
+import { NewsOverlay } from './components/NewsOverlay';
 import { DEFAULT_FAVORITE_TOOLS } from './utils/drawingTools';
-import { DraggableTradeSetup, ReplayMode, BacktestSession } from './types';
+import { generateEconomicNewsEvents } from './utils/economicNews';
+import { DraggableTradeSetup, ReplayMode, BacktestSession, EconomicNewsEvent } from './types';
 
 const DEFAULT_INDICATORS: IndicatorConfig[] = [
   {
@@ -256,6 +258,56 @@ export const App: React.FC = () => {
       return next;
     });
   }, [showToast]);
+
+  // Forex Factory Economic News State
+  const [newsActive, setNewsActive] = useState<boolean>(() => {
+    return localStorage.getItem('eurusd_news_active') !== 'false';
+  });
+  const [newsFilter, setNewsFilter] = useState<'ALL' | 'HIGH_ONLY'>(() => {
+    return (localStorage.getItem('eurusd_news_filter') as 'ALL' | 'HIGH_ONLY') || 'ALL';
+  });
+  const [newsEvents, setNewsEvents] = useState<EconomicNewsEvent[]>([]);
+
+  const handleToggleNews = useCallback(() => {
+    setNewsActive(prev => {
+      const next = !prev;
+      localStorage.setItem('eurusd_news_active', next ? 'true' : 'false');
+      showToast(`Forex Factory News: ${next ? 'ON' : 'OFF'}`);
+      return next;
+    });
+  }, [showToast]);
+
+  const handleToggleNewsFilter = useCallback(() => {
+    setNewsFilter(prev => {
+      const next = prev === 'ALL' ? 'HIGH_ONLY' : 'ALL';
+      localStorage.setItem('eurusd_news_filter', next);
+      showToast(next === 'HIGH_ONLY' ? 'News: High Impact (Red) Only' : 'News: All (Red & Yellow)');
+      return next;
+    });
+  }, [showToast]);
+
+  // Load / Compute Economic News Events for visible market span + upcoming future days
+  useEffect(() => {
+    const list = masterCandles.length > 0 ? masterCandles : visibleCandles;
+    if (list.length === 0) return;
+
+    const startSec = list[0].time - 86400 * 7;
+    const endSec = Math.max(list[list.length - 1].time, Math.floor(Date.now() / 1000)) + 86400 * 14;
+
+    marketClient
+      .fetchNews(startSec, endSec)
+      .then((data) => {
+        if (data && data.length > 0) {
+          setNewsEvents(data);
+        } else {
+          setNewsEvents(generateEconomicNewsEvents(startSec, endSec));
+        }
+      })
+      .catch(() => {
+        setNewsEvents(generateEconomicNewsEvents(startSec, endSec));
+      });
+  }, [masterCandles, visibleCandles]);
+
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
   const [isSessionsModalOpen, setIsSessionsModalOpen] = useState<boolean>(false);
   const [isValidationModalOpen, setIsValidationModalOpen] = useState<boolean>(false);
@@ -826,6 +878,10 @@ export const App: React.FC = () => {
         onToggleSessionsIndicator={handleToggleSessions}
         timezone={settings.timezone}
         onTimezoneChange={handleTimezoneChange}
+        newsActive={newsActive}
+        onToggleNews={handleToggleNews}
+        newsFilter={newsFilter}
+        onToggleNewsFilter={handleToggleNewsFilter}
       />
 
       {/* 2. MAIN WORKSPACE AREA */}
@@ -949,6 +1005,17 @@ export const App: React.FC = () => {
               indicators={indicators}
               timezone={settings.timezone}
               sessionsActive={indicators.find(i => i.type === 'SESSIONS')?.visible ?? true}
+            />
+
+            {/* Forex Factory Economic Calendar News Events Overlay */}
+            <NewsOverlay
+              events={newsEvents}
+              visible={newsActive}
+              filter={newsFilter}
+              transformer={transformer}
+              timezone={settings.timezone}
+              replayActive={replayActive}
+              currentReplayTimestamp={replayEngine.getCurrentCandle()?.time || null}
             />
 
             {/* Draggable Floating Favorite Tools Toolbar directly on Chart */}

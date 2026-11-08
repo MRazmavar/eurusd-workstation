@@ -3,8 +3,10 @@
  */
 import {
   Candle, Quote, Trade, DrawingObject, UserSettings,
-  Timeframe, BacktestSession, DataValidationReport
+  Timeframe, BacktestSession, DataValidationReport,
+  EconomicNewsEvent
 } from '../types';
+import { generateEconomicNewsEvents } from '../utils/economicNews';
 
 export class MarketDataClient {
   private ws: WebSocket | null = null;
@@ -107,6 +109,23 @@ export class MarketDataClient {
     const resp = await fetch('http://127.0.0.1:8008/api/market/quote');
     if (!resp.ok) throw new Error('Failed to fetch quote');
     return resp.json();
+  }
+
+  async fetchNews(startTime: number, endTime: number, minImpact?: string): Promise<EconomicNewsEvent[]> {
+    try {
+      const params = new URLSearchParams({
+        start_time: startTime.toString(),
+        end_time: endTime.toString(),
+      });
+      if (minImpact) params.append('min_impact', minImpact);
+      const resp = await fetch(`http://127.0.0.1:8008/api/market/news?${params.toString()}`);
+      if (resp.ok) {
+        return await resp.json();
+      }
+    } catch {
+      // Fallback
+    }
+    return generateEconomicNewsEvents(startTime, endTime);
   }
 
   async fetchTrades(): Promise<Trade[]> {

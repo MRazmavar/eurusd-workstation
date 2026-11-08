@@ -119,3 +119,15 @@ class BacktestSession(BaseModel):
     trades: List[Trade] = Field(default_factory=list)
     drawings: List[DrawingObject] = Field(default_factory=list)
     settings: Optional[UserSettings] = None
+
+class EconomicNewsEvent(BaseModel):
+    id: str
+    time: int
+    currency: str
+    title: str
+    impact: str
+    actual: Optional[str] = None
+    forecast: Optional[str] = None
+    previous: Optional[str] = None
+    sentiment: Optional[str] = None
+    description: Optional[str] = None
