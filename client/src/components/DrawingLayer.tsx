@@ -142,8 +142,8 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
 
   // Dragging interactive trade setup lines ('entry' | 'sl' | 'tp')
   const [draggingSetupLine, setDraggingSetupLine] = useState<'entry' | 'sl' | 'tp' | null>(null);
-  // Dragging confirmed active trade lines (SL or TP of an active trade)
-  const [draggingTradeLine, setDraggingTradeLine] = useState<{ tradeId: string; lineType: 'sl' | 'tp' } | null>(null);
+  // Dragging confirmed active trade lines (SL or TP or Entry of an active/pending trade)
+  const [draggingTradeLine, setDraggingTradeLine] = useState<{ tradeId: string; lineType: 'sl' | 'tp' | 'entry' } | null>(null);
 
   const selectedDrawing = drawings.find(d => d.id === selectedId) || null;
   const isDrawingToolActive = activeTool !== 'crosshair' && activeTool !== 'arrow';
@@ -432,12 +432,19 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         return;
       }
 
-      // 2. Dragging Confirmed Open Trade Line (SL / TP)
+      // 2. Dragging Confirmed Open Trade Line (SL / TP / Entry)
       if (draggingTradeLineRef.current && onModifyTrade) {
         const rounded = Number(mouse.price.toFixed(5));
-        onModifyTrade(draggingTradeLineRef.current.tradeId, {
-          [draggingTradeLineRef.current.lineType]: rounded,
-        });
+        const lineType = draggingTradeLineRef.current.lineType;
+        if (lineType === 'entry') {
+          onModifyTrade(draggingTradeLineRef.current.tradeId, {
+            entry_price: rounded,
+          });
+        } else {
+          onModifyTrade(draggingTradeLineRef.current.tradeId, {
+            [lineType]: rounded,
+          });
+        }
         return;
       }
 
@@ -823,7 +830,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     }
   };
 
-  // Render Forex Sessions & Killzones Overlay
+  // Render Forex Sessions & Killzones Overlay as Bounded Price-Range Rectangles
   const renderSessions = () => {
     // Hide sessions on daily, weekly or monthly timeframes
     if (['1d', '1w', '1mo'].includes(timeframe)) return null;
@@ -840,86 +847,111 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     return (
       <g className="sessions-layer pointer-events-none select-none" data-testid="sessions-layer">
         {blocks.map((block) => {
-          const x1 = transformer.timeToX(block.startTime);
-          const x2 = transformer.timeToX(block.endTime);
+          const x1 = transformer.timeToX(block.firstCandleTime ?? block.startTime);
+          const x2 = transformer.timeToX(block.lastCandleCloseTime ?? block.endTime);
 
           if (x1 === null && x2 === null) return null;
 
           const safeX1 = x1 !== null ? x1 : -100;
           const safeX2 = x2 !== null ? x2 : 2500;
-          const width = Math.max(4, safeX2 - safeX1);
+          const boxLeft = Math.min(safeX1, safeX2);
+          const boxRight = Math.max(safeX1, safeX2);
+          const width = Math.max(4, boxRight - boxLeft);
+
+          // Viewport culling for horizontal visibility
+          if (boxRight < -100 || boxLeft > dimensions.width + 100) return null;
 
           const highY = transformer.priceToY(block.high);
           const lowY = transformer.priceToY(block.low);
 
+          if (highY === null || lowY === null) return null;
+
+          // Upper boundary is highest High reached, lower boundary is lowest Low reached
+          const boxTop = Math.min(highY, lowY);
+          const boxBottom = Math.max(highY, lowY);
+          const boxHeight = Math.max(4, boxBottom - boxTop);
+
+          // Viewport culling for vertical visibility
+          if (boxBottom < -100 || boxTop > dimensions.height + 100) return null;
+
+          // Staggered badge positioning: attached directly to session rectangle
+          const isShield = block.session.id === 'shield_area';
+          const badgeY = boxTop > 46
+            ? (isShield ? boxTop - 44 : boxTop - 22)
+            : (isShield ? boxTop + 24 : boxTop + 4);
+
           return (
             <g key={block.key} data-testid={`session-block-${block.session.id}`}>
-              {/* Shaded Vertical Session Region */}
+              {/* Bounded Session Range Rectangle (Actual High-Low price range and session duration) */}
               <rect
-                x={safeX1}
-                y={0}
+                x={boxLeft}
+                y={boxTop}
                 width={width}
-                height="100%"
+                height={boxHeight}
                 fill={block.session.color}
                 fillOpacity={block.session.fillOpacity}
+                stroke={block.session.borderColor}
+                strokeWidth={1.5}
+                rx={2}
+                data-testid={`session-rect-${block.session.id}`}
               />
 
-              {/* Start & End Vertical Boundaries */}
+              {/* Start Vertical Boundary Line */}
               {x1 !== null && (
                 <line
-                  x1={x1}
-                  y1={0}
-                  x2={x1}
-                  y2="100%"
+                  x1={boxLeft}
+                  y1={boxTop}
+                  x2={boxLeft}
+                  y2={boxBottom}
                   stroke={block.session.borderColor}
-                  strokeWidth={1}
+                  strokeWidth={1.2}
                   strokeDasharray="4,4"
-                  opacity={0.65}
+                  opacity={0.75}
                 />
               )}
+
+              {/* End Vertical Boundary Line */}
               {x2 !== null && (
                 <line
-                  x1={x2}
-                  y1={0}
-                  x2={x2}
-                  y2="100%"
+                  x1={boxRight}
+                  y1={boxTop}
+                  x2={boxRight}
+                  y2={boxBottom}
                   stroke={block.session.borderColor}
-                  strokeWidth={1}
+                  strokeWidth={1.2}
                   strokeDasharray="4,4"
-                  opacity={0.65}
+                  opacity={0.75}
                 />
               )}
 
-              {/* Session High and Low Horizontal Lines */}
-              {highY !== null && (
-                <line
-                  x1={safeX1}
-                  y1={highY}
-                  x2={safeX2}
-                  y2={highY}
-                  stroke={block.session.borderColor}
-                  strokeWidth={1}
-                  strokeDasharray="2,2"
-                  opacity={0.65}
-                />
-              )}
-              {lowY !== null && (
-                <line
-                  x1={safeX1}
-                  y1={lowY}
-                  x2={safeX2}
-                  y2={lowY}
-                  stroke={block.session.borderColor}
-                  strokeWidth={1}
-                  strokeDasharray="2,2"
-                  opacity={0.65}
-                />
-              )}
+              {/* Session Highest High Horizontal Line */}
+              <line
+                x1={boxLeft}
+                y1={boxTop}
+                x2={boxRight}
+                y2={boxTop}
+                stroke={block.session.borderColor}
+                strokeWidth={1}
+                strokeDasharray="2,2"
+                opacity={0.8}
+              />
+
+              {/* Session Lowest Low Horizontal Line */}
+              <line
+                x1={boxLeft}
+                y1={boxBottom}
+                x2={boxRight}
+                y2={boxBottom}
+                stroke={block.session.borderColor}
+                strokeWidth={1}
+                strokeDasharray="2,2"
+                opacity={0.8}
+              />
 
               {/* Session Top Badge Pill */}
-              {x1 !== null && x1 > -150 && x1 < 2200 && (
+              {boxLeft > -150 && boxLeft < 2200 && (
                 <g
-                  transform={`translate(${Math.max(10, x1 + 6)}, ${block.session.badgeYOffset})`}
+                  transform={`translate(${Math.max(10, boxLeft + 6)}, ${badgeY})`}
                   data-testid={`session-badge-${block.session.id}`}
                 >
                   <rect
@@ -950,228 +982,355 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     );
   };
 
-  // Render Confirmed Active On-Chart Trades (Positions & Pending Orders)
+  // Render Confirmed On-Chart Trades (TradingView Long / Short Position Boxes)
   const renderOpenTrades = () => {
     if (!trades || trades.length === 0) return null;
 
     const activeTrades = trades.filter(t => t.status === 'OPEN' || t.status === 'PENDING');
-    if (activeTrades.length === 0) return null;
+    const closedTrades = trades.filter(t => t.status === 'CLOSED');
+
+    // Only render closed trades that are near or within visible range to optimize SVG performance
+    const visibleStart = candles.length > 0 ? candles[0].time - 86400 * 2 : 0;
+    const visibleEnd = candles.length > 0 ? candles[candles.length - 1].time + 86400 * 2 : Infinity;
+    const visibleClosedTrades = closedTrades.filter(t => {
+      const exitT = t.exit_time || t.entry_time;
+      return exitT >= visibleStart && t.entry_time <= visibleEnd;
+    });
+
+    const displayTrades = [...activeTrades, ...visibleClosedTrades];
+    if (displayTrades.length === 0) return null;
 
     const effectiveMarketPrice = currentPrice || (candles.length > 0 ? candles[candles.length - 1].close : 1.11380);
 
     return (
-      <g className="open-trades-layer select-none">
-        {activeTrades.map((trade) => {
-          const entryY = transformer.priceToY(trade.entry_price);
-          const slY = trade.sl !== null && trade.sl !== undefined ? transformer.priceToY(trade.sl) : null;
-          const tpY = trade.tp !== null && trade.tp !== undefined ? transformer.priceToY(trade.tp) : null;
-
-          if (entryY === null) return null;
-
-          // Real-time calculation of PnL
+      <g className="open-trades-layer select-none pointer-events-auto" data-testid="open-trades-layer">
+        {displayTrades.map((trade) => {
           const isBuy = trade.type === 'BUY';
+          const isOpen = trade.status === 'OPEN';
+          const isPending = trade.status === 'PENDING';
+          const isClosed = trade.status === 'CLOSED';
+
+          const entryPrice = trade.entry_price;
+          const slPrice = trade.sl !== null && trade.sl !== undefined
+            ? trade.sl
+            : (isBuy ? entryPrice - 0.0010 : entryPrice + 0.0010);
+          const tpPrice = trade.tp !== null && trade.tp !== undefined
+            ? trade.tp
+            : (isBuy ? entryPrice + 0.0020 : entryPrice - 0.0020);
+
+          const entryY = transformer.priceToY(entryPrice);
+          const slY = transformer.priceToY(slPrice);
+          const tpY = transformer.priceToY(tpPrice);
+
+          if (entryY === null || slY === null || tpY === null) return null;
+
+          // Time coordinates (Horizontal boundaries)
+          const x1 = transformer.timeToX(trade.entry_time);
+          let x2: number | null = null;
+
+          if (isOpen || isPending) {
+            // Extends dynamically with incoming live/backtest candles
+            const lastCandleTime = candles.length > 0 ? candles[candles.length - 1].time : trade.entry_time;
+            const currentCandleX = transformer.timeToX(lastCandleTime);
+            x2 = currentCandleX !== null ? currentCandleX + 45 : null;
+          } else if (isClosed) {
+            // Stops extending when the trade is closed
+            const exitTime = trade.exit_time || (trade.entry_time + 3600);
+            x2 = transformer.timeToX(exitTime);
+          }
+
+          const safeX1 = x1 !== null ? x1 : (x2 !== null ? x2 - 180 : 80);
+          const safeX2 = x2 !== null ? x2 : (safeX1 + 180);
+          const boxLeft = Math.min(safeX1, safeX2);
+          const boxRight = Math.max(safeX1, safeX2);
+          const boxWidth = Math.max(80, boxRight - boxLeft);
+          const cardX = Math.max(10, Math.min(boxLeft + 10, Math.max(10, dimensions.width - 540)));
+
+          // Profit & Risk Zones (TradingView Long/Short Position Box)
+          // For BUY: tpY < entryY (above entry), slY > entryY (below entry)
+          // For SELL: tpY > entryY (below entry), slY < entryY (above entry)
+          const profitZoneTop = Math.min(entryY, tpY);
+          const profitZoneHeight = Math.max(2, Math.abs(tpY - entryY));
+          const riskZoneTop = Math.min(entryY, slY);
+          const riskZoneHeight = Math.max(2, Math.abs(slY - entryY));
+
+          // Metrics calculation
           const pipDiff = isBuy
-            ? (effectiveMarketPrice - trade.entry_price) / 0.0001
-            : (trade.entry_price - effectiveMarketPrice) / 0.0001;
+            ? (effectiveMarketPrice - entryPrice) / 0.0001
+            : (entryPrice - effectiveMarketPrice) / 0.0001;
 
           const grossPnl = pipDiff * 10 * trade.lot_size;
           const commission = trade.commission || 0;
-          const liveNetPnl = grossPnl - commission;
+          const liveNetPnl = isClosed ? (trade.pnl ?? 0) : (grossPnl - commission);
           const isProfit = liveNetPnl >= 0;
 
-          // Pip distances for SL and TP
-          const slDiffPips = trade.sl ? Math.abs(trade.entry_price - trade.sl) / 0.0001 : 0;
-          const tpDiffPips = trade.tp ? Math.abs(trade.tp - trade.entry_price) / 0.0001 : 0;
+          const slDiffPips = Math.abs(entryPrice - slPrice) / 0.0001;
+          const tpDiffPips = Math.abs(tpPrice - entryPrice) / 0.0001;
           const slLossUsd = slDiffPips * 10 * trade.lot_size;
           const tpGainUsd = tpDiffPips * 10 * trade.lot_size;
-
-          const minRiskY = slY !== null ? Math.min(entryY, slY) : null;
-          const maxRiskY = slY !== null ? Math.max(entryY, slY) : null;
-          const minRewardY = tpY !== null ? Math.min(entryY, tpY) : null;
-          const maxRewardY = tpY !== null ? Math.max(entryY, tpY) : null;
+          const rrRatio = slDiffPips > 0 ? (tpDiffPips / slDiffPips) : 2.0;
 
           return (
-            <g key={trade.id} data-testid={`on-chart-trade-${trade.id}`}>
-              {/* Shaded Profit & Risk Zones */}
-              {minRewardY !== null && maxRewardY !== null && (
-                <rect
-                  x={0}
-                  y={minRewardY}
-                  width="100%"
-                  height={Math.max(1, maxRewardY - minRewardY)}
-                  fill="#089981"
-                  fillOpacity={0.06}
-                  className="pointer-events-none"
-                />
-              )}
-              {minRiskY !== null && maxRiskY !== null && (
-                <rect
-                  x={0}
-                  y={minRiskY}
-                  width="100%"
-                  height={Math.max(1, maxRiskY - minRiskY)}
-                  fill="#f23645"
-                  fillOpacity={0.06}
-                  className="pointer-events-none"
-                />
-              )}
-
-              {/* 1. Take Profit (Target Point) Horizontal Line & Interactive Badge */}
-              {tpY !== null && trade.tp !== null && trade.tp !== undefined && (
-                <g data-testid={`on-chart-tp-${trade.id}`}>
-                  <line
-                    x1={0}
-                    y1={tpY}
-                    x2="100%"
-                    y2={tpY}
-                    stroke="#089981"
-                    strokeWidth={1.5}
-                    strokeDasharray="4,3"
-                    className="cursor-ns-resize pointer-events-auto"
-                    onMouseDown={(e) => {
-                      e.stopPropagation();
-                      setDraggingTradeLine({ tradeId: trade.id, lineType: 'tp' });
-                    }}
-                  />
-                  {/* Invisible wide hit area for easy dragging */}
-                  <line
-                    x1={0}
-                    y1={tpY}
-                    x2="100%"
-                    y2={tpY}
-                    stroke="transparent"
-                    strokeWidth={14}
-                    className="cursor-ns-resize pointer-events-auto"
-                    onMouseDown={(e) => {
-                      e.stopPropagation();
-                      setDraggingTradeLine({ tradeId: trade.id, lineType: 'tp' });
-                    }}
-                  />
-                  {/* TP Badge */}
-                  <g
-                    transform={`translate(24, ${tpY - 12})`}
-                    className="cursor-ns-resize pointer-events-auto"
-                    onMouseDown={(e) => {
-                      e.stopPropagation();
-                      setDraggingTradeLine({ tradeId: trade.id, lineType: 'tp' });
-                    }}
-                    data-testid={`on-chart-tp-badge-${trade.id}`}
-                  >
-                    <rect
-                      width={310}
-                      height={24}
-                      rx={4}
-                      fill="#089981"
-                      className="shadow-md"
-                    />
-                    <circle cx={10} cy={12} r={3} fill="#fff" />
-                    <text
-                      x={20}
-                      y={16}
-                      fill="#ffffff"
-                      fontSize={11}
-                      fontWeight="bold"
-                      fontFamily="monospace"
-                    >
-                      TP: {trade.tp.toFixed(5)} (+{tpDiffPips.toFixed(1)}p | +${tpGainUsd.toFixed(2)})
-                    </text>
-                  </g>
-                </g>
-              )}
-
-              {/* 2. Stop Loss (SL Point) Horizontal Line & Interactive Badge */}
-              {slY !== null && trade.sl !== null && trade.sl !== undefined && (
-                <g data-testid={`on-chart-sl-${trade.id}`}>
-                  <line
-                    x1={0}
-                    y1={slY}
-                    x2="100%"
-                    y2={slY}
-                    stroke="#f23645"
-                    strokeWidth={1.5}
-                    strokeDasharray="4,3"
-                    className="cursor-ns-resize pointer-events-auto"
-                    onMouseDown={(e) => {
-                      e.stopPropagation();
-                      setDraggingTradeLine({ tradeId: trade.id, lineType: 'sl' });
-                    }}
-                  />
-                  {/* Invisible wide hit area for easy dragging */}
-                  <line
-                    x1={0}
-                    y1={slY}
-                    x2="100%"
-                    y2={slY}
-                    stroke="transparent"
-                    strokeWidth={14}
-                    className="cursor-ns-resize pointer-events-auto"
-                    onMouseDown={(e) => {
-                      e.stopPropagation();
-                      setDraggingTradeLine({ tradeId: trade.id, lineType: 'sl' });
-                    }}
-                  />
-                  {/* SL Badge */}
-                  <g
-                    transform={`translate(24, ${slY - 12})`}
-                    className="cursor-ns-resize pointer-events-auto"
-                    onMouseDown={(e) => {
-                      e.stopPropagation();
-                      setDraggingTradeLine({ tradeId: trade.id, lineType: 'sl' });
-                    }}
-                    data-testid={`on-chart-sl-badge-${trade.id}`}
-                  >
-                    <rect
-                      width={310}
-                      height={24}
-                      rx={4}
-                      fill="#f23645"
-                      className="shadow-md"
-                    />
-                    <circle cx={10} cy={12} r={3} fill="#fff" />
-                    <text
-                      x={20}
-                      y={16}
-                      fill="#ffffff"
-                      fontSize={11}
-                      fontWeight="bold"
-                      fontFamily="monospace"
-                    >
-                      SL: {trade.sl.toFixed(5)} (-{slDiffPips.toFixed(1)}p | -${slLossUsd.toFixed(2)})
-                    </text>
-                  </g>
-                </g>
-              )}
-
-              {/* 3. Main Entry Point Horizontal Line */}
-              <line
-                x1={0}
-                y1={entryY}
-                x2="100%"
-                y2={entryY}
-                stroke={isBuy ? '#089981' : '#f23645'}
-                strokeWidth={2}
-                strokeDasharray={trade.status === 'PENDING' ? '6,4' : undefined}
+            <g
+              key={trade.id}
+              data-testid={`on-chart-trade-${trade.id}`}
+              className={isClosed ? "opacity-85" : "opacity-100"}
+            >
+              {/* Green Profit Zone Box */}
+              <rect
+                x={boxLeft}
+                y={profitZoneTop}
+                width={boxWidth}
+                height={profitZoneHeight}
+                fill="#089981"
+                fillOpacity={isClosed ? 0.12 : 0.20}
+                stroke="#089981"
+                strokeWidth={1}
                 className="pointer-events-none"
+                data-testid={`position-profit-zone-${trade.id}`}
               />
 
-              {/* Main Entry Interactive Information Badge with Real-Time PnL */}
+              {/* Red Risk Zone Box */}
+              <rect
+                x={boxLeft}
+                y={riskZoneTop}
+                width={boxWidth}
+                height={riskZoneHeight}
+                fill="#f23645"
+                fillOpacity={isClosed ? 0.12 : 0.20}
+                stroke="#f23645"
+                strokeWidth={1}
+                className="pointer-events-none"
+                data-testid={`position-risk-zone-${trade.id}`}
+              />
+
+              {/* Box Left & Right Boundary Borders */}
+              <line
+                x1={boxLeft}
+                y1={Math.min(profitZoneTop, riskZoneTop)}
+                x2={boxLeft}
+                y2={Math.max(profitZoneTop + profitZoneHeight, riskZoneTop + riskZoneHeight)}
+                stroke="#787b86"
+                strokeWidth={1}
+                strokeDasharray="2,2"
+                opacity={0.6}
+              />
+              <line
+                x1={boxRight}
+                y1={Math.min(profitZoneTop, riskZoneTop)}
+                x2={boxRight}
+                y2={Math.max(profitZoneTop + profitZoneHeight, riskZoneTop + riskZoneHeight)}
+                stroke="#787b86"
+                strokeWidth={1}
+                strokeDasharray="2,2"
+                opacity={0.6}
+              />
+
+              {/* 1. Take Profit (Target Point) Horizontal Line & Interactive Badge */}
+              <g data-testid={`on-chart-tp-${trade.id}`}>
+                <line
+                  x1={boxLeft}
+                  y1={tpY}
+                  x2={boxRight}
+                  y2={tpY}
+                  stroke="#089981"
+                  strokeWidth={2}
+                  strokeDasharray="4,3"
+                  className={!isClosed ? "cursor-ns-resize pointer-events-auto" : "pointer-events-none"}
+                  onMouseDown={!isClosed ? (e) => {
+                    e.stopPropagation();
+                    setDraggingTradeLine({ tradeId: trade.id, lineType: 'tp' });
+                  } : undefined}
+                />
+                {!isClosed && (
+                  <line
+                    x1={boxLeft}
+                    y1={tpY}
+                    x2={boxRight}
+                    y2={tpY}
+                    stroke="transparent"
+                    strokeWidth={16}
+                    className="cursor-ns-resize pointer-events-auto"
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      setDraggingTradeLine({ tradeId: trade.id, lineType: 'tp' });
+                    }}
+                  />
+                )}
+                {/* TP Anchor Handle at Right Edge */}
+                {!isClosed && (
+                  <circle
+                    cx={boxRight}
+                    cy={tpY}
+                    r={4.5}
+                    fill="#089981"
+                    stroke="#ffffff"
+                    strokeWidth={1.5}
+                    className="cursor-ns-resize pointer-events-auto shadow"
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      setDraggingTradeLine({ tradeId: trade.id, lineType: 'tp' });
+                    }}
+                  />
+                )}
+                {/* TP Badge */}
+                <g
+                  transform={`translate(${boxLeft + 10}, ${tpY - 12})`}
+                  className={!isClosed ? "cursor-ns-resize pointer-events-auto" : "pointer-events-none"}
+                  onMouseDown={!isClosed ? (e) => {
+                    e.stopPropagation();
+                    setDraggingTradeLine({ tradeId: trade.id, lineType: 'tp' });
+                  } : undefined}
+                  data-testid={`on-chart-tp-badge-${trade.id}`}
+                >
+                  <rect
+                    width={310}
+                    height={24}
+                    rx={4}
+                    fill="#089981"
+                    className="shadow-md"
+                  />
+                  <circle cx={10} cy={12} r={3} fill="#fff" />
+                  <text
+                    x={20}
+                    y={16}
+                    fill="#ffffff"
+                    fontSize={11}
+                    fontWeight="bold"
+                    fontFamily="monospace"
+                  >
+                    TP: {tpPrice.toFixed(5)} (+{tpDiffPips.toFixed(1)}p | +${tpGainUsd.toFixed(2)}) | R:R {rrRatio.toFixed(2)}
+                  </text>
+                </g>
+              </g>
+
+              {/* 2. Stop Loss (SL Point) Horizontal Line & Interactive Badge */}
+              <g data-testid={`on-chart-sl-${trade.id}`}>
+                <line
+                  x1={boxLeft}
+                  y1={slY}
+                  x2={boxRight}
+                  y2={slY}
+                  stroke="#f23645"
+                  strokeWidth={2}
+                  strokeDasharray="4,3"
+                  className={!isClosed ? "cursor-ns-resize pointer-events-auto" : "pointer-events-none"}
+                  onMouseDown={!isClosed ? (e) => {
+                    e.stopPropagation();
+                    setDraggingTradeLine({ tradeId: trade.id, lineType: 'sl' });
+                  } : undefined}
+                />
+                {!isClosed && (
+                  <line
+                    x1={boxLeft}
+                    y1={slY}
+                    x2={boxRight}
+                    y2={slY}
+                    stroke="transparent"
+                    strokeWidth={16}
+                    className="cursor-ns-resize pointer-events-auto"
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      setDraggingTradeLine({ tradeId: trade.id, lineType: 'sl' });
+                    }}
+                  />
+                )}
+                {/* SL Anchor Handle at Right Edge */}
+                {!isClosed && (
+                  <circle
+                    cx={boxRight}
+                    cy={slY}
+                    r={4.5}
+                    fill="#f23645"
+                    stroke="#ffffff"
+                    strokeWidth={1.5}
+                    className="cursor-ns-resize pointer-events-auto shadow"
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      setDraggingTradeLine({ tradeId: trade.id, lineType: 'sl' });
+                    }}
+                  />
+                )}
+                {/* SL Badge */}
+                <g
+                  transform={`translate(${boxLeft + 10}, ${slY - 12})`}
+                  className={!isClosed ? "cursor-ns-resize pointer-events-auto" : "pointer-events-none"}
+                  onMouseDown={!isClosed ? (e) => {
+                    e.stopPropagation();
+                    setDraggingTradeLine({ tradeId: trade.id, lineType: 'sl' });
+                  } : undefined}
+                  data-testid={`on-chart-sl-badge-${trade.id}`}
+                >
+                  <rect
+                    width={310}
+                    height={24}
+                    rx={4}
+                    fill="#f23645"
+                    className="shadow-md"
+                  />
+                  <circle cx={10} cy={12} r={3} fill="#fff" />
+                  <text
+                    x={20}
+                    y={16}
+                    fill="#ffffff"
+                    fontSize={11}
+                    fontWeight="bold"
+                    fontFamily="monospace"
+                  >
+                    SL: {slPrice.toFixed(5)} (-{slDiffPips.toFixed(1)}p | -${slLossUsd.toFixed(2)})
+                  </text>
+                </g>
+              </g>
+
+              {/* 3. Main Entry Point Dividing Line */}
+              <line
+                x1={boxLeft}
+                y1={entryY}
+                x2={boxRight}
+                y2={entryY}
+                stroke={isPending ? '#ff9800' : '#2962ff'}
+                strokeWidth={2}
+                strokeDasharray={isPending ? '6,4' : undefined}
+                className={isPending ? "cursor-ns-resize pointer-events-auto" : "pointer-events-none"}
+                onMouseDown={isPending ? (e) => {
+                  e.stopPropagation();
+                  setDraggingTradeLine({ tradeId: trade.id, lineType: 'entry' });
+                } : undefined}
+                data-testid={`position-entry-line-${trade.id}`}
+              />
+              {/* Entry Anchor Handle at Right Edge */}
+              <circle
+                cx={boxRight}
+                cy={entryY}
+                r={4.5}
+                fill="#2962ff"
+                stroke="#ffffff"
+                strokeWidth={1.5}
+                className={isPending ? "cursor-ns-resize pointer-events-auto shadow" : "pointer-events-none"}
+                onMouseDown={isPending ? (e) => {
+                  e.stopPropagation();
+                  setDraggingTradeLine({ tradeId: trade.id, lineType: 'entry' });
+                } : undefined}
+              />
+
+              {/* Main Entry Interactive Information Badge Card */}
               <g
-                transform={`translate(24, ${entryY - 16})`}
+                transform={`translate(${cardX}, ${entryY - 16})`}
                 className="pointer-events-auto select-none"
                 data-testid={`on-chart-entry-badge-${trade.id}`}
               >
                 {/* Background Card */}
                 <rect
-                  width={trade.status === 'OPEN' ? 470 : 390}
+                  width={isOpen ? 530 : (isClosed ? 490 : 420)}
                   height={32}
                   rx={6}
                   fill="#1e222d"
-                  stroke={isBuy ? '#089981' : '#f23645'}
+                  stroke={isPending ? '#ff9800' : (isBuy ? '#089981' : '#f23645')}
                   strokeWidth={1.5}
                   className="shadow-xl"
                 />
 
-                {/* Buy/Sell Direction Indicator Pill */}
+                {/* Direction Indicator Pill */}
                 <g transform="translate(6, 5)">
                   <rect
                     width={46}
@@ -1191,7 +1350,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                   </text>
                 </g>
 
-                {/* Trade Details & Entry Point */}
+                {/* Trade Details & Entry Point & Market Price */}
                 <text
                   x={58}
                   y={20}
@@ -1200,12 +1359,12 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                   fontWeight="bold"
                   fontFamily="monospace"
                 >
-                  {trade.lot_size.toFixed(2)}L @ {trade.entry_price.toFixed(5)}
+                  {trade.lot_size.toFixed(2)}L @ {entryPrice.toFixed(5)} {isOpen ? `| Mkt: ${effectiveMarketPrice.toFixed(5)}` : ''}
                 </text>
 
                 {/* Real-Time Live Profit / Loss Display for OPEN trades */}
-                {trade.status === 'OPEN' ? (
-                  <g transform="translate(230, 5)" data-testid={`on-chart-pnl-${trade.id}`}>
+                {isOpen ? (
+                  <g transform="translate(290, 5)" data-testid={`on-chart-pnl-${trade.id}`}>
                     <rect
                       width={125}
                       height={22}
@@ -1227,9 +1386,33 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                       {isProfit ? '+' : ''}${liveNetPnl.toFixed(2)} ({isProfit ? '+' : ''}{pipDiff.toFixed(1)}p)
                     </text>
                   </g>
+                ) : isClosed ? (
+                  /* Completed Trade Summary */
+                  <g transform="translate(270, 5)">
+                    <rect
+                      width={210}
+                      height={22}
+                      rx={4}
+                      fill={isProfit ? '#089981' : '#f23645'}
+                      fillOpacity={0.2}
+                      stroke={isProfit ? '#089981' : '#f23645'}
+                      strokeWidth={1}
+                    />
+                    <text
+                      x={105}
+                      y={15}
+                      fill={isProfit ? '#26a69a' : '#ef5350'}
+                      fontSize={10}
+                      fontWeight="bold"
+                      fontFamily="monospace"
+                      textAnchor="middle"
+                    >
+                      CLOSED ({trade.exit_reason || 'MANUAL'}): {isProfit ? '+' : ''}${liveNetPnl.toFixed(2)} ({trade.pnl_pips ? `${trade.pnl_pips >= 0 ? '+' : ''}${trade.pnl_pips.toFixed(1)}p` : ''})
+                    </text>
+                  </g>
                 ) : (
                   /* Pending Order Tag */
-                  <g transform="translate(230, 5)">
+                  <g transform="translate(270, 5)">
                     <rect
                       width={80}
                       height={22}
@@ -1253,14 +1436,14 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 )}
 
                 {/* Breakeven Button [BE] */}
-                {trade.status === 'OPEN' && trade.sl !== trade.entry_price && (
+                {isOpen && trade.sl !== entryPrice && (
                   <g
-                    transform="translate(362, 5)"
+                    transform="translate(422, 5)"
                     className="cursor-pointer"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onModifyTrade?.(trade.id, { sl: trade.entry_price });
-                      onShowToast?.(`Moved SL to Breakeven @ ${trade.entry_price.toFixed(5)}`);
+                      onModifyTrade?.(trade.id, { sl: entryPrice });
+                      onShowToast?.(`Moved SL to Breakeven @ ${entryPrice.toFixed(5)}`);
                     }}
                   >
                     <title>Move Stop Loss to Break-Even</title>
@@ -1287,15 +1470,16 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                   </g>
                 )}
 
-                {/* Close Trade Action Button directly on the chart line */}
-                {trade.status === 'OPEN' ? (
+                {/* Close / Cancel Button */}
+                {isOpen ? (
                   <g
-                    transform="translate(400, 5)"
-                    className="cursor-pointer"
+                    transform="translate(460, 5)"
+                    className="cursor-pointer pointer-events-auto"
                     onClick={(e) => {
                       e.stopPropagation();
                       onCloseTrade?.(trade.id);
                     }}
+                    onMouseDown={(e) => e.stopPropagation()}
                     data-testid={`on-chart-close-btn-${trade.id}`}
                   >
                     <rect
@@ -1305,7 +1489,12 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                       fill="#2a2e39"
                       stroke="#f23645"
                       strokeWidth={1}
-                      className="hover:fill-[#f23645] transition-colors"
+                      className="hover:fill-[#f23645] transition-colors pointer-events-auto cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onCloseTrade?.(trade.id);
+                      }}
+                      onMouseDown={(e) => e.stopPropagation()}
                     />
                     <text
                       x={31}
@@ -1319,26 +1508,32 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                       ✕ Close
                     </text>
                   </g>
-                ) : (
-                  /* Cancel Pending Order */
+                ) : isPending ? (
                   <g
-                    transform="translate(320, 5)"
-                    className="cursor-pointer"
+                    transform="translate(355, 5)"
+                    className="cursor-pointer pointer-events-auto"
                     onClick={(e) => {
                       e.stopPropagation();
                       onCancelTrade?.(trade.id);
                     }}
+                    onMouseDown={(e) => e.stopPropagation()}
                   >
                     <rect
-                      width={62}
+                      width={60}
                       height={22}
                       rx={4}
                       fill="#2a2e39"
                       stroke="#f23645"
                       strokeWidth={1}
+                      className="pointer-events-auto cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onCancelTrade?.(trade.id);
+                      }}
+                      onMouseDown={(e) => e.stopPropagation()}
                     />
                     <text
-                      x={31}
+                      x={30}
                       y={15}
                       fill="#ffffff"
                       fontSize={10}
@@ -1349,7 +1544,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                       ✕ Cancel
                     </text>
                   </g>
-                )}
+                ) : null}
               </g>
             </g>
           );
@@ -1358,7 +1553,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     );
   };
 
-  // Render Draggable Trade Setup Lines (Entry, SL, TP)
+  // Render Draggable Trade Setup Lines (TradingView-Style Position Setup Box)
   const renderDraggableTradeSetup = () => {
     if (!activeSetup || !activeSetup.active) return null;
 
@@ -1376,25 +1571,58 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     const slPips = (Math.abs(activeSetup.entryPrice - activeSetup.slPrice) / 0.0001).toFixed(1);
     const tpPips = (Math.abs(activeSetup.tpPrice - activeSetup.entryPrice) / 0.0001).toFixed(1);
 
+    const currentCandleTime = candles.length > 0 ? candles[candles.length - 1].time : Math.floor(Date.now() / 1000);
+    const currentX = transformer.timeToX(currentCandleTime);
+    const boxLeft = currentX !== null ? Math.max(10, currentX - 10) : 80;
+    const boxWidth = Math.max(220, Math.min(420, dimensions.width - boxLeft - 40));
+    const boxRight = boxLeft + boxWidth;
+    const cardX = Math.max(10, Math.min(boxLeft + 10, Math.max(10, dimensions.width - 450)));
+
     return (
-      <g className="trade-setup-overlay pointer-events-auto select-none">
+      <g className="trade-setup-overlay pointer-events-auto select-none" data-testid="trade-setup-overlay">
         {/* Shaded Profit Zone */}
         <rect
-          x={0}
+          x={boxLeft}
           y={minRewardY}
-          width="100%"
+          width={boxWidth}
           height={Math.max(1, maxRewardY - minRewardY)}
           fill="#089981"
-          fillOpacity={0.15}
+          fillOpacity={0.2}
+          stroke="#089981"
+          strokeWidth={1}
         />
         {/* Shaded Risk Zone */}
         <rect
-          x={0}
+          x={boxLeft}
           y={minRiskY}
-          width="100%"
+          width={boxWidth}
           height={Math.max(1, maxRiskY - minRiskY)}
           fill="#f23645"
-          fillOpacity={0.15}
+          fillOpacity={0.2}
+          stroke="#f23645"
+          strokeWidth={1}
+        />
+
+        {/* Bounding Vertical Side Lines */}
+        <line
+          x1={boxLeft}
+          y1={Math.min(minRewardY, minRiskY)}
+          x2={boxLeft}
+          y2={Math.max(maxRewardY, maxRiskY)}
+          stroke="#787b86"
+          strokeWidth={1}
+          strokeDasharray="2,2"
+          opacity={0.6}
+        />
+        <line
+          x1={boxRight}
+          y1={Math.min(minRewardY, minRiskY)}
+          x2={boxRight}
+          y2={Math.max(maxRewardY, maxRiskY)}
+          stroke="#787b86"
+          strokeWidth={1}
+          strokeDasharray="2,2"
+          opacity={0.6}
         />
 
         {/* 1. Take Profit Horizontal Line & Interactive Drag Hit Target */}
@@ -1408,23 +1636,33 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         >
           {/* 24px wide invisible hit area */}
           <line
-            x1={0}
+            x1={boxLeft}
             y1={tpY}
-            x2="100%"
+            x2={boxRight}
             y2={tpY}
             stroke="transparent"
             strokeWidth={24}
           />
           <line
-            x1={0}
+            x1={boxLeft}
             y1={tpY}
-            x2="100%"
+            x2={boxRight}
             y2={tpY}
             stroke="#089981"
             strokeWidth={2}
             strokeDasharray="4,4"
           />
-          <g transform={`translate(16, ${tpY - 12})`}>
+          {/* TP Anchor Handle Dot */}
+          <circle
+            cx={boxRight}
+            cy={tpY}
+            r={4.5}
+            fill="#089981"
+            stroke="#ffffff"
+            strokeWidth={1.5}
+            className="shadow"
+          />
+          <g transform={`translate(${boxLeft + 10}, ${tpY - 12})`}>
             <rect
               width={280}
               height={24}
@@ -1458,22 +1696,32 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         >
           {/* 24px wide invisible hit area */}
           <line
-            x1={0}
+            x1={boxLeft}
             y1={entryY}
-            x2="100%"
+            x2={boxRight}
             y2={entryY}
             stroke="transparent"
             strokeWidth={24}
           />
           <line
-            x1={0}
+            x1={boxLeft}
             y1={entryY}
-            x2="100%"
+            x2={boxRight}
             y2={entryY}
             stroke="#2962ff"
             strokeWidth={2.5}
           />
-          <g transform={`translate(16, ${entryY - 12})`}>
+          {/* Entry Anchor Handle Dot */}
+          <circle
+            cx={boxRight}
+            cy={entryY}
+            r={4.5}
+            fill="#2962ff"
+            stroke="#ffffff"
+            strokeWidth={1.5}
+            className="shadow"
+          />
+          <g transform={`translate(${boxLeft + 10}, ${entryY - 12})`}>
             <rect
               width={260}
               height={24}
@@ -1507,23 +1755,33 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         >
           {/* 24px wide invisible hit area */}
           <line
-            x1={0}
+            x1={boxLeft}
             y1={slY}
-            x2="100%"
+            x2={boxRight}
             y2={slY}
             stroke="transparent"
             strokeWidth={24}
           />
           <line
-            x1={0}
+            x1={boxLeft}
             y1={slY}
-            x2="100%"
+            x2={boxRight}
             y2={slY}
             stroke="#f23645"
             strokeWidth={2}
             strokeDasharray="4,4"
           />
-          <g transform={`translate(16, ${slY - 12})`}>
+          {/* SL Anchor Handle Dot */}
+          <circle
+            cx={boxRight}
+            cy={slY}
+            r={4.5}
+            fill="#f23645"
+            stroke="#ffffff"
+            strokeWidth={1.5}
+            className="shadow"
+          />
+          <g transform={`translate(${boxLeft + 10}, ${slY - 12})`}>
             <rect
               width={310}
               height={24}
@@ -1548,7 +1806,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
 
         {/* Central Risk / Reward Badge & Action Buttons */}
         <g
-          transform={`translate(290, ${entryY - 16})`}
+          transform={`translate(${cardX}, ${entryY + (activeSetup.type === 'BUY' ? 20 : -52)})`}
           className="pointer-events-auto"
           onMouseDown={(e) => e.stopPropagation()}
         >

@@ -116,6 +116,9 @@ export interface ComputedSessionBlock {
   session: SessionConfig;
   startTime: number;
   endTime: number;
+  firstCandleTime: number;
+  lastCandleTime: number;
+  lastCandleCloseTime: number;
   high: number;
   low: number;
   candleCount: number;
@@ -123,6 +126,7 @@ export interface ComputedSessionBlock {
 
 /**
  * Computes all active session blocks across visible candles.
+ * Boundaries are strictly derived from actual OHLC candle data.
  */
 export const computeSessionBlocks = (candles: Candle[]): ComputedSessionBlock[] => {
   if (!candles || candles.length === 0) return [];
@@ -143,11 +147,14 @@ export const computeSessionBlocks = (candles: Candle[]): ComputedSessionBlock[] 
   const blocks: ComputedSessionBlock[] = [];
 
   daysMap.forEach((dayCandles, midnightUtc) => {
+    // Sort candles chronologically within the day
+    dayCandles.sort((a, b) => a.time - b.time);
+
     for (const session of FOREX_SESSIONS) {
       const startTime = midnightUtc + session.startHourUtc * 3600 + session.startMinuteUtc * 60;
       const endTime = midnightUtc + session.endHourUtc * 3600 + session.endMinuteUtc * 60;
 
-      // Filter candles belonging to this session
+      // Filter candles belonging strictly to this session
       const matchingCandles = dayCandles.filter(c => c.time >= startTime && c.time < endTime);
       if (matchingCandles.length > 0) {
         let maxHigh = -Infinity;
@@ -157,11 +164,28 @@ export const computeSessionBlocks = (candles: Candle[]): ComputedSessionBlock[] 
           if (mc.low < minLow) minLow = mc.low;
         }
 
+        const firstCandle = matchingCandles[0];
+        const lastCandle = matchingCandles[matchingCandles.length - 1];
+
+        // Determine candle interval dynamically from consecutive candles
+        let candleStep = 60;
+        if (matchingCandles.length > 1) {
+          candleStep = matchingCandles[1].time - matchingCandles[0].time;
+        } else if (dayCandles.length > 1) {
+          candleStep = dayCandles[1].time - dayCandles[0].time;
+        }
+
+        // Closing time of final candle in this session
+        const lastCandleCloseTime = Math.min(endTime, lastCandle.time + candleStep);
+
         blocks.push({
           key: `${session.id}_${midnightUtc}`,
           session,
           startTime,
           endTime,
+          firstCandleTime: firstCandle.time,
+          lastCandleTime: lastCandle.time,
+          lastCandleCloseTime,
           high: maxHigh,
           low: minLow,
           candleCount: matchingCandles.length,
