@@ -20,6 +20,7 @@ import {
   ChevronUp,
   Scissors,
   Calendar,
+  Dices,
   Edit3,
   Wallet,
 } from 'lucide-react';
@@ -43,6 +44,7 @@ interface BottomPanelProps {
   onStartSelectCut?: () => void;
   isSelectingCut?: boolean;
   onOpenJumpDateTime?: () => void;
+  onRandomDateReplay?: () => void;
   replayTickIntervalSec?: number;
   onOpenBalanceModal?: () => void;
 }
@@ -64,6 +66,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   onStartSelectCut,
   isSelectingCut = false,
   onOpenJumpDateTime,
+  onRandomDateReplay,
   replayTickIntervalSec = 1.0,
   onOpenBalanceModal,
 }) => {
@@ -192,6 +195,17 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
             >
               <Calendar size={13} className="text-[#38bdf8]" />
               <span>Jump to Date</span>
+            </button>
+
+            {/* Random Date Backtest Jump */}
+            <button
+              onClick={onRandomDateReplay}
+              className="px-2 py-1 rounded bg-[#131722] border border-[#2a2e39] hover:border-[#a855f7] text-gray-200 hover:text-white flex items-center space-x-1 text-xs transition-colors"
+              title="Jump to a random past date for unbiased blind backtesting"
+              data-testid="random-date-btn"
+            >
+              <Dices size={13} className="text-[#a855f7]" />
+              <span>Random Date</span>
             </button>
 
             <div className="h-4 w-[1px] bg-[#2a2e39] mx-1" />

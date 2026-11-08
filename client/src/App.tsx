@@ -196,6 +196,7 @@ export const App: React.FC = () => {
   const [replayCurrentIndex, setReplayCurrentIndex] = useState<number>(0);
   const [replayMode, setReplayMode] = useState<ReplayMode>('candle');
   const [intrabarPhase, setIntrabarPhase] = useState<number>(3);
+  const [centerTrigger, setCenterTrigger] = useState<number>(0);
 
   // Chart Coordinate Transformer
   const [transformer, setTransformer] = useState<CoordinateTransformer>({
@@ -205,7 +206,7 @@ export const App: React.FC = () => {
     yToPrice: () => null,
   });
 
-  const chartHelpersRef = useRef<{ fitContent: () => void; resetScale: () => void } | null>(null);
+  const chartHelpersRef = useRef<{ fitContent: () => void; resetScale: () => void; centerOnLastCandle?: () => void } | null>(null);
 
   // Load Historical Candles
   const loadCandles = useCallback(async (tf: Timeframe) => {
@@ -641,12 +642,42 @@ export const App: React.FC = () => {
     replayEngine.startReplay(candle.time);
     setVisibleCandles(replayEngine.getVisibleCandles());
     setIsSelectingReplayCut(false);
+    setCenterTrigger(prev => prev + 1);
   };
 
   const handleJumpToTime = (epochSec: number) => {
     replayEngine.startReplay(epochSec);
     setVisibleCandles(replayEngine.getVisibleCandles());
     setIsJumpDateTimeModalOpen(false);
+    setCenterTrigger(prev => prev + 1);
+  };
+
+  // Jump to Random Date in history for blind, unpredictable backtesting
+  const handleRandomDateReplay = () => {
+    if (masterCandles.length === 0) return;
+    const total = masterCandles.length;
+    // Leave context on the left (at least 30-50 bars)
+    // AND don't pick too close to the recent live market (exclude recent 120-200 bars or last 25%)
+    const minIdx = Math.min(Math.floor(total * 0.1), 50);
+    const excludeRecent = Math.max(50, Math.min(200, Math.floor(total * 0.25)));
+    const maxIdx = Math.max(minIdx + 10, total - excludeRecent);
+    const randomIdx = Math.floor(Math.random() * (maxIdx - minIdx + 1)) + minIdx;
+    const targetCandle = masterCandles[randomIdx];
+
+    replayEngine.startReplay(targetCandle.time);
+    const visible = replayEngine.getVisibleCandles();
+    setVisibleCandles(visible);
+    setIsSelectingReplayCut(false);
+    setCenterTrigger(prev => prev + 1);
+
+    const dateStr = new Date(targetCandle.time * 1000).toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    showToast(`🎲 Jumped to Random Date: ${dateStr}`);
   };
 
   // Toggle Replay Mode
@@ -655,11 +686,15 @@ export const App: React.FC = () => {
       replayEngine.exitReplay();
       setVisibleCandles(masterCandles);
       setIsSelectingReplayCut(false);
+      setCenterTrigger(prev => prev + 1);
+      showToast('Exited Replay Mode');
     } else {
       if (masterCandles.length > 0) {
         const cutIdx = Math.max(0, masterCandles.length - 100);
         replayEngine.startReplay(cutIdx);
         setVisibleCandles(replayEngine.getVisibleCandles());
+        setCenterTrigger(prev => prev + 1);
+        showToast('Bar Replay Active: Centered on Price');
       }
     }
   };
@@ -694,6 +729,7 @@ export const App: React.FC = () => {
         onChartTypeChange={setChartType}
         replayActive={replayActive}
         onToggleReplay={handleToggleReplay}
+        onRandomDateReplay={handleRandomDateReplay}
         onOpenIndicators={() => setIsIndicatorsModalOpen(true)}
         onOpenSettings={() => setIsSettingsModalOpen(true)}
         onOpenSessions={() => setIsSessionsModalOpen(true)}
@@ -775,6 +811,7 @@ export const App: React.FC = () => {
               onChartInstanceReady={(inst) => { chartHelpersRef.current = inst; }}
               onChartClick={handleChartClick}
               hoveredCandleOverride={hoveredCandle}
+              centerTrigger={centerTrigger}
             />
 
             {/* Interactive Drawing Layer Canvas Overlay */}
@@ -871,6 +908,7 @@ export const App: React.FC = () => {
         onStartSelectCut={() => setIsSelectingReplayCut(true)}
         isSelectingCut={isSelectingReplayCut}
         onOpenJumpDateTime={() => setIsJumpDateTimeModalOpen(true)}
+        onRandomDateReplay={handleRandomDateReplay}
         replayTickIntervalSec={replayTickIntervalSec}
         onOpenBalanceModal={() => setIsBalanceModalOpen(true)}
       />

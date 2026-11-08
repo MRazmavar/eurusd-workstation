@@ -26,9 +26,10 @@ interface ChartContainerProps {
   quote: Quote | null;
   onTransformerReady: (t: CoordinateTransformer) => void;
   onCrosshairMove?: (param: { time?: number; price?: number; candle?: Candle }) => void;
-  onChartInstanceReady?: (instance: { fitContent: () => void; resetScale: () => void }) => void;
+  onChartInstanceReady?: (instance: { fitContent: () => void; resetScale: () => void; centerOnLastCandle?: () => void }) => void;
   onChartClick?: (point: { x: number; y: number }) => void;
   hoveredCandleOverride?: Candle | null;
+  centerTrigger?: number;
 }
 
 export const ChartContainer: React.FC<ChartContainerProps> = ({
@@ -42,6 +43,7 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
   onChartInstanceReady,
   onChartClick,
   hoveredCandleOverride,
+  centerTrigger,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -218,6 +220,36 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
     onTransformerReady(transformer);
   }, [onTransformerReady]);
 
+  const centerOnLastCandle = useCallback(() => {
+    if (!chartRef.current || !seriesRef.current) return;
+    const chart = chartRef.current;
+    const list = candlesRef.current;
+    if (!list || list.length === 0) return;
+
+    const lastIdx = list.length - 1;
+    const leftBars = Math.min(45, Math.floor(lastIdx * 0.8));
+    const rightBars = 25;
+    const from = Math.max(0, lastIdx - leftBars);
+    const to = lastIdx + rightBars;
+
+    try {
+      chart.timeScale().setVisibleLogicalRange({ from, to });
+      chart.priceScale('right').applyOptions({ autoScale: true });
+    } catch (e) {
+      console.warn('Error centering on last candle:', e);
+    }
+    updateTransformer();
+  }, [updateTransformer]);
+
+  // Respond to centerTrigger to center the last candle and keep price in center of chart
+  useEffect(() => {
+    if (centerTrigger === undefined || centerTrigger === 0) return;
+    const timer = setTimeout(() => {
+      centerOnLastCandle();
+    }, 40);
+    return () => clearTimeout(timer);
+  }, [centerTrigger, centerOnLastCandle]);
+
   // Create chart instance
   useEffect(() => {
     if (!containerRef.current) return;
@@ -278,6 +310,7 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
       onChartInstanceReady({
         fitContent: () => chart.timeScale().fitContent(),
         resetScale: () => chart.timeScale().resetTimeScale(),
+        centerOnLastCandle: () => centerOnLastCandle(),
       });
     }
 

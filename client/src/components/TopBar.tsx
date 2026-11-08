@@ -22,6 +22,7 @@ import {
   ShieldCheck,
   Wallet,
   Edit3,
+  Dices,
 } from 'lucide-react';
 import { ChartType, Timeframe, Quote } from '../types';
 
@@ -33,6 +34,7 @@ interface TopBarProps {
   onChartTypeChange: (ct: ChartType) => void;
   replayActive: boolean;
   onToggleReplay: () => void;
+  onRandomDateReplay?: () => void;
   onOpenIndicators: () => void;
   onOpenSettings: () => void;
   onOpenSessions?: () => void;
@@ -75,6 +77,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onChartTypeChange,
   replayActive,
   onToggleReplay,
+  onRandomDateReplay,
   onOpenIndicators,
   onOpenSettings,
   onOpenSessions,
@@ -321,6 +324,17 @@ export const TopBar: React.FC<TopBarProps> = ({
         >
           <Play size={13} className={replayActive ? 'fill-white' : 'text-[#089981]'} />
           <span className="font-semibold">Bar Replay</span>
+        </button>
+
+        {/* Random Date Backtest Button */}
+        <button
+          onClick={onRandomDateReplay}
+          data-testid="topbar-random-date-btn"
+          className="flex items-center space-x-1.5 px-2.5 py-1 rounded border transition-colors bg-[#1e222d] border-[#2a2e39] text-purple-300 hover:text-white hover:border-purple-500 hover:bg-[#2a2e39]"
+          title="Jump to a random historical date for blind backtesting"
+        >
+          <Dices size={13} className="text-purple-400" />
+          <span className="font-semibold">Random Date</span>
         </button>
 
         {/* Sessions Button */}
