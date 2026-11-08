@@ -2,7 +2,7 @@
  * Floating Context Toolbar for selected drawing objects.
  */
 import React from 'react';
-import { Trash2, Copy, Lock, Unlock, Palette, Settings } from 'lucide-react';
+import { Trash2, Copy, CopyPlus, Lock, Unlock, Palette, Settings, Scissors } from 'lucide-react';
 import { DrawingObject } from '../types';
 
 interface DrawingToolbarPopupProps {
@@ -10,6 +10,8 @@ interface DrawingToolbarPopupProps {
   position: { x: number; y: number };
   onUpdate: (updated: DrawingObject) => void;
   onDuplicate: (drawing: DrawingObject) => void;
+  onCopy?: (drawing: DrawingObject) => void;
+  onCut?: (drawing: DrawingObject) => void;
   onDelete: (id: string) => void;
   onOpenProperties?: (drawing: DrawingObject) => void;
 }
@@ -21,6 +23,8 @@ export const DrawingToolbarPopup: React.FC<DrawingToolbarPopupProps> = ({
   position,
   onUpdate,
   onDuplicate,
+  onCopy,
+  onCut,
   onDelete,
   onOpenProperties,
 }) => {
@@ -141,6 +145,38 @@ export const DrawingToolbarPopup: React.FC<DrawingToolbarPopupProps> = ({
         </button>
       )}
 
+      {/* Copy */}
+      {onCopy && (
+        <button
+          type="button"
+          data-testid="copy-drawing-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            onCopy(drawing);
+          }}
+          className="p-1 rounded text-gray-300 hover:bg-[#2a2e39] hover:text-white transition-colors"
+          title="Copy Object (Ctrl+C)"
+        >
+          <Copy size={13} />
+        </button>
+      )}
+
+      {/* Cut */}
+      {onCut && (
+        <button
+          type="button"
+          data-testid="cut-drawing-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            onCut(drawing);
+          }}
+          className="p-1 rounded text-gray-300 hover:bg-[#2a2e39] hover:text-white transition-colors"
+          title="Cut Object (Ctrl+X)"
+        >
+          <Scissors size={13} />
+        </button>
+      )}
+
       {/* Duplicate */}
       <button
         type="button"
@@ -150,9 +186,9 @@ export const DrawingToolbarPopup: React.FC<DrawingToolbarPopupProps> = ({
           onDuplicate(drawing);
         }}
         className="p-1 rounded text-gray-300 hover:bg-[#2a2e39] hover:text-white transition-colors"
-        title="Duplicate Object"
+        title="Duplicate Object (Ctrl+D)"
       >
-        <Copy size={13} />
+        <CopyPlus size={13} />
       </button>
 
       {/* Lock / Unlock */}

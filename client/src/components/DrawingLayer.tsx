@@ -66,6 +66,10 @@ interface DrawingLayerProps {
   onSelectReplayCutCandle?: (candle: Candle) => void;
   onCancelSelectReplayCut?: () => void;
   onOpenPropertiesModal?: (drawing: DrawingObject) => void;
+  onCopyDrawing?: (drawing: DrawingObject) => void;
+  onCutDrawing?: (drawing: DrawingObject) => void;
+  onDuplicateDrawing?: (drawing: DrawingObject) => void;
+  onShowToast?: (msg: string) => void;
 }
 
 export const DrawingLayer: React.FC<DrawingLayerProps> = ({
@@ -91,6 +95,10 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   onSelectReplayCutCandle,
   onCancelSelectReplayCut,
   onOpenPropertiesModal,
+  onCopyDrawing,
+  onCutDrawing,
+  onDuplicateDrawing,
+  onShowToast,
 }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null);
@@ -526,6 +534,40 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     if (!isDrawingToolActive) {
       const hit = DrawingEngine.hitTest({ x: mouse.x, y: mouse.y }, drawings, transformer, 12, selectedId);
       if (hit) {
+        // Holding Control button clones the tool on drag!
+        const isCloning = (e.ctrlKey || e.metaKey || isCtrlPressed) && !hit.drawing.locked;
+        if (isCloning) {
+          const cloned: DrawingObject = {
+            ...hit.drawing,
+            id: `draw_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            created_at: Date.now(),
+            updated_at: Date.now(),
+          };
+          onAdd(cloned);
+          onSelect(cloned.id);
+
+          const rect = svgRef.current?.getBoundingClientRect();
+          const rawX = e.clientX - (rect?.left || 0);
+          const rawY = e.clientY - (rect?.top || 0);
+
+          const currentTransformer = transformerRef.current;
+          const startLog = currentTransformer.xToLogical ? currentTransformer.xToLogical(rawX) : null;
+          const startP = currentTransformer.yToPrice ? currentTransformer.yToPrice(rawY) : null;
+          const initLogs = cloned.points.map(pt => currentTransformer.timeToLogical ? currentTransformer.timeToLogical(pt.time) ?? 0 : 0);
+
+          setDragState({
+            drawingId: cloned.id,
+            pointIndex: hit.pointIndex,
+            startMouse: { x: rawX, y: rawY },
+            initialPoints: [...cloned.points],
+            initialLogicals: initLogs,
+            startLogical: startLog ?? 0,
+            startPrice: startP ?? 0,
+          });
+          onShowToast?.(`Cloned ${hit.drawing.type.replace('_', ' ')} (Ctrl-drag)`);
+          return;
+        }
+
         onSelect(hit.drawing.id);
         if (!hit.drawing.locked) {
           const rect = svgRef.current?.getBoundingClientRect();
@@ -955,6 +997,38 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         onMouseDown={(e) => {
           if (!isDrawingToolActive && !isTemp && !d.locked) {
             e.stopPropagation();
+            const isCloning = e.ctrlKey || e.metaKey || isCtrlPressed;
+            if (isCloning) {
+              const cloned: DrawingObject = {
+                ...d,
+                id: `draw_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                created_at: Date.now(),
+                updated_at: Date.now(),
+              };
+              onAdd(cloned);
+              onSelect(cloned.id);
+
+              const rect = svgRef.current?.getBoundingClientRect();
+              const rawX = e.clientX - (rect?.left || 0);
+              const rawY = e.clientY - (rect?.top || 0);
+
+              const currentTransformer = transformerRef.current;
+              const startLog = currentTransformer.xToLogical ? currentTransformer.xToLogical(rawX) : null;
+              const startP = currentTransformer.yToPrice ? currentTransformer.yToPrice(rawY) : null;
+              const initLogs = cloned.points.map(pt => currentTransformer.timeToLogical ? currentTransformer.timeToLogical(pt.time) ?? 0 : 0);
+
+              setDragState({
+                drawingId: cloned.id,
+                startMouse: { x: rawX, y: rawY },
+                initialPoints: [...cloned.points],
+                initialLogicals: initLogs,
+                startLogical: startLog ?? 0,
+                startPrice: startP ?? 0,
+              });
+              onShowToast?.(`Cloned ${d.type.replace('_', ' ')} (Ctrl-drag)`);
+              return;
+            }
+
             onSelect(d.id);
             const rect = svgRef.current?.getBoundingClientRect();
             const rawX = e.clientX - (rect?.left || 0);
@@ -987,7 +1061,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
               stroke="transparent"
               strokeWidth={Math.max(16, strokeWidth + 12)}
               strokeLinecap="round"
-              className="cursor-move pointer-events-auto"
+              className={`${isCtrlPressed ? 'cursor-copy' : 'cursor-move'} pointer-events-auto`}
             />
             <line
               x1={screenPts[0].x}
@@ -1019,7 +1093,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 stroke="transparent"
                 strokeWidth={Math.max(16, strokeWidth + 12)}
                 strokeLinecap="round"
-                className="cursor-move pointer-events-auto"
+                className={`${isCtrlPressed ? 'cursor-copy' : 'cursor-move'} pointer-events-auto`}
               />
               <line
                 x1={screenPts[0].x}
@@ -1054,7 +1128,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 stroke="transparent"
                 strokeWidth={Math.max(16, strokeWidth + 12)}
                 strokeLinecap="round"
-                className="cursor-move pointer-events-auto"
+                className={`${isCtrlPressed ? 'cursor-copy' : 'cursor-move'} pointer-events-auto`}
               />
               <line
                 x1={startX}
@@ -1082,7 +1156,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 stroke="transparent"
                 strokeWidth={Math.max(16, strokeWidth + 12)}
                 strokeLinecap="round"
-                className="cursor-move pointer-events-auto"
+                className={`${isCtrlPressed ? 'cursor-copy' : 'cursor-move'} pointer-events-auto`}
               />
               <line
                 x1={screenPts[0].x}
@@ -1117,7 +1191,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
               y2={screenPts[0].y}
               stroke="transparent"
               strokeWidth={Math.max(16, strokeWidth + 12)}
-              className="cursor-move pointer-events-auto"
+              className={`${isCtrlPressed ? 'cursor-copy' : 'cursor-move'} pointer-events-auto`}
             />
             <line
               x1={0}
@@ -1161,7 +1235,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
               y2={screenPts[0].y}
               stroke="transparent"
               strokeWidth={Math.max(16, strokeWidth + 12)}
-              className="cursor-move pointer-events-auto"
+              className={`${isCtrlPressed ? 'cursor-copy' : 'cursor-move'} pointer-events-auto`}
             />
             <line
               x1={screenPts[0].x}
@@ -1186,7 +1260,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
               y2={3000}
               stroke="transparent"
               strokeWidth={Math.max(16, strokeWidth + 12)}
-              className="cursor-move pointer-events-auto"
+              className={`${isCtrlPressed ? 'cursor-copy' : 'cursor-move'} pointer-events-auto`}
             />
             <line
               x1={screenPts[0].x}
@@ -1346,7 +1420,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
               stroke="transparent"
               strokeWidth={Math.max(16, strokeWidth + 12)}
               strokeLinecap="round"
-              className="cursor-move pointer-events-auto"
+              className={`${isCtrlPressed ? 'cursor-copy' : 'cursor-move'} pointer-events-auto`}
             />
             <line
               x1={screenPts[0].x}
@@ -1370,7 +1444,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
               strokeWidth={Math.max(16, strokeWidth + 12)}
               strokeLinecap="round"
               strokeLinejoin="round"
-              className="cursor-move pointer-events-auto"
+              className={`${isCtrlPressed ? 'cursor-copy' : 'cursor-move'} pointer-events-auto`}
             />
             <polyline
               points={screenPts.map(pt => `${pt.x},${pt.y}`).join(' ')}
@@ -1639,6 +1713,28 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 onMouseDown={(e) => {
                   e.stopPropagation();
                   e.preventDefault();
+                  const isCloning = (e.ctrlKey || e.metaKey || isCtrlPressed) && !d.locked;
+                  if (isCloning) {
+                    const cloned: DrawingObject = {
+                      ...d,
+                      id: `draw_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                      created_at: Date.now(),
+                      updated_at: Date.now(),
+                    };
+                    onAdd(cloned);
+                    onSelect(cloned.id);
+                    const rect = svgRef.current?.getBoundingClientRect();
+                    const rawX = e.clientX - (rect?.left || 0);
+                    const rawY = e.clientY - (rect?.top || 0);
+                    setDragState({
+                      drawingId: cloned.id,
+                      pointIndex: idx,
+                      startMouse: { x: rawX, y: rawY },
+                      initialPoints: [...cloned.points],
+                    });
+                    onShowToast?.(`Cloned ${d.type.replace('_', ' ')} (Ctrl-drag)`);
+                    return;
+                  }
                   const rect = svgRef.current?.getBoundingClientRect();
                   const rawX = e.clientX - (rect?.left || 0);
                   const rawY = e.clientY - (rect?.top || 0);
@@ -1964,7 +2060,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             y: transformer.priceToY(selectedDrawing.points[0].price) ?? 200,
           }}
           onUpdate={onUpdate}
-          onDuplicate={(orig) => {
+          onDuplicate={onDuplicateDrawing || ((orig) => {
             const dupl: DrawingObject = {
               ...orig,
               id: `draw_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -1974,7 +2070,10 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             };
             onAdd(dupl);
             onSelect(dupl.id);
-          }}
+            onShowToast?.(`Duplicated ${orig.type.replace('_', ' ')}`);
+          })}
+          onCopy={onCopyDrawing}
+          onCut={onCutDrawing}
           onDelete={onDelete}
           onOpenProperties={onOpenPropertiesModal}
         />

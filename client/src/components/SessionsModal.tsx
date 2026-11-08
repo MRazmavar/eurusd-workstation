@@ -192,56 +192,59 @@ export const SessionsModal: React.FC<SessionsModalProps> = ({
                 No saved backtesting sessions yet. Save your current progress above!
               </div>
             ) : (
-              sessions.map((s, idx) => (
-                <div
-                  key={s.session_id || s.id || `session-${idx}`}
-                  className="bg-[#131722] p-3 rounded-lg border border-[#2a2e39] flex items-center justify-between hover:border-[#363c4e] transition-colors"
-                >
-                  <div className="space-y-1">
-                    <div className="font-bold text-white text-sm">{s.name}</div>
-                    <div className="flex items-center space-x-3 text-[10px] text-gray-400 font-mono">
-                      <span>{new Date(s.updated_at).toLocaleDateString()}</span>
-                      <span>{s.trades?.length || 0} Trades</span>
-                      <span>{s.drawings?.length || 0} Drawings</span>
-                      <span className="text-[#2962ff]">{s.timeframe || '1h'}</span>
+              sessions.map((s, idx) => {
+                const sid = s.session_id || (s as any).id || `session-${idx}`;
+                return (
+                  <div
+                    key={sid}
+                    className="bg-[#131722] p-3 rounded-lg border border-[#2a2e39] flex items-center justify-between hover:border-[#363c4e] transition-colors"
+                  >
+                    <div className="space-y-1">
+                      <div className="font-bold text-white text-sm">{s.name}</div>
+                      <div className="flex items-center space-x-3 text-[10px] text-gray-400 font-mono">
+                        <span>{new Date(s.updated_at).toLocaleDateString()}</span>
+                        <span>{s.trades?.length || 0} Trades</span>
+                        <span>{s.drawings?.length || 0} Drawings</span>
+                        <span className="text-[#2962ff]">{s.timeframe || '1h'}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-1.5">
+                      {/* Load */}
+                      <button
+                        onClick={async () => {
+                          try {
+                            const full = await marketClient.fetchSession(sid);
+                            onLoadSession(full);
+                          } catch {
+                            onLoadSession(s);
+                          }
+                          onClose();
+                        }}
+                        className="px-2.5 py-1 rounded bg-[#089981]/20 hover:bg-[#089981] text-[#089981] hover:text-white font-semibold transition-colors border border-[#089981]/40"
+                      >
+                        Load
+                      </button>
+                      {/* Export */}
+                      <button
+                        onClick={() => handleExportJSON(s)}
+                        className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#2a2e39]"
+                        title="Export JSON"
+                      >
+                        <Download size={14} />
+                      </button>
+                      {/* Delete */}
+                      <button
+                        onClick={() => handleDeleteSession(sid)}
+                        className="p-1 rounded text-gray-400 hover:text-[#f23645] hover:bg-[#2a2e39]"
+                        title="Delete"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div>
                   </div>
-
-                  <div className="flex items-center space-x-1.5">
-                    {/* Load */}
-                    <button
-                      onClick={async () => {
-                        try {
-                          const full = await marketClient.fetchSession(s.session_id || s.id);
-                          onLoadSession(full);
-                        } catch {
-                          onLoadSession(s);
-                        }
-                        onClose();
-                      }}
-                      className="px-2.5 py-1 rounded bg-[#089981]/20 hover:bg-[#089981] text-[#089981] hover:text-white font-semibold transition-colors border border-[#089981]/40"
-                    >
-                      Load
-                    </button>
-                    {/* Export */}
-                    <button
-                      onClick={() => handleExportJSON(s)}
-                      className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#2a2e39]"
-                      title="Export JSON"
-                    >
-                      <Download size={14} />
-                    </button>
-                    {/* Delete */}
-                    <button
-                      onClick={() => handleDeleteSession(s.session_id || s.id)}
-                      className="p-1 rounded text-gray-400 hover:text-[#f23645] hover:bg-[#2a2e39]"
-                      title="Delete"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

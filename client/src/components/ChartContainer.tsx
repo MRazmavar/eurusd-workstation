@@ -50,6 +50,12 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
   const [hoveredCandle, setHoveredCandle] = useState<Candle | null>(null);
   const candlesRef = useRef<Candle[]>(candles);
   const onChartClickRef = useRef(onChartClick);
+  const timeframeRef = useRef(timeframe);
+  const restoredTfMapRef = useRef<{ [tf: string]: boolean }>({});
+
+  useEffect(() => {
+    timeframeRef.current = timeframe;
+  }, [timeframe]);
 
   useEffect(() => {
     candlesRef.current = candles;
@@ -275,9 +281,43 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
       });
     }
 
-    chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+    chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+      if (range) {
+        try {
+          localStorage.setItem(`eurusd_logical_range_${timeframeRef.current}`, JSON.stringify(range));
+        } catch {}
+      }
       updateTransformer();
     });
+
+    chart.timeScale().subscribeVisibleTimeRangeChange((range) => {
+      if (range && range.from && range.to) {
+        try {
+          localStorage.setItem(`eurusd_time_range_${timeframeRef.current}`, JSON.stringify({ from: range.from, to: range.to }));
+        } catch {}
+      }
+    });
+
+    // Keep chart layout and viewport position perfectly intact when tab is backgrounded or hidden
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && chartRef.current && containerRef.current) {
+        const w = containerRef.current.clientWidth;
+        const h = containerRef.current.clientHeight;
+        if (w > 0 && h > 0) {
+          chartRef.current.applyOptions({ width: w, height: h });
+        }
+        const savedRange = localStorage.getItem(`eurusd_logical_range_${timeframeRef.current}`);
+        if (savedRange) {
+          try {
+            chartRef.current.timeScale().setVisibleLogicalRange(JSON.parse(savedRange));
+          } catch {}
+        }
+        updateTransformer();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleVisibilityChange);
 
     // Handle canvas clicks for drawing selection and deselection
     chart.subscribeClick((param) => {
@@ -340,6 +380,8 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
     return () => {
       resizeObserver.disconnect();
       window.removeEventListener('resize', handleResize);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleVisibilityChange);
       seriesRef.current = null;
       indicatorSeriesRef.current.clear();
       chart.remove();
@@ -457,6 +499,25 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
         close: c.close,
       }));
       seriesRef.current.setData(barData);
+    }
+
+    // Restore remembered viewport position for this timeframe
+    if (!restoredTfMapRef.current[timeframe] && chartRef.current && candles.length > 0) {
+      const savedRange = localStorage.getItem(`eurusd_logical_range_${timeframe}`);
+      const savedTimeRange = localStorage.getItem(`eurusd_time_range_${timeframe}`);
+      if (savedRange) {
+        try {
+          const parsed = JSON.parse(savedRange);
+          chartRef.current.timeScale().setVisibleLogicalRange(parsed);
+          restoredTfMapRef.current[timeframe] = true;
+        } catch {}
+      } else if (savedTimeRange) {
+        try {
+          const parsed = JSON.parse(savedTimeRange);
+          chartRef.current.timeScale().setVisibleRange(parsed);
+          restoredTfMapRef.current[timeframe] = true;
+        } catch {}
+      }
     }
 
     updateTransformer();

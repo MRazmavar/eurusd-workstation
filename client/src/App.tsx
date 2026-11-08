@@ -65,28 +65,103 @@ const DEFAULT_INDICATORS: IndicatorConfig[] = [
 ];
 
 export const App: React.FC = () => {
-  // Market & Chart State
+  // Market & Chart State (with Persistent Local Storage Memory)
   const [quote, setQuote] = useState<Quote | null>(null);
-  const [timeframe, setTimeframe] = useState<Timeframe>('1h');
-  const [chartType, setChartType] = useState<ChartType>('candlestick');
+  const [timeframe, setTimeframe] = useState<Timeframe>(() => {
+    return (localStorage.getItem('eurusd_saved_timeframe') as Timeframe) || '1h';
+  });
+  const [chartType, setChartType] = useState<ChartType>(() => {
+    return (localStorage.getItem('eurusd_saved_chart_type') as ChartType) || 'candlestick';
+  });
   const [masterCandles, setMasterCandles] = useState<Candle[]>([]);
   const [visibleCandles, setVisibleCandles] = useState<Candle[]>([]);
   const [isLoadingCandles, setIsLoadingCandles] = useState<boolean>(true);
 
-  // Drawing Tools State
-  const [drawings, setDrawings] = useState<DrawingObject[]>([]);
+  // Drawing Tools State (with Instant Local Storage Restore)
+  const [drawings, setDrawings] = useState<DrawingObject[]>(() => {
+    try {
+      const saved = localStorage.getItem('eurusd_saved_drawings');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [activeTool, setActiveTool] = useState<DrawingToolType>('crosshair');
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [editingDrawing, setEditingDrawing] = useState<DrawingObject | null>(null);
-  const [magnetMode, setMagnetMode] = useState<MagnetMode>('weak');
+  const [magnetMode, setMagnetMode] = useState<MagnetMode>(() => {
+    return (localStorage.getItem('eurusd_saved_magnet_mode') as MagnetMode) || 'weak';
+  });
   const [lockedAll, setLockedAll] = useState<boolean>(false);
   const [hiddenAll, setHiddenAll] = useState<boolean>(false);
   const [chartMousePos, setChartMousePos] = useState<{ x: number; y: number } | null>(null);
   const [hoveredCandle, setHoveredCandle] = useState<Candle | null>(null);
 
-  // Indicators State
-  const [indicators, setIndicators] = useState<IndicatorConfig[]>(DEFAULT_INDICATORS);
+  // Indicators State (with Persistence)
+  const [indicators, setIndicators] = useState<IndicatorConfig[]>(() => {
+    try {
+      const saved = localStorage.getItem('eurusd_saved_indicators');
+      return saved ? JSON.parse(saved) : DEFAULT_INDICATORS;
+    } catch {
+      return DEFAULT_INDICATORS;
+    }
+  });
   const [isIndicatorsModalOpen, setIsIndicatorsModalOpen] = useState<boolean>(false);
+
+  // HUD Toast Notification
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<any>(null);
+
+  const showToast = useCallback((msg: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToastMessage(msg);
+    toastTimerRef.current = setTimeout(() => {
+      setToastMessage(null);
+    }, 2200);
+  }, []);
+
+  // Drawing Clipboard & Undo/Redo Stacks
+  const clipboardRef = useRef<DrawingObject | null>((() => {
+    try {
+      const saved = localStorage.getItem('eurusd_drawing_clipboard');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  })());
+  const undoStackRef = useRef<DrawingObject[][]>([]);
+  const redoStackRef = useRef<DrawingObject[][]>([]);
+
+  // Automatic Persistence Effects
+  useEffect(() => {
+    try {
+      localStorage.setItem('eurusd_saved_timeframe', timeframe);
+    } catch {}
+  }, [timeframe]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('eurusd_saved_chart_type', chartType);
+    } catch {}
+  }, [chartType]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('eurusd_saved_magnet_mode', magnetMode);
+    } catch {}
+  }, [magnetMode]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('eurusd_saved_indicators', JSON.stringify(indicators));
+    } catch {}
+  }, [indicators]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('eurusd_saved_drawings', JSON.stringify(drawings));
+    } catch {}
+  }, [drawings]);
 
   // Trades & Backtesting State
   const [trades, setTrades] = useState<Trade[]>([]);
@@ -216,11 +291,220 @@ export const App: React.FC = () => {
     loadCandles(newTf);
   };
 
-  // Keyboard Shortcuts
+  // Drawing History & Undo/Redo Engine
+  const pushUndoSnapshot = useCallback((snapshot: DrawingObject[]) => {
+    undoStackRef.current.push(JSON.parse(JSON.stringify(snapshot)));
+    if (undoStackRef.current.length > 40) {
+      undoStackRef.current.shift();
+    }
+    redoStackRef.current = [];
+  }, []);
+
+  const formatToolName = (type: string) => {
+    return type
+      .split('_')
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+  };
+
+  const getTimeframeSeconds = (tf: string): number => {
+    if (tf.endsWith('s')) return parseInt(tf) || 30;
+    if (tf.endsWith('m')) return (parseInt(tf) || 1) * 60;
+    if (tf.endsWith('h')) return (parseInt(tf) || 1) * 3600;
+    if (tf.endsWith('D')) return (parseInt(tf) || 1) * 86400;
+    if (tf.endsWith('W')) return (parseInt(tf) || 1) * 604800;
+    return 3600;
+  };
+
+  const handleCopyDrawing = useCallback((target?: DrawingObject | null) => {
+    const d = target || drawings.find(item => item.id === selectedDrawingId);
+    if (!d) return;
+    clipboardRef.current = JSON.parse(JSON.stringify(d));
+    try {
+      localStorage.setItem('eurusd_drawing_clipboard', JSON.stringify(d));
+    } catch {}
+    showToast(`Copied ${formatToolName(d.type)} (Ctrl+V to paste)`);
+  }, [drawings, selectedDrawingId, showToast]);
+
+  const handleCutDrawing = useCallback((target?: DrawingObject | null) => {
+    const d = target || drawings.find(item => item.id === selectedDrawingId);
+    if (!d) return;
+    handleCopyDrawing(d);
+    pushUndoSnapshot(drawings);
+    setDrawings(prev => prev.filter(item => item.id !== d.id));
+    if (selectedDrawingId === d.id) setSelectedDrawingId(null);
+    marketClient.deleteDrawing(d.id);
+    showToast(`Cut ${formatToolName(d.type)}`);
+  }, [drawings, selectedDrawingId, handleCopyDrawing, pushUndoSnapshot, showToast]);
+
+  const handlePasteDrawing = useCallback(() => {
+    let source = clipboardRef.current;
+    if (!source) {
+      try {
+        const saved = localStorage.getItem('eurusd_drawing_clipboard');
+        if (saved) source = JSON.parse(saved);
+      } catch {}
+    }
+    if (!source || !source.points || source.points.length === 0) {
+      showToast('Clipboard is empty (Select a tool and press Ctrl+C)');
+      return;
+    }
+
+    let deltaT = 0;
+    let deltaP = 0;
+
+    if (chartMousePos && transformer.xToTime && transformer.yToPrice) {
+      const mouseT = transformer.xToTime(chartMousePos.x);
+      const mouseP = transformer.yToPrice(chartMousePos.y);
+      if (mouseT !== null && mouseP !== null && source.points.length > 0) {
+        deltaT = mouseT - source.points[0].time;
+        deltaP = Number((mouseP - source.points[0].price).toFixed(5));
+      }
+    }
+
+    // Default offset if mouse is not over chart (+5 bars, +2 pips)
+    if (deltaT === 0 && deltaP === 0) {
+      const stepSec = getTimeframeSeconds(timeframe);
+      deltaT = stepSec * 5;
+      deltaP = 0.00020;
+    }
+
+    const newPoints = source.points.map(pt => ({
+      time: pt.time + deltaT,
+      price: Number((pt.price + deltaP).toFixed(5)),
+    }));
+
+    const pasted: DrawingObject = {
+      ...source,
+      id: `draw_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      points: newPoints,
+      created_at: Date.now(),
+      updated_at: Date.now(),
+    };
+
+    pushUndoSnapshot(drawings);
+    setDrawings(prev => [...prev, pasted]);
+    setSelectedDrawingId(pasted.id);
+    marketClient.saveDrawing(pasted);
+    showToast(`Pasted ${formatToolName(pasted.type)}`);
+  }, [chartMousePos, transformer, timeframe, drawings, pushUndoSnapshot, showToast]);
+
+  const handleDuplicateDrawing = useCallback((target?: DrawingObject | null) => {
+    const d = target || drawings.find(item => item.id === selectedDrawingId);
+    if (!d) return;
+    const stepSec = getTimeframeSeconds(timeframe);
+    const deltaT = stepSec * 4;
+    const deltaP = 0.00015;
+
+    const duplicated: DrawingObject = {
+      ...d,
+      id: `draw_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      points: d.points.map(pt => ({
+        time: pt.time + deltaT,
+        price: Number((pt.price + deltaP).toFixed(5)),
+      })),
+      created_at: Date.now(),
+      updated_at: Date.now(),
+    };
+
+    pushUndoSnapshot(drawings);
+    setDrawings(prev => [...prev, duplicated]);
+    setSelectedDrawingId(duplicated.id);
+    marketClient.saveDrawing(duplicated);
+    showToast(`Duplicated ${formatToolName(duplicated.type)}`);
+  }, [drawings, selectedDrawingId, timeframe, pushUndoSnapshot, showToast]);
+
+  const handleUndo = useCallback(() => {
+    if (undoStackRef.current.length === 0) {
+      showToast('Nothing to undo');
+      return;
+    }
+    const previous = undoStackRef.current.pop()!;
+    redoStackRef.current.push(JSON.parse(JSON.stringify(drawings)));
+    setDrawings(previous);
+    marketClient.clearAllDrawings().then(() => {
+      previous.forEach(d => marketClient.saveDrawing(d));
+    });
+    showToast('Undo Drawing Action');
+  }, [drawings, showToast]);
+
+  const handleRedo = useCallback(() => {
+    if (redoStackRef.current.length === 0) {
+      showToast('Nothing to redo');
+      return;
+    }
+    const next = redoStackRef.current.pop()!;
+    undoStackRef.current.push(JSON.parse(JSON.stringify(drawings)));
+    setDrawings(next);
+    marketClient.clearAllDrawings().then(() => {
+      next.forEach(d => marketClient.saveDrawing(d));
+    });
+    showToast('Redo Drawing Action');
+  }, [drawings, showToast]);
+
+  // Keyboard Shortcuts (Including Control Button Operations)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const isInput = (e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA';
+      if (isInput) return;
+
+      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+
+      if (isCtrlOrCmd) {
+        // Ctrl + C: Copy drawing
+        if (e.key === 'c' || e.key === 'C') {
+          if (selectedDrawingId) {
+            e.preventDefault();
+            handleCopyDrawing();
+          }
+        }
+        // Ctrl + V: Paste drawing
+        else if (e.key === 'v' || e.key === 'V') {
+          e.preventDefault();
+          handlePasteDrawing();
+        }
+        // Ctrl + X: Cut drawing
+        else if (e.key === 'x' || e.key === 'X') {
+          if (selectedDrawingId) {
+            e.preventDefault();
+            handleCutDrawing();
+          }
+        }
+        // Ctrl + D: Duplicate drawing
+        else if (e.key === 'd' || e.key === 'D') {
+          if (selectedDrawingId) {
+            e.preventDefault();
+            handleDuplicateDrawing();
+          }
+        }
+        // Ctrl + Z: Undo / Redo
+        else if (e.key === 'z' || e.key === 'Z') {
+          e.preventDefault();
+          if (e.shiftKey) {
+            handleRedo();
+          } else {
+            handleUndo();
+          }
+        }
+        // Ctrl + Y: Redo
+        else if (e.key === 'y' || e.key === 'Y') {
+          e.preventDefault();
+          handleRedo();
+        }
+        // Ctrl + A: Cycle or select all drawings
+        else if (e.key === 'a' || e.key === 'A') {
+          if (drawings.length > 0) {
+            e.preventDefault();
+            const curIdx = drawings.findIndex(d => d.id === selectedDrawingId);
+            const nextIdx = (curIdx + 1) % drawings.length;
+            setSelectedDrawingId(drawings[nextIdx].id);
+            showToast(`Selected ${formatToolName(drawings[nextIdx].type)}`);
+          }
+        }
+      }
+
       // Space: toggle replay play/pause
-      if (e.code === 'Space' && replayActive && (e.target as HTMLElement).tagName !== 'INPUT' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
+      if (e.code === 'Space' && replayActive) {
         e.preventDefault();
         replayEngine.togglePlayPause();
       }
@@ -239,52 +523,70 @@ export const App: React.FC = () => {
         setActiveTool('crosshair');
         setSelectedDrawingId(null);
       }
-      // Delete: remove selected drawing
-      if ((e.code === 'Delete' || e.code === 'Backspace') && selectedDrawingId && (e.target as HTMLElement).tagName !== 'INPUT' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
+      // Delete / Backspace: remove selected drawing
+      if ((e.code === 'Delete' || e.code === 'Backspace') && selectedDrawingId) {
         handleDeleteDrawing(selectedDrawingId);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [replayActive, selectedDrawingId]);
+  }, [
+    replayActive,
+    selectedDrawingId,
+    drawings,
+    handleCopyDrawing,
+    handleCutDrawing,
+    handlePasteDrawing,
+    handleDuplicateDrawing,
+    handleUndo,
+    handleRedo,
+    showToast,
+  ]);
 
   // Drawing Actions
   const handleAddDrawing = (newD: DrawingObject) => {
+    pushUndoSnapshot(drawings);
     setDrawings(prev => [...prev, newD]);
     marketClient.saveDrawing(newD);
   };
 
   const handleUpdateDrawing = (updated: DrawingObject, persist: boolean = true) => {
+    if (persist) {
+      pushUndoSnapshot(drawings);
+    }
     setDrawings(prev => prev.map(d => d.id === updated.id ? updated : d));
     if (persist) {
       marketClient.saveDrawing(updated);
     }
   };
 
+  const handleDeleteDrawing = (id: string) => {
+    pushUndoSnapshot(drawings);
+    setDrawings(prev => prev.filter(d => d.id !== id));
+    if (selectedDrawingId === id) setSelectedDrawingId(null);
+    marketClient.deleteDrawing(id);
+    showToast('Deleted drawing');
+  };
+
+  const handleDeleteAllDrawings = () => {
+    pushUndoSnapshot(drawings);
+    setDrawings([]);
+    setSelectedDrawingId(null);
+    marketClient.clearAllDrawings();
+    showToast('Cleared all drawings');
+  };
+
   // Handle clicking on chart canvas (select nearby drawing or deselect when clicking empty space)
   const handleChartClick = useCallback((point: { x: number; y: number }) => {
     if (activeTool !== 'crosshair' && activeTool !== 'arrow') return;
     const hit = DrawingEngine.hitTest(point, drawings, transformer, 14, selectedDrawingId);
-    console.log('[App] handleChartClick at:', point, 'hit:', hit ? hit.drawing.id : 'none');
     if (hit) {
       setSelectedDrawingId(hit.drawing.id);
     } else {
       setSelectedDrawingId(null);
     }
   }, [activeTool, drawings, transformer, selectedDrawingId]);
-
-  const handleDeleteDrawing = (id: string) => {
-    setDrawings(prev => prev.filter(d => d.id !== id));
-    if (selectedDrawingId === id) setSelectedDrawingId(null);
-    marketClient.deleteDrawing(id);
-  };
-
-  const handleDeleteAllDrawings = () => {
-    setDrawings([]);
-    setSelectedDrawingId(null);
-    marketClient.clearAllDrawings();
-  };
 
   // Account Balance & Equity Calculation
   const netProfit = trades.reduce((acc, t) => acc + (t.pnl || 0), 0);
@@ -466,6 +768,10 @@ export const App: React.FC = () => {
               onSelectReplayCutCandle={handleSelectReplayCutCandle}
               onCancelSelectReplayCut={() => setIsSelectingReplayCut(false)}
               onOpenPropertiesModal={setEditingDrawing}
+              onCopyDrawing={handleCopyDrawing}
+              onCutDrawing={handleCutDrawing}
+              onDuplicateDrawing={handleDuplicateDrawing}
+              onShowToast={showToast}
             />
           </div>
 
@@ -517,6 +823,17 @@ export const App: React.FC = () => {
         replayTickIntervalSec={replayTickIntervalSec}
         onOpenBalanceModal={() => setIsBalanceModalOpen(true)}
       />
+
+      {/* Workstation HUD Toast */}
+      {toastMessage && (
+        <div
+          data-testid="workstation-hud-toast"
+          className="fixed top-14 left-1/2 -translate-x-1/2 z-50 bg-[#1e222d]/95 backdrop-blur-md border border-[#2962ff] px-4 py-1.5 rounded-full shadow-2xl text-xs font-semibold text-white flex items-center space-x-2 animate-in fade-in slide-in-from-top-2 duration-150 pointer-events-none"
+        >
+          <span className="w-2 h-2 rounded-full bg-[#2962ff] animate-ping" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
 
       {/* 4. MODALS */}
       <IndicatorsModal
