@@ -97,6 +97,13 @@ export const App: React.FC = () => {
   });
   const [masterCandles, setMasterCandles] = useState<Candle[]>([]);
   const [visibleCandles, setVisibleCandles] = useState<Candle[]>([]);
+  const visibleCandlesRef = useRef<Candle[]>([]);
+  const lastCandleCommitTimeRef = useRef<number>(0);
+
+  useEffect(() => {
+    visibleCandlesRef.current = visibleCandles;
+  }, [visibleCandles]);
+
   const [isLoadingCandles, setIsLoadingCandles] = useState<boolean>(true);
 
   // Drawing Tools State (with Instant Local Storage Restore)
@@ -432,19 +439,43 @@ export const App: React.FC = () => {
     marketClient.fetchQuote().then(setQuote).catch(() => {});
     const unsubQuote = marketClient.subscribeQuote((q) => {
       setQuote(q);
-      // If not in replay mode, live ticks can update the current active candle
+      // If not in replay mode, live ticks update the active developing candle
       if (!replayEngine.isActive()) {
-        setVisibleCandles((prev) => {
-          if (prev.length === 0) return prev;
-          const last = prev[prev.length - 1];
-          const updatedLast = {
-            ...last,
+        const currentList = visibleCandlesRef.current;
+        if (currentList.length === 0) return;
+
+        const tfSec = getTimeframeSeconds(timeframeRef.current);
+        const barTime = Math.floor(q.timestamp / tfSec) * tfSec;
+        const last = currentList[currentList.length - 1];
+
+        if (barTime > last.time) {
+          // New candle period started: open new bar immediately
+          const newCandle: Candle = {
+            time: barTime,
+            open: q.bid,
+            high: q.bid,
+            low: q.bid,
             close: q.bid,
-            high: Math.max(last.high, q.bid),
-            low: Math.min(last.low, q.bid),
+            volume: 1,
           };
-          return [...prev.slice(0, -1), updatedLast];
-        });
+          const nextList = [...currentList, newCandle];
+          visibleCandlesRef.current = nextList;
+          setVisibleCandles(nextList);
+        } else if (barTime === last.time) {
+          // Update current developing bar
+          last.close = q.bid;
+          last.high = Math.max(last.high, q.bid);
+          last.low = Math.min(last.low, q.bid);
+          last.volume = (last.volume || 0) + 1;
+
+          // Commit to React state every 800ms to keep React components in sync
+          // while ChartContainer receives quote and updates HTML5 canvas at full 4 FPS
+          const now = Date.now();
+          if (now - lastCandleCommitTimeRef.current >= 800) {
+            lastCandleCommitTimeRef.current = now;
+            setVisibleCandles([...currentList]);
+          }
+        }
       }
     });
 

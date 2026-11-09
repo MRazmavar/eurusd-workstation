@@ -6,6 +6,8 @@ import {
   createChart,
   IChartApi,
   ISeriesApi,
+  IPriceLine,
+  LineStyle,
   CandlestickSeries,
   BarSeries,
   LineSeries,
@@ -23,6 +25,7 @@ import {
   getTimezoneAbbr,
   formatTimeInTimezone,
   formatTickMarkInTimezone,
+  getTimeframeSeconds,
 } from '../utils/timezone';
 
 interface ChartContainerProps {
@@ -69,6 +72,7 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<any> | null>(null);
+  const askPriceLineRef = useRef<IPriceLine | null>(null);
   const indicatorSeriesRef = useRef<Map<string, ISeriesApi<any>>>(new Map());
   const [hoveredCandle, setHoveredCandle] = useState<Candle | null>(null);
   const candlesRef = useRef<Candle[]>(candles);
@@ -595,11 +599,15 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
     // Remove old main series safely
     if (seriesRef.current) {
       try {
+        if (askPriceLineRef.current) {
+          seriesRef.current.removePriceLine(askPriceLineRef.current);
+        }
         chart.removeSeries(seriesRef.current);
       } catch {
         // Ignored in strict mode re-mount
       }
       seriesRef.current = null;
+      askPriceLineRef.current = null;
     }
 
     let newSeries: ISeriesApi<any>;
@@ -612,6 +620,11 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
         borderDownColor: '#f23645',
         wickUpColor: '#089981',
         wickDownColor: '#f23645',
+        priceLineVisible: true,
+        priceLineWidth: 1,
+        priceLineColor: '#089981',
+        priceLineStyle: LineStyle.Dashed,
+        lastValueVisible: true,
         priceFormat: { type: 'price', precision: 5, minMove: 0.00001 },
       });
     } else if (chartType === 'hollow') {
@@ -622,18 +635,33 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
         borderDownColor: '#f23645',
         wickUpColor: '#089981',
         wickDownColor: '#f23645',
+        priceLineVisible: true,
+        priceLineWidth: 1,
+        priceLineColor: '#089981',
+        priceLineStyle: LineStyle.Dashed,
+        lastValueVisible: true,
         priceFormat: { type: 'price', precision: 5, minMove: 0.00001 },
       });
     } else if (chartType === 'bar') {
       newSeries = chart.addSeries(BarSeries, {
         upColor: '#089981',
         downColor: '#f23645',
+        priceLineVisible: true,
+        priceLineWidth: 1,
+        priceLineColor: '#089981',
+        priceLineStyle: LineStyle.Dashed,
+        lastValueVisible: true,
         priceFormat: { type: 'price', precision: 5, minMove: 0.00001 },
       });
     } else if (chartType === 'line') {
       newSeries = chart.addSeries(LineSeries, {
         color: '#2962ff',
         lineWidth: 2,
+        priceLineVisible: true,
+        priceLineWidth: 1,
+        priceLineColor: '#2962ff',
+        priceLineStyle: LineStyle.Dashed,
+        lastValueVisible: true,
         priceFormat: { type: 'price', precision: 5, minMove: 0.00001 },
       });
     } else if (chartType === 'area') {
@@ -642,6 +670,11 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
         bottomColor: 'rgba(41, 98, 255, 0.0)',
         lineColor: '#2962ff',
         lineWidth: 2,
+        priceLineVisible: true,
+        priceLineWidth: 1,
+        priceLineColor: '#2962ff',
+        priceLineStyle: LineStyle.Dashed,
+        lastValueVisible: true,
         priceFormat: { type: 'price', precision: 5, minMove: 0.00001 },
       });
     } else {
@@ -649,6 +682,11 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
       newSeries = chart.addSeries(BaselineSeries, {
         topLineColor: '#089981',
         bottomLineColor: '#f23645',
+        priceLineVisible: true,
+        priceLineWidth: 1,
+        priceLineColor: '#089981',
+        priceLineStyle: LineStyle.Dashed,
+        lastValueVisible: true,
         priceFormat: { type: 'price', precision: 5, minMove: 0.00001 },
       });
     }
@@ -720,6 +758,62 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
 
     updateTransformer();
   }, [candles]);
+
+  // Real-time sub-millisecond candle & price line update directly on Lightweight Charts series
+  useEffect(() => {
+    if (!chartRef.current || !seriesRef.current || !quote || isReplayActive || candles.length === 0) return;
+
+    // 1. Update or create Ask Price Line
+    try {
+      if (!askPriceLineRef.current) {
+        askPriceLineRef.current = seriesRef.current.createPriceLine({
+          price: quote.ask,
+          color: '#f23645',
+          lineWidth: 1,
+          lineStyle: LineStyle.Dotted,
+          axisLabelVisible: true,
+          title: 'ASK',
+        });
+      } else {
+        askPriceLineRef.current.applyOptions({
+          price: quote.ask,
+        });
+      }
+    } catch {}
+
+    // 2. Real-time active developing candle update
+    const tfSec = getTimeframeSeconds(timeframeRef.current);
+    const nowSec = Math.floor(Date.now() / 1000);
+    const barTime = Math.floor(nowSec / tfSec) * tfSec;
+    const lastCandle = candles[candles.length - 1];
+    if (!lastCandle) return;
+
+    const isNewBar = barTime > lastCandle.time;
+    const targetTime = isNewBar ? barTime : lastCandle.time;
+    const openPrice = isNewBar ? quote.bid : lastCandle.open;
+    const highPrice = isNewBar ? Math.max(openPrice, quote.bid) : Math.max(lastCandle.high, quote.bid);
+    const lowPrice = isNewBar ? Math.min(openPrice, quote.bid) : Math.min(lastCandle.low, quote.bid);
+    const closePrice = quote.bid;
+
+    try {
+      if (chartType === 'line' || chartType === 'area' || chartType === 'baseline') {
+        seriesRef.current.update({
+          time: targetTime as unknown as Time,
+          value: closePrice,
+        });
+      } else {
+        seriesRef.current.update({
+          time: targetTime as unknown as Time,
+          open: openPrice,
+          high: highPrice,
+          low: lowPrice,
+          close: closePrice,
+        });
+      }
+    } catch (e) {
+      // Ignore timestamp sequencing checks
+    }
+  }, [quote, isReplayActive, chartType]);
 
   // Update Overlay Indicators
   useEffect(() => {
@@ -816,6 +910,14 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
           <span className="text-white">EUR/USD</span>
           <span className="text-[#2962ff] text-[10px] bg-[#1e222d] px-1 rounded">{timeframe}</span>
           <span className="text-gray-400 text-[10px]">{quote?.provider || 'FOREX'}</span>
+          {quote?.market_status === 'OPEN' ? (
+            <span className="flex items-center space-x-1 text-[10px] text-[#089981] font-semibold bg-[#089981]/15 px-1.5 py-0.5 rounded border border-[#089981]/30">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#089981] animate-pulse"></span>
+              <span>LIVE</span>
+            </span>
+          ) : (
+            <span className="text-[10px] text-gray-400 bg-gray-800 px-1.5 py-0.5 rounded">CLOSED (WEEKEND)</span>
+          )}
         </div>
 
         {displayCandle && (

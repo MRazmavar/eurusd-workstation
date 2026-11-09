@@ -47,7 +47,7 @@ class DukascopyProvider:
         Uses 2.0s caching to throttle requests cleanly.
         """
         now = time.time()
-        if self._last_quote_cache and (now - self._last_quote_time < 2.0):
+        if self._last_quote_cache and (now - self._last_quote_time < 0.8):
             return self._last_quote_cache
 
         is_open, reason = self.is_market_open()

@@ -51,7 +51,7 @@ export class MarketDataClient {
       this.ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
-          if (msg.type === 'quote' && msg.data) {
+          if ((msg.type === 'quote' || msg.type === 'tick') && msg.data) {
             this.quoteCallbacks.forEach(cb => cb(msg.data));
           }
         } catch {

@@ -2,6 +2,7 @@
 FastAPI Server for EUR/USD Professional Charting & Backtesting Platform.
 """
 import asyncio
+import time
 from contextlib import asynccontextmanager
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
@@ -18,12 +19,25 @@ import database
 
 # Background worker for real-time market data streaming
 async def market_streaming_worker():
+    last_poll = 0.0
     while True:
         try:
+            now = time.time()
+            # Refresh real interbank quote every 1.5s in the background thread
+            if now - last_poll >= 1.5:
+                await market_data_service.refresh_interbank_quote()
+                last_poll = now
+            
             await market_data_service.broadcast_tick()
         except Exception as e:
             print(f"[Streaming Worker Error]: {e}")
-        await asyncio.sleep(2.0)
+
+        # When market is open: stream at 250ms (ultra-fast live 4 FPS updates)
+        # When market is closed (weekend): stream every 3.0s
+        if market_data_service.is_market_open():
+            await asyncio.sleep(0.25)
+        else:
+            await asyncio.sleep(3.0)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

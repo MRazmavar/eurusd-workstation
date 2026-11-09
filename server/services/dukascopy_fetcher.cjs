@@ -2,7 +2,7 @@
  * Dukascopy Swiss Forex Data Worker.
  * Direct bridge to Dukascopy's historical data feeds and tick feeds for EUR/USD.
  */
-const { getHistoricalRates } = require('dukascopy-node');
+const { getHistoricalRates, getRealTimeRates } = require('dukascopy-node');
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -24,6 +24,28 @@ async function main() {
 
   try {
     if (action === 'quote') {
+      try {
+        const liveRates = await getRealTimeRates({
+          instrument: 'eurusd',
+          timeframe: 'm1',
+          last: 2,
+          format: 'json'
+        });
+
+        if (liveRates && liveRates.length > 0) {
+          const last = liveRates[liveRates.length - 1];
+          const prev = liveRates.length > 1 ? liveRates[0] : last;
+          console.log(JSON.stringify({
+            success: true,
+            candle: last,
+            previous: prev
+          }));
+          return;
+        }
+      } catch (liveErr) {
+        // Fall back to historical query below
+      }
+
       const now = new Date();
       const past3Days = new Date(Date.now() - 3 * 24 * 3600 * 1000);
 

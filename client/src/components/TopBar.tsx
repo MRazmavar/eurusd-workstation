@@ -141,14 +141,24 @@ export const TopBar: React.FC<TopBarProps> = ({
         {/* Live Price & Spread */}
         {quote && (
           <div className="flex items-center space-x-2 px-2 py-0.5 border-r border-[#2a2e39]">
+            {quote.market_status === 'OPEN' ? (
+              <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#089981]/20 text-[#089981] border border-[#089981]/40 shadow-sm" title="Real-time interbank stream is active">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#089981] animate-pulse"></span>
+                <span>LIVE</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-800 text-gray-400 border border-gray-700">
+                CLOSED
+              </span>
+            )}
             <span className={`font-mono text-sm font-semibold tabular-nums ${isBull ? 'text-[#089981]' : 'text-[#f23645]'}`}>
               {quote.bid.toFixed(5)}
             </span>
             <span className={`text-[11px] tabular-nums ${isBull ? 'text-[#089981]' : 'text-[#f23645]'}`}>
               {isBull ? '+' : ''}{quote.changePercent.toFixed(2)}%
             </span>
-            <span className="text-[10px] text-gray-400 bg-[#1e222d] px-1 py-0.5 rounded border border-[#2a2e39]">
-              Spread {quote.spread.toFixed(1)}p
+            <span className="text-[10px] text-gray-400 bg-[#1e222d] px-1.5 py-0.5 rounded border border-[#2a2e39] font-mono">
+              Spr {quote.spread.toFixed(1)}p
             </span>
           </div>
         )}

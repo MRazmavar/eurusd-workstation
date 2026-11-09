@@ -29,6 +29,19 @@ export const getTimezoneAbbr = (tz: string): string => {
 };
 
 /**
+ * Calculates the duration of a timeframe string in seconds.
+ */
+export const getTimeframeSeconds = (tf: string): number => {
+  if (tf.endsWith('s')) return parseInt(tf) || 30;
+  if (tf.endsWith('m')) return (parseInt(tf) || 1) * 60;
+  if (tf.endsWith('h')) return (parseInt(tf) || 1) * 3600;
+  if (tf.endsWith('D') || tf.endsWith('d')) return (parseInt(tf) || 1) * 86400;
+  if (tf.endsWith('W') || tf.endsWith('w')) return (parseInt(tf) || 1) * 604800;
+  if (tf.endsWith('M') || tf.endsWith('mo')) return (parseInt(tf) || 1) * 2592000;
+  return 3600;
+};
+
+/**
  * Formats a Unix timestamp (seconds) into the specified timezone.
  */
 export const formatTimeInTimezone = (
