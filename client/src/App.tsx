@@ -168,6 +168,7 @@ export const App: React.FC = () => {
   })());
   const undoStackRef = useRef<DrawingObject[][]>([]);
   const redoStackRef = useRef<DrawingObject[][]>([]);
+  const justCreatedDrawingTimeRef = useRef<number>(0);
 
   // Automatic Persistence Effects
   useEffect(() => {
@@ -205,12 +206,29 @@ export const App: React.FC = () => {
     try {
       const saved = localStorage.getItem('eurusd_favorite_tools');
       if (saved) {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
       }
     } catch {}
     return DEFAULT_FAVORITE_TOOLS;
   });
-  const [showFavoritesToolbar, setShowFavoritesToolbar] = useState<boolean>(true);
+  const [showFavoritesToolbar, setShowFavoritesToolbar] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('eurusd_show_fav_toolbar');
+      if (saved !== null) {
+        return JSON.parse(saved);
+      }
+    } catch {}
+    return true;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('eurusd_show_fav_toolbar', JSON.stringify(showFavoritesToolbar));
+    } catch {}
+  }, [showFavoritesToolbar]);
 
   const handleToggleFavorite = useCallback((tool: DrawingToolType) => {
     setFavoriteTools(prev => {
@@ -812,6 +830,7 @@ export const App: React.FC = () => {
 
   // Drawing Actions
   const handleAddDrawing = (newD: DrawingObject) => {
+    justCreatedDrawingTimeRef.current = Date.now();
     pushUndoSnapshot(drawings);
     setDrawings(prev => [...prev, newD]);
     marketClient.saveDrawing(newD);
@@ -846,6 +865,7 @@ export const App: React.FC = () => {
   // Handle clicking on chart canvas (select nearby drawing or deselect when clicking empty space)
   const handleChartClick = useCallback((point: { x: number; y: number }) => {
     if (activeTool !== 'crosshair' && activeTool !== 'arrow') return;
+    if (Date.now() - justCreatedDrawingTimeRef.current < 400) return;
     const hit = DrawingEngine.hitTest(point, drawings, transformer, 14, selectedDrawingId);
     if (hit) {
       setSelectedDrawingId(hit.drawing.id);

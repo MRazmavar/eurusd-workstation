@@ -22,18 +22,23 @@ export const FavoritesToolbar: React.FC<FavoritesToolbarProps> = ({
   onToggleFavorite,
   onClose,
 }) => {
-  // Load saved position or default to bottom-left floating dock
+  // Load saved position or default to top-left of chart below timeframe bar
   const [position, setPosition] = useState<{ x: number; y: number }>(() => {
     try {
       const saved = localStorage.getItem('eurusd_fav_toolbar_pos');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
-          return parsed;
+          const winW = typeof window !== 'undefined' ? window.innerWidth : 1200;
+          const winH = typeof window !== 'undefined' ? window.innerHeight : 800;
+          // Ensure toolbar is never off-screen or buried behind bottom sub-panels
+          if (parsed.x >= 10 && parsed.x <= winW - 150 && parsed.y >= 10 && parsed.y <= Math.min(winH - 100, 420)) {
+            return parsed;
+          }
         }
       }
     } catch {}
-    return { x: 70, y: 520 };
+    return { x: 80, y: 16 };
   });
 
   const [isDragging, setIsDragging] = useState(false);
@@ -96,7 +101,7 @@ export const FavoritesToolbar: React.FC<FavoritesToolbarProps> = ({
         left: `${position.x}px`,
         top: `${position.y}px`,
       }}
-      className={`absolute z-30 flex items-center bg-[#1e222d]/95 backdrop-blur-md border border-[#2a2e39] rounded-lg shadow-2xl p-1 select-none font-sans text-xs transition-shadow ${
+      className={`absolute z-40 flex items-center bg-[#1e222d]/95 backdrop-blur-md border border-[#2a2e39] rounded-lg shadow-2xl p-1 select-none font-sans text-xs transition-shadow ${
         isDragging ? 'shadow-blue-500/20 ring-1 ring-[#2962ff]/50 cursor-grabbing' : 'shadow-black/60'
       }`}
     >
