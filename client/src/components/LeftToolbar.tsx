@@ -35,6 +35,7 @@ import {
   Star,
 } from 'lucide-react';
 import { DrawingToolType, MagnetMode } from '../types';
+import { LongPositionIcon, ShortPositionIcon } from '../utils/drawingTools';
 
 interface LeftToolbarProps {
   activeTool: DrawingToolType;
@@ -137,11 +138,11 @@ const TOOL_GROUPS: ToolGroup[] = [
   {
     id: 'trading',
     defaultTool: 'long_position',
-    icon: BarChart,
+    icon: LongPositionIcon,
     title: 'Prediction & Measurement',
     items: [
-      { tool: 'long_position', label: 'Long Position', icon: BarChart },
-      { tool: 'short_position', label: 'Short Position', icon: BarChart },
+      { tool: 'long_position', label: 'Long Position', icon: LongPositionIcon },
+      { tool: 'short_position', label: 'Short Position', icon: ShortPositionIcon },
       { tool: 'price_range', label: 'Price Range', icon: MoveVertical },
       { tool: 'date_range', label: 'Date Range', icon: Minus },
       { tool: 'date_price_range', label: 'Date & Price Range', icon: Square },

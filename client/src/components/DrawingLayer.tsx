@@ -132,7 +132,14 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   const selectedDrawing = drawings.find(d => d.id === selectedId) || null;
   const isDrawingToolActive = activeTool !== 'crosshair' && activeTool !== 'arrow';
   const isSingleClickTool = ['horizontal_line', 'vertical_line', 'horizontal_ray', 'price_label'].includes(activeTool);
-  const isThreePointTool = ['parallel_channel', 'flat_top_bottom', 'disjoint_channel', 'triangle'].includes(activeTool);
+  const isThreePointTool = [
+    'parallel_channel',
+    'flat_top_bottom',
+    'disjoint_channel',
+    'triangle',
+    'long_position',
+    'short_position',
+  ].includes(activeTool);
 
   // ResizeObserver to track SVG viewport dimensions for exact scale badges
   useEffect(() => {
@@ -2155,46 +2162,83 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           </g>
         )}
 
-        {/* Long Position Analysis Tool */}
+        {/* Long Position Analysis Tool (3-Point: Entry -> Stop Loss -> Take Profit) */}
         {d.type === 'long_position' && screenPts.length >= 2 && (() => {
-          const minX = Math.min(screenPts[0].x, screenPts[1].x);
-          const maxX = Math.max(screenPts[0].x, screenPts[1].x);
-          const width = Math.max(30, maxX - minX);
+          const entryPt = screenPts[0];
+          const slPt = screenPts[1];
+          const tpPt = screenPts.length >= 3 ? screenPts[2] : null;
+
           const entryPrice = d.points[0].price;
-          const tpPrice = d.points[1].price;
-          const slPrice = d.properties.slPrice ?? Number((entryPrice - (tpPrice - entryPrice) / 2).toFixed(5));
+          const slPrice = d.points[1].price;
+          // When 3 points exist, Take Profit is independently set by points[2].
+          // During step 2 (drawing in progress with only 2 points), preview TP at 2x SL distance.
+          const tpPrice = d.points.length >= 3
+            ? d.points[2].price
+            : Number((entryPrice + Math.max(0.0001, Math.abs(entryPrice - slPrice)) * 2).toFixed(5));
 
-          const entryY = screenPts[0].y;
-          const tpY = screenPts[1].y;
-          const slY = transformer.priceToY(slPrice) ?? entryY + (entryY - tpY);
+          const entryY = entryPt.y;
+          const slY = slPt.y;
+          const tpY = tpPt ? tpPt.y : (transformer.priceToY(tpPrice) ?? (entryY - Math.abs(entryY - slY) * 2));
 
-          const tpPips = (Math.abs(tpPrice - entryPrice) / 0.0001).toFixed(1);
+          const allXs = screenPts.map(p => p.x);
+          const minX = Math.min(...allXs);
+          const maxX = Math.max(minX + 60, ...allXs);
+          const width = Math.max(60, maxX - minX);
+
           const slPips = (Math.abs(entryPrice - slPrice) / 0.0001).toFixed(1);
-          const rr = (parseFloat(slPips) > 0 ? (parseFloat(tpPips) / parseFloat(slPips)).toFixed(2) : '2.00');
+          const tpPips = (Math.abs(tpPrice - entryPrice) / 0.0001).toFixed(1);
+          const rr = (parseFloat(slPips) > 0 ? (parseFloat(tpPips) / parseFloat(slPips)).toFixed(2) : '0.00');
+
+          const isStep2 = isTemp && d.points.length === 2;
+          const isStep3 = isTemp && d.points.length === 3;
 
           return (
-            <g>
+            <g data-testid={`drawing-long-position-${d.id}`}>
               {/* Target Area (Green) */}
-              <rect
-                x={minX}
-                y={Math.min(entryY, tpY)}
-                width={width}
-                height={Math.abs(tpY - entryY)}
-                fill="#089981"
-                fillOpacity={0.2}
-                stroke="#089981"
-                strokeWidth={1}
-              />
+              {!isStep2 && (
+                <rect
+                  x={minX}
+                  y={Math.min(entryY, tpY)}
+                  width={width}
+                  height={Math.max(1, Math.abs(tpY - entryY))}
+                  fill="#089981"
+                  fillOpacity={0.2}
+                  stroke="#089981"
+                  strokeWidth={1}
+                />
+              )}
               {/* Stop Area (Red) */}
               <rect
                 x={minX}
                 y={Math.min(entryY, slY)}
                 width={width}
-                height={Math.abs(slY - entryY)}
+                height={Math.max(1, Math.abs(slY - entryY))}
                 fill="#f23645"
                 fillOpacity={0.2}
                 stroke="#f23645"
                 strokeWidth={1}
+              />
+              {/* Take Profit Line */}
+              {!isStep2 && (
+                <line
+                  x1={minX}
+                  y1={tpY}
+                  x2={minX + width}
+                  y2={tpY}
+                  stroke="#089981"
+                  strokeWidth={1.5}
+                  strokeDasharray="4,3"
+                />
+              )}
+              {/* Stop Loss Line */}
+              <line
+                x1={minX}
+                y1={slY}
+                x2={minX + width}
+                y2={slY}
+                stroke="#f23645"
+                strokeWidth={1.5}
+                strokeDasharray="4,3"
               />
               {/* Entry Line */}
               <line
@@ -2205,70 +2249,192 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 stroke="#2962ff"
                 strokeWidth={2}
               />
-              {/* Central Badge */}
-              <rect
-                x={minX + 6}
-                y={Math.min(entryY, tpY) + 6}
-                width={160}
-                height={20}
-                rx={3}
-                fill="#1e222d"
-                stroke="#2a2e39"
-              />
-              <text
-                x={minX + 12}
-                y={Math.min(entryY, tpY) + 20}
-                fill="#089981"
-                fontSize={10}
-                fontWeight="bold"
-                fontFamily="sans-serif"
-              >
-                Target: +{tpPips}p | R:R {rr}
-              </text>
+
+              {/* Side Boundary Dotted Lines */}
+              <line x1={minX} y1={Math.min(entryY, slY, tpY)} x2={minX} y2={Math.max(entryY, slY, tpY)} stroke="#787b86" strokeWidth={1} strokeDasharray="2,2" opacity={0.6} />
+              <line x1={minX + width} y1={Math.min(entryY, slY, tpY)} x2={minX + width} y2={Math.max(entryY, slY, tpY)} stroke="#787b86" strokeWidth={1} strokeDasharray="2,2" opacity={0.6} />
+
+              {/* Compact Labels along the right edge */}
+              {!isStep2 && (
+                <g transform={`translate(${minX + width - 90}, ${tpY - 16})`}>
+                  <rect width={88} height={15} rx={3} fill="#089981" fillOpacity={0.9} />
+                  <text x={44} y={11} fill="#ffffff" fontSize={9} fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                    TP: +{tpPips}p ({tpPrice.toFixed(5)})
+                  </text>
+                </g>
+              )}
+              <g transform={`translate(${minX + width - 85}, ${entryY - 16})`}>
+                <rect width={83} height={15} rx={3} fill="#1e222d" stroke="#2962ff" strokeWidth={1} />
+                <text x={41} y={11} fill="#38bdf8" fontSize={9} fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                  ENTRY: {entryPrice.toFixed(5)}
+                </text>
+              </g>
+              <g transform={`translate(${minX + width - 90}, ${slY - 16})`}>
+                <rect width={88} height={15} rx={3} fill="#f23645" fillOpacity={0.9} />
+                <text x={44} y={11} fill="#ffffff" fontSize={9} fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                  SL: -{slPips}p ({slPrice.toFixed(5)})
+                </text>
+              </g>
+
+              {/* Central Metrics Card */}
+              {!isStep2 ? (
+                <g transform={`translate(${minX + 6}, ${Math.min(entryY, tpY) + 6})`}>
+                  <rect
+                    width={185}
+                    height={20}
+                    rx={3}
+                    fill="#1e222d"
+                    fillOpacity={0.95}
+                    stroke="#2a2e39"
+                  />
+                  <text
+                    x={8}
+                    y={14}
+                    fill="#38bdf8"
+                    fontSize={10}
+                    fontWeight="bold"
+                    fontFamily="monospace"
+                  >
+                    LONG | R:R 1:{rr}
+                  </text>
+                  <text
+                    x={100}
+                    y={14}
+                    fill="#089981"
+                    fontSize={10}
+                    fontWeight="bold"
+                    fontFamily="monospace"
+                  >
+                    Target: +{tpPips}p
+                  </text>
+                </g>
+              ) : (
+                <g transform={`translate(${minX + 6}, ${Math.min(entryY, slY) + 6})`}>
+                  <rect
+                    width={210}
+                    height={20}
+                    rx={3}
+                    fill="#1e222d"
+                    fillOpacity={0.95}
+                    stroke="#f23645"
+                  />
+                  <text
+                    x={10}
+                    y={14}
+                    fill="#f23645"
+                    fontSize={10}
+                    fontWeight="bold"
+                    fontFamily="sans-serif"
+                  >
+                    Step 2: Click to set Stop Loss (-{slPips}p)
+                  </text>
+                </g>
+              )}
+
+              {/* Step 3 Helper while positioning TP */}
+              {isStep3 && (
+                <g transform={`translate(${minX + 6}, ${Math.min(entryY, tpY) + 30})`}>
+                  <rect
+                    width={220}
+                    height={20}
+                    rx={3}
+                    fill="#1e222d"
+                    fillOpacity={0.95}
+                    stroke="#089981"
+                  />
+                  <text
+                    x={10}
+                    y={14}
+                    fill="#089981"
+                    fontSize={10}
+                    fontWeight="bold"
+                    fontFamily="sans-serif"
+                  >
+                    Step 3: Click to set Take Profit (+{tpPips}p)
+                  </text>
+                </g>
+              )}
             </g>
           );
         })()}
 
-        {/* Short Position Analysis Tool */}
+        {/* Short Position Analysis Tool (3-Point: Entry -> Stop Loss -> Take Profit) */}
         {d.type === 'short_position' && screenPts.length >= 2 && (() => {
-          const minX = Math.min(screenPts[0].x, screenPts[1].x);
-          const maxX = Math.max(screenPts[0].x, screenPts[1].x);
-          const width = Math.max(30, maxX - minX);
+          const entryPt = screenPts[0];
+          const slPt = screenPts[1];
+          const tpPt = screenPts.length >= 3 ? screenPts[2] : null;
+
           const entryPrice = d.points[0].price;
-          const tpPrice = d.points[1].price;
-          const slPrice = d.properties.slPrice ?? Number((entryPrice + (entryPrice - tpPrice) / 2).toFixed(5));
+          const slPrice = d.points[1].price;
+          // When 3 points exist, Take Profit is independently set by points[2].
+          // During step 2 (drawing in progress with only 2 points), preview TP at 2x SL distance.
+          const tpPrice = d.points.length >= 3
+            ? d.points[2].price
+            : Number((entryPrice - Math.max(0.0001, Math.abs(slPrice - entryPrice)) * 2).toFixed(5));
 
-          const entryY = screenPts[0].y;
-          const tpY = screenPts[1].y;
-          const slY = transformer.priceToY(slPrice) ?? entryY - (tpY - entryY);
+          const entryY = entryPt.y;
+          const slY = slPt.y;
+          const tpY = tpPt ? tpPt.y : (transformer.priceToY(tpPrice) ?? (entryY + Math.abs(entryY - slY) * 2));
 
-          const tpPips = (Math.abs(entryPrice - tpPrice) / 0.0001).toFixed(1);
+          const allXs = screenPts.map(p => p.x);
+          const minX = Math.min(...allXs);
+          const maxX = Math.max(minX + 60, ...allXs);
+          const width = Math.max(60, maxX - minX);
+
           const slPips = (Math.abs(slPrice - entryPrice) / 0.0001).toFixed(1);
-          const rr = (parseFloat(slPips) > 0 ? (parseFloat(tpPips) / parseFloat(slPips)).toFixed(2) : '2.00');
+          const tpPips = (Math.abs(entryPrice - tpPrice) / 0.0001).toFixed(1);
+          const rr = (parseFloat(slPips) > 0 ? (parseFloat(tpPips) / parseFloat(slPips)).toFixed(2) : '0.00');
+
+          const isStep2 = isTemp && d.points.length === 2;
+          const isStep3 = isTemp && d.points.length === 3;
 
           return (
-            <g>
+            <g data-testid={`drawing-short-position-${d.id}`}>
               {/* Target Area (Green) */}
-              <rect
-                x={minX}
-                y={Math.min(entryY, tpY)}
-                width={width}
-                height={Math.abs(tpY - entryY)}
-                fill="#089981"
-                fillOpacity={0.2}
-                stroke="#089981"
-                strokeWidth={1}
-              />
+              {!isStep2 && (
+                <rect
+                  x={minX}
+                  y={Math.min(entryY, tpY)}
+                  width={width}
+                  height={Math.max(1, Math.abs(tpY - entryY))}
+                  fill="#089981"
+                  fillOpacity={0.2}
+                  stroke="#089981"
+                  strokeWidth={1}
+                />
+              )}
               {/* Stop Area (Red) */}
               <rect
                 x={minX}
                 y={Math.min(entryY, slY)}
                 width={width}
-                height={Math.abs(slY - entryY)}
+                height={Math.max(1, Math.abs(slY - entryY))}
                 fill="#f23645"
                 fillOpacity={0.2}
                 stroke="#f23645"
                 strokeWidth={1}
+              />
+              {/* Take Profit Line */}
+              {!isStep2 && (
+                <line
+                  x1={minX}
+                  y1={tpY}
+                  x2={minX + width}
+                  y2={tpY}
+                  stroke="#089981"
+                  strokeWidth={1.5}
+                  strokeDasharray="4,3"
+                />
+              )}
+              {/* Stop Loss Line */}
+              <line
+                x1={minX}
+                y1={slY}
+                x2={minX + width}
+                y2={slY}
+                stroke="#f23645"
+                strokeWidth={1.5}
+                strokeDasharray="4,3"
               />
               {/* Entry Line */}
               <line
@@ -2279,25 +2445,111 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 stroke="#2962ff"
                 strokeWidth={2}
               />
-              <rect
-                x={minX + 6}
-                y={Math.min(entryY, tpY) + 6}
-                width={160}
-                height={20}
-                rx={3}
-                fill="#1e222d"
-                stroke="#2a2e39"
-              />
-              <text
-                x={minX + 12}
-                y={Math.min(entryY, tpY) + 20}
-                fill="#089981"
-                fontSize={10}
-                fontWeight="bold"
-                fontFamily="sans-serif"
-              >
-                Target: +{tpPips}p | R:R {rr}
-              </text>
+
+              {/* Side Boundary Dotted Lines */}
+              <line x1={minX} y1={Math.min(entryY, slY, tpY)} x2={minX} y2={Math.max(entryY, slY, tpY)} stroke="#787b86" strokeWidth={1} strokeDasharray="2,2" opacity={0.6} />
+              <line x1={minX + width} y1={Math.min(entryY, slY, tpY)} x2={minX + width} y2={Math.max(entryY, slY, tpY)} stroke="#787b86" strokeWidth={1} strokeDasharray="2,2" opacity={0.6} />
+
+              {/* Compact Labels along the right edge */}
+              {!isStep2 && (
+                <g transform={`translate(${minX + width - 90}, ${tpY - 16})`}>
+                  <rect width={88} height={15} rx={3} fill="#089981" fillOpacity={0.9} />
+                  <text x={44} y={11} fill="#ffffff" fontSize={9} fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                    TP: +{tpPips}p ({tpPrice.toFixed(5)})
+                  </text>
+                </g>
+              )}
+              <g transform={`translate(${minX + width - 85}, ${entryY - 16})`}>
+                <rect width={83} height={15} rx={3} fill="#1e222d" stroke="#2962ff" strokeWidth={1} />
+                <text x={41} y={11} fill="#38bdf8" fontSize={9} fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                  ENTRY: {entryPrice.toFixed(5)}
+                </text>
+              </g>
+              <g transform={`translate(${minX + width - 90}, ${slY - 16})`}>
+                <rect width={88} height={15} rx={3} fill="#f23645" fillOpacity={0.9} />
+                <text x={44} y={11} fill="#ffffff" fontSize={9} fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                  SL: -{slPips}p ({slPrice.toFixed(5)})
+                </text>
+              </g>
+
+              {/* Central Metrics Card */}
+              {!isStep2 ? (
+                <g transform={`translate(${minX + 6}, ${Math.min(entryY, tpY) + 6})`}>
+                  <rect
+                    width={185}
+                    height={20}
+                    rx={3}
+                    fill="#1e222d"
+                    fillOpacity={0.95}
+                    stroke="#2a2e39"
+                  />
+                  <text
+                    x={8}
+                    y={14}
+                    fill="#38bdf8"
+                    fontSize={10}
+                    fontWeight="bold"
+                    fontFamily="monospace"
+                  >
+                    SHORT | R:R 1:{rr}
+                  </text>
+                  <text
+                    x={100}
+                    y={14}
+                    fill="#089981"
+                    fontSize={10}
+                    fontWeight="bold"
+                    fontFamily="monospace"
+                  >
+                    Target: +{tpPips}p
+                  </text>
+                </g>
+              ) : (
+                <g transform={`translate(${minX + 6}, ${Math.min(entryY, slY) + 6})`}>
+                  <rect
+                    width={210}
+                    height={20}
+                    rx={3}
+                    fill="#1e222d"
+                    fillOpacity={0.95}
+                    stroke="#f23645"
+                  />
+                  <text
+                    x={10}
+                    y={14}
+                    fill="#f23645"
+                    fontSize={10}
+                    fontWeight="bold"
+                    fontFamily="sans-serif"
+                  >
+                    Step 2: Click to set Stop Loss (-{slPips}p)
+                  </text>
+                </g>
+              )}
+
+              {/* Step 3 Helper while positioning TP */}
+              {isStep3 && (
+                <g transform={`translate(${minX + 6}, ${Math.min(entryY, tpY) + 30})`}>
+                  <rect
+                    width={220}
+                    height={20}
+                    rx={3}
+                    fill="#1e222d"
+                    fillOpacity={0.95}
+                    stroke="#089981"
+                  />
+                  <text
+                    x={10}
+                    y={14}
+                    fill="#089981"
+                    fontSize={10}
+                    fontWeight="bold"
+                    fontFamily="sans-serif"
+                  >
+                    Step 3: Click to set Take Profit (+{tpPips}p)
+                  </text>
+                </g>
+              )}
             </g>
           );
         })()}
@@ -2445,14 +2697,22 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                   });
                 }}
               />
-              {/* Visible anchor handle (8x8 white box with blue stroke) */}
+              {/* Visible anchor handle (8x8 white box with color-coded stroke) */}
               <rect
                 x={pt.x - 4}
                 y={pt.y - 4}
                 width={8}
                 height={8}
                 fill="#ffffff"
-                stroke="#2962ff"
+                stroke={
+                  d.type === 'long_position' || d.type === 'short_position'
+                    ? idx === 0
+                      ? '#2962ff'
+                      : idx === 1
+                      ? '#f23645'
+                      : '#089981'
+                    : '#2962ff'
+                }
                 strokeWidth={1.5}
                 className="pointer-events-none shadow"
               />

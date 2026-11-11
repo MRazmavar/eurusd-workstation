@@ -184,10 +184,10 @@ export class DrawingEngine {
         ['rectangle', 'rotated_rectangle', 'long_position', 'short_position', 'price_range', 'date_range', 'date_price_range', 'measure'].includes(d.type) &&
         screenPoints.length >= 2
       ) {
-        const minX = Math.min(screenPoints[0].x, screenPoints[1].x);
-        const maxX = Math.max(screenPoints[0].x, screenPoints[1].x);
-        const minY = Math.min(screenPoints[0].y, screenPoints[1].y);
-        const maxY = Math.max(screenPoints[0].y, screenPoints[1].y);
+        const minX = Math.min(...screenPoints.map(p => p.x));
+        const maxX = Math.max(...screenPoints.map(p => p.x));
+        const minY = Math.min(...screenPoints.map(p => p.y));
+        const maxY = Math.max(...screenPoints.map(p => p.y));
 
         if (
           mouse.x >= minX - hitTolerance && mouse.x <= maxX + hitTolerance &&

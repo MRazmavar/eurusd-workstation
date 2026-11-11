@@ -34,6 +34,43 @@ export interface ToolMetadata {
   category: string;
 }
 
+/**
+ * Dedicated Distinct Visual Icons for Long and Short Trading Positions.
+ * Long Position: Green target area on top with upward indicator, bright blue entry line, red stop area on bottom.
+ * Short Position: Red stop area on top, bright blue entry line, green target area on bottom with downward indicator.
+ */
+export const LongPositionIcon: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    className={className}
+  >
+    <rect x="3" y="3" width="18" height="8" rx="1.5" fill="#089981" fillOpacity="0.4" stroke="#089981" strokeWidth="1.5" />
+    <path d="M12 9V5M9 7l3-2 3 2" stroke="#089981" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    <line x1="2" y1="12" x2="22" y2="12" stroke="#38bdf8" strokeWidth="2" strokeLinecap="round" />
+    <rect x="3" y="13" width="18" height="8" rx="1.5" fill="#f23645" fillOpacity="0.4" stroke="#f23645" strokeWidth="1.5" />
+  </svg>
+);
+
+export const ShortPositionIcon: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    className={className}
+  >
+    <rect x="3" y="3" width="18" height="8" rx="1.5" fill="#f23645" fillOpacity="0.4" stroke="#f23645" strokeWidth="1.5" />
+    <path d="M12 5v4m-3-2 3 2 3-2" stroke="#f23645" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    <line x1="2" y1="12" x2="22" y2="12" stroke="#38bdf8" strokeWidth="2" strokeLinecap="round" />
+    <rect x="3" y="13" width="18" height="8" rx="1.5" fill="#089981" fillOpacity="0.4" stroke="#089981" strokeWidth="1.5" />
+  </svg>
+);
+
 export const ALL_DRAWING_TOOLS: Record<DrawingToolType, ToolMetadata> = {
   // Cursor
   crosshair: { tool: 'crosshair', label: 'Crosshair', icon: Crosshair, category: 'Cursor' },
@@ -79,8 +116,8 @@ export const ALL_DRAWING_TOOLS: Record<DrawingToolType, ToolMetadata> = {
   callout: { tool: 'callout', label: 'Callout', icon: MessageSquare, category: 'Annotations' },
 
   // Trading Analysis
-  long_position: { tool: 'long_position', label: 'Long Position', icon: BarChart, category: 'Trading' },
-  short_position: { tool: 'short_position', label: 'Short Position', icon: BarChart, category: 'Trading' },
+  long_position: { tool: 'long_position', label: 'Long Position', icon: LongPositionIcon, category: 'Trading' },
+  short_position: { tool: 'short_position', label: 'Short Position', icon: ShortPositionIcon, category: 'Trading' },
   price_range: { tool: 'price_range', label: 'Price Range', icon: MoveVertical, category: 'Trading' },
   date_range: { tool: 'date_range', label: 'Date Range', icon: Minus, category: 'Trading' },
   date_price_range: { tool: 'date_price_range', label: 'Date & Price Range', icon: Square, category: 'Trading' },
