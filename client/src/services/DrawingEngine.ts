@@ -94,10 +94,30 @@ export class DrawingEngine {
 
       // 1. Check control handles (points) ONLY if this drawing is already selected!
       if (selectedDrawingId === d.id) {
-        for (let pIdx = 0; pIdx < screenPoints.length; pIdx++) {
-          const dHandle = this.dist(mouse, screenPoints[pIdx]);
-          if (dHandle <= 16) {
-            return { drawing: d, pointIndex: pIdx };
+        if (d.type === 'long_position' || d.type === 'short_position') {
+          const startX = transformer.timeToX(d.points[0].time) ?? screenPoints[0].x;
+          const endX = d.points.length >= 4 ? (transformer.timeToX(d.points[3].time) ?? startX + 150) : startX + 150;
+          const entryY = transformer.priceToY(d.points[0].price) ?? screenPoints[0].y;
+          const slY = d.points.length >= 2 ? (transformer.priceToY(d.points[1].price) ?? entryY + 40) : entryY + 40;
+          const tpY = d.points.length >= 3 ? (transformer.priceToY(d.points[2].price) ?? entryY - 80) : entryY - 80;
+
+          const handles = [
+            { pt: { x: startX, y: entryY }, pIdx: 0 },
+            { pt: { x: startX, y: slY }, pIdx: 1 },
+            { pt: { x: startX, y: tpY }, pIdx: 2 },
+            { pt: { x: endX, y: entryY }, pIdx: 3 },
+          ];
+          for (const h of handles) {
+            if (this.dist(mouse, h.pt) <= 16) {
+              return { drawing: d, pointIndex: h.pIdx };
+            }
+          }
+        } else {
+          for (let pIdx = 0; pIdx < screenPoints.length; pIdx++) {
+            const dHandle = this.dist(mouse, screenPoints[pIdx]);
+            if (dHandle <= 16) {
+              return { drawing: d, pointIndex: pIdx };
+            }
           }
         }
       }

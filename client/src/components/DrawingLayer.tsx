@@ -510,33 +510,29 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 updatedPts[2] = { ...updatedPts[2], price: mouse.price };
               }
             } else if (pIdx === 3) {
-              // Handle 3: Middle-Right Anchor. Goes WHEREVER the mouse goes (X and Y)!
+              // Handle 3: Middle-Right Duration Handle.
               // Horizontally: stretches or shrinks width to mouse.time in any direction.
-              // Vertically: moves entry and bracket so anchor stays directly attached to mouse!
-              const deltaPrice = Number((mouse.price - (initPts[3]?.price ?? initPts[0].price)).toFixed(5));
-              updatedPts[3] = { time: mouse.time, price: mouse.price };
-              updatedPts[0] = { ...updatedPts[0], price: mouse.price };
-              if (updatedPts[1] && initPts[1]) {
-                updatedPts[1] = { ...updatedPts[1], price: Number((initPts[1].price + deltaPrice).toFixed(5)) };
-              }
-              if (updatedPts[2] && initPts[2]) {
-                updatedPts[2] = { ...updatedPts[2], price: Number((initPts[2].price + deltaPrice).toFixed(5)) };
-              }
+              // Vertically: stays locked on the entry price line!
+              updatedPts[3] = { time: mouse.time, price: target.points[0].price };
             } else if (pIdx === 4) {
-              // Handle 4: Top-Right Take Profit Anchor. Goes WHEREVER the mouse goes!
-              // Horizontally: extends/shrinks width to mouse.time.
-              // Vertically: adjusts Take Profit level to mouse.price! SL frozen!
+              // Handle 4: Top-Right Corner.
+              // Horizontally: stretches width to mouse.time.
+              // Vertically: adjusts top level to mouse.price.
               updatedPts[3] = { ...updatedPts[3], time: mouse.time };
-              if (updatedPts[2]) {
-                updatedPts[2] = { ...updatedPts[2], price: mouse.price };
+              const isLong = target.type === 'long_position';
+              const topIdx = isLong ? 2 : 1;
+              if (updatedPts[topIdx]) {
+                updatedPts[topIdx] = { ...updatedPts[topIdx], price: mouse.price };
               }
             } else if (pIdx === 5) {
-              // Handle 5: Bottom-Right Stop Loss Anchor. Goes WHEREVER the mouse goes!
-              // Horizontally: extends/shrinks width to mouse.time.
-              // Vertically: adjusts Stop Loss level to mouse.price! TP frozen!
+              // Handle 5: Bottom-Right Corner.
+              // Horizontally: stretches width to mouse.time.
+              // Vertically: adjusts bottom level to mouse.price.
               updatedPts[3] = { ...updatedPts[3], time: mouse.time };
-              if (updatedPts[1]) {
-                updatedPts[1] = { ...updatedPts[1], price: mouse.price };
+              const isLong = target.type === 'long_position';
+              const bottomIdx = isLong ? 1 : 2;
+              if (updatedPts[bottomIdx]) {
+                updatedPts[bottomIdx] = { ...updatedPts[bottomIdx], price: mouse.price };
               }
             }
 
@@ -705,9 +701,9 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         const isLong = activeTool === 'long_position';
         const entryPrice = mouse.price;
         const entryTime = mouse.time;
-        // Default standard bracket: 15 pips stop loss, 30 pips take profit (1:2 Risk/Reward)
+        // Default standard bracket: 15 pips stop loss, 15 pips take profit (1:1 Risk/Reward, matching TradingView default)
         const slPrice = Number((isLong ? entryPrice - 0.00150 : entryPrice + 0.00150).toFixed(5));
-        const tpPrice = Number((isLong ? entryPrice + 0.00300 : entryPrice - 0.00300).toFixed(5));
+        const tpPrice = Number((isLong ? entryPrice + 0.00150 : entryPrice - 0.00150).toFixed(5));
 
         // Default width: 25 candles into the future
         let candleStep = 300;
@@ -2236,119 +2232,85 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           const endX = screenPts.length >= 4 ? screenPts[3].x : (transformer.timeToX(d.points[0].time + 7200) ?? startX + 150);
           const minX = Math.min(startX, endX);
           const maxX = Math.max(startX, endX);
-          const width = Math.max(60, maxX - minX);
+          const width = Math.max(20, maxX - minX);
 
-          const slPips = (Math.abs(entryPrice - slPrice) / 0.0001).toFixed(1);
-          const tpPips = (Math.abs(tpPrice - entryPrice) / 0.0001).toFixed(1);
-          const rr = (parseFloat(slPips) > 0 ? (parseFloat(tpPips) / parseFloat(slPips)).toFixed(2) : '0.00');
+          const slPips = Math.abs(entryPrice - slPrice) / 0.0001;
+          const tpPips = Math.abs(tpPrice - entryPrice) / 0.0001;
+          const rrVal = slPips > 0 ? (tpPips / slPips) : 0;
+          const roundedInt = Math.round(rrVal);
+          const formattedRR = Math.abs(rrVal - roundedInt) < 0.005
+            ? roundedInt.toString()
+            : (Math.abs(rrVal * 10 - Math.round(rrVal * 10)) < 0.05 ? rrVal.toFixed(1) : rrVal.toFixed(2));
+          const badgeText = `Risk/reward ratio: ${formattedRR}`;
+          const badgeWidth = Math.max(132, badgeText.length * 6.8 + 22);
+          const badgeX = minX + (width - badgeWidth) / 2;
+
+          const profitTop = Math.min(entryY, tpY);
+          const profitHeight = Math.max(1, Math.abs(tpY - entryY));
+          const riskTop = Math.min(entryY, slY);
+          const riskHeight = Math.max(1, Math.abs(slY - entryY));
 
           return (
-            <g data-testid={`drawing-long-position-${d.id}`}>
+            <g data-testid={`drawing-long-position-${d.id}`} className="select-none">
               {/* Target Area (Green) */}
               <rect
                 x={minX}
-                y={Math.min(entryY, tpY)}
+                y={profitTop}
                 width={width}
-                height={Math.max(1, Math.abs(tpY - entryY))}
+                height={profitHeight}
                 fill="#089981"
-                fillOpacity={0.2}
+                fillOpacity={0.20}
                 stroke="#089981"
                 strokeWidth={1}
               />
               {/* Stop Area (Red) */}
               <rect
                 x={minX}
-                y={Math.min(entryY, slY)}
+                y={riskTop}
                 width={width}
-                height={Math.max(1, Math.abs(slY - entryY))}
+                height={riskHeight}
                 fill="#f23645"
-                fillOpacity={0.2}
+                fillOpacity={0.20}
                 stroke="#f23645"
                 strokeWidth={1}
               />
-              {/* Take Profit Line */}
-              <line
-                x1={minX}
-                y1={tpY}
-                x2={minX + width}
-                y2={tpY}
-                stroke="#089981"
-                strokeWidth={1.5}
-                strokeDasharray="4,3"
-              />
-              {/* Stop Loss Line */}
-              <line
-                x1={minX}
-                y1={slY}
-                x2={minX + width}
-                y2={slY}
-                stroke="#f23645"
-                strokeWidth={1.5}
-                strokeDasharray="4,3"
-              />
-              {/* Entry Line */}
+
+              {/* Entry Dividing Line */}
               <line
                 x1={minX}
                 y1={entryY}
                 x2={minX + width}
                 y2={entryY}
-                stroke="#2962ff"
-                strokeWidth={2}
+                stroke="#787b86"
+                strokeWidth={1}
+                opacity={0.8}
               />
 
-              {/* Side Boundary Dotted Lines */}
-              <line x1={minX} y1={Math.min(entryY, slY, tpY)} x2={minX} y2={Math.max(entryY, slY, tpY)} stroke="#787b86" strokeWidth={1} strokeDasharray="2,2" opacity={0.6} />
-              <line x1={minX + width} y1={Math.min(entryY, slY, tpY)} x2={minX + width} y2={Math.max(entryY, slY, tpY)} stroke="#787b86" strokeWidth={1} strokeDasharray="2,2" opacity={0.6} />
-
-              {/* Compact Labels along the right edge */}
-              <g transform={`translate(${minX + width - 90}, ${tpY - 16})`}>
-                <rect width={88} height={15} rx={3} fill="#089981" fillOpacity={0.9} />
-                <text x={44} y={11} fill="#ffffff" fontSize={9} fontWeight="bold" fontFamily="monospace" textAnchor="middle">
-                  TP: +{tpPips}p ({tpPrice.toFixed(5)})
-                </text>
-              </g>
-              <g transform={`translate(${minX + width - 85}, ${entryY - 16})`}>
-                <rect width={83} height={15} rx={3} fill="#1e222d" stroke="#2962ff" strokeWidth={1} />
-                <text x={41} y={11} fill="#38bdf8" fontSize={9} fontWeight="bold" fontFamily="monospace" textAnchor="middle">
-                  ENTRY: {entryPrice.toFixed(5)}
-                </text>
-              </g>
-              <g transform={`translate(${minX + width - 90}, ${slY - 16})`}>
-                <rect width={88} height={15} rx={3} fill="#f23645" fillOpacity={0.9} />
-                <text x={44} y={11} fill="#ffffff" fontSize={9} fontWeight="bold" fontFamily="monospace" textAnchor="middle">
-                  SL: -{slPips}p ({slPrice.toFixed(5)})
-                </text>
-              </g>
-
-              {/* Central Metrics Card */}
-              <g transform={`translate(${minX + 6}, ${Math.min(entryY, tpY) + 6})`}>
+              {/* Central TradingView Risk/reward ratio Pill Badge */}
+              <g
+                transform={`translate(${badgeX}, ${entryY - 11})`}
+                className="pointer-events-none select-none"
+              >
                 <rect
-                  width={185}
-                  height={20}
-                  rx={3}
-                  fill="#1e222d"
-                  fillOpacity={0.95}
-                  stroke="#2a2e39"
+                  width={badgeWidth}
+                  height={22}
+                  rx={4}
+                  ry={4}
+                  fill="#089981"
+                  stroke="#ffffff"
+                  strokeWidth={1}
+                  className="shadow-sm"
                 />
                 <text
-                  x={8}
-                  y={14}
-                  fill="#38bdf8"
-                  fontSize={10}
-                  fontWeight="bold"
-                  fontFamily="monospace"
+                  x={badgeWidth / 2}
+                  y={15}
+                  fill="#ffffff"
+                  fontSize={11}
+                  fontWeight={600}
+                  fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif'
+                  textAnchor="middle"
                 >
-                  LONG | R:R 1:{rr}
-                </text>
-                <text
-                  x={100}
-                  y={14}
-                  fill="#089981"
-                  fontSize={10}
-                  fontWeight="bold"
-                  fontFamily="monospace"
-                >
-                  Target: +{tpPips}p
+                  {badgeText}
                 </text>
               </g>
             </g>
@@ -2359,129 +2321,95 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         {d.type === 'short_position' && screenPts.length >= 1 && (() => {
           const entryPrice = d.points[0].price;
           const slPrice = d.points.length >= 2 ? d.points[1].price : Number((entryPrice + 0.00150).toFixed(5));
-          const tpPrice = d.points.length >= 3 ? d.points[2].price : Number((entryPrice - 0.00300).toFixed(5));
+          const tpPrice = d.points.length >= 3 ? d.points[2].price : Number((entryPrice - 0.00150).toFixed(5));
 
           const entryY = screenPts[0].y;
           const slY = transformer.priceToY(slPrice) ?? (screenPts[1]?.y ?? entryY - 40);
-          const tpY = transformer.priceToY(tpPrice) ?? (screenPts[2]?.y ?? entryY + 80);
+          const tpY = transformer.priceToY(tpPrice) ?? (screenPts[2]?.y ?? entryY + 40);
 
           const startX = screenPts[0].x;
           const endX = screenPts.length >= 4 ? screenPts[3].x : (transformer.timeToX(d.points[0].time + 7200) ?? startX + 150);
           const minX = Math.min(startX, endX);
           const maxX = Math.max(startX, endX);
-          const width = Math.max(60, maxX - minX);
+          const width = Math.max(20, maxX - minX);
 
-          const slPips = (Math.abs(slPrice - entryPrice) / 0.0001).toFixed(1);
-          const tpPips = (Math.abs(entryPrice - tpPrice) / 0.0001).toFixed(1);
-          const rr = (parseFloat(slPips) > 0 ? (parseFloat(tpPips) / parseFloat(slPips)).toFixed(2) : '0.00');
+          const slPips = Math.abs(slPrice - entryPrice) / 0.0001;
+          const tpPips = Math.abs(entryPrice - tpPrice) / 0.0001;
+          const rrVal = slPips > 0 ? (tpPips / slPips) : 0;
+          const roundedInt = Math.round(rrVal);
+          const formattedRR = Math.abs(rrVal - roundedInt) < 0.005
+            ? roundedInt.toString()
+            : (Math.abs(rrVal * 10 - Math.round(rrVal * 10)) < 0.05 ? rrVal.toFixed(1) : rrVal.toFixed(2));
+          const badgeText = `Risk/reward ratio: ${formattedRR}`;
+          const badgeWidth = Math.max(132, badgeText.length * 6.8 + 22);
+          const badgeX = minX + (width - badgeWidth) / 2;
+
+          const profitTop = Math.min(entryY, tpY);
+          const profitHeight = Math.max(1, Math.abs(tpY - entryY));
+          const riskTop = Math.min(entryY, slY);
+          const riskHeight = Math.max(1, Math.abs(slY - entryY));
 
           return (
-            <g data-testid={`drawing-short-position-${d.id}`}>
+            <g data-testid={`drawing-short-position-${d.id}`} className="select-none">
               {/* Target Area (Green) */}
               <rect
                 x={minX}
-                y={Math.min(entryY, tpY)}
+                y={profitTop}
                 width={width}
-                height={Math.max(1, Math.abs(tpY - entryY))}
+                height={profitHeight}
                 fill="#089981"
-                fillOpacity={0.2}
+                fillOpacity={0.20}
                 stroke="#089981"
                 strokeWidth={1}
               />
               {/* Stop Area (Red) */}
               <rect
                 x={minX}
-                y={Math.min(entryY, slY)}
+                y={riskTop}
                 width={width}
-                height={Math.max(1, Math.abs(slY - entryY))}
+                height={riskHeight}
                 fill="#f23645"
-                fillOpacity={0.2}
+                fillOpacity={0.20}
                 stroke="#f23645"
                 strokeWidth={1}
               />
-              {/* Take Profit Line */}
-              <line
-                x1={minX}
-                y1={tpY}
-                x2={minX + width}
-                y2={tpY}
-                stroke="#089981"
-                strokeWidth={1.5}
-                strokeDasharray="4,3"
-              />
-              {/* Stop Loss Line */}
-              <line
-                x1={minX}
-                y1={slY}
-                x2={minX + width}
-                y2={slY}
-                stroke="#f23645"
-                strokeWidth={1.5}
-                strokeDasharray="4,3"
-              />
-              {/* Entry Line */}
+
+              {/* Entry Dividing Line */}
               <line
                 x1={minX}
                 y1={entryY}
                 x2={minX + width}
                 y2={entryY}
-                stroke="#2962ff"
-                strokeWidth={2}
+                stroke="#787b86"
+                strokeWidth={1}
+                opacity={0.8}
               />
 
-              {/* Side Boundary Dotted Lines */}
-              <line x1={minX} y1={Math.min(entryY, slY, tpY)} x2={minX} y2={Math.max(entryY, slY, tpY)} stroke="#787b86" strokeWidth={1} strokeDasharray="2,2" opacity={0.6} />
-              <line x1={minX + width} y1={Math.min(entryY, slY, tpY)} x2={minX + width} y2={Math.max(entryY, slY, tpY)} stroke="#787b86" strokeWidth={1} strokeDasharray="2,2" opacity={0.6} />
-
-              {/* Compact Labels along the right edge */}
-              <g transform={`translate(${minX + width - 90}, ${tpY - 16})`}>
-                <rect width={88} height={15} rx={3} fill="#089981" fillOpacity={0.9} />
-                <text x={44} y={11} fill="#ffffff" fontSize={9} fontWeight="bold" fontFamily="monospace" textAnchor="middle">
-                  TP: +{tpPips}p ({tpPrice.toFixed(5)})
-                </text>
-              </g>
-              <g transform={`translate(${minX + width - 85}, ${entryY - 16})`}>
-                <rect width={83} height={15} rx={3} fill="#1e222d" stroke="#2962ff" strokeWidth={1} />
-                <text x={41} y={11} fill="#38bdf8" fontSize={9} fontWeight="bold" fontFamily="monospace" textAnchor="middle">
-                  ENTRY: {entryPrice.toFixed(5)}
-                </text>
-              </g>
-              <g transform={`translate(${minX + width - 90}, ${slY - 16})`}>
-                <rect width={88} height={15} rx={3} fill="#f23645" fillOpacity={0.9} />
-                <text x={44} y={11} fill="#ffffff" fontSize={9} fontWeight="bold" fontFamily="monospace" textAnchor="middle">
-                  SL: -{slPips}p ({slPrice.toFixed(5)})
-                </text>
-              </g>
-
-              {/* Central Metrics Card */}
-              <g transform={`translate(${minX + 6}, ${Math.min(entryY, tpY) + 6})`}>
+              {/* Central TradingView Risk/reward ratio Pill Badge */}
+              <g
+                transform={`translate(${badgeX}, ${entryY - 11})`}
+                className="pointer-events-none select-none"
+              >
                 <rect
-                  width={185}
-                  height={20}
-                  rx={3}
-                  fill="#1e222d"
-                  fillOpacity={0.95}
-                  stroke="#2a2e39"
+                  width={badgeWidth}
+                  height={22}
+                  rx={4}
+                  ry={4}
+                  fill="#089981"
+                  stroke="#ffffff"
+                  strokeWidth={1}
+                  className="shadow-sm"
                 />
                 <text
-                  x={8}
-                  y={14}
-                  fill="#38bdf8"
-                  fontSize={10}
-                  fontWeight="bold"
-                  fontFamily="monospace"
+                  x={badgeWidth / 2}
+                  y={15}
+                  fill="#ffffff"
+                  fontSize={11}
+                  fontWeight={600}
+                  fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif'
+                  textAnchor="middle"
                 >
-                  SHORT | R:R 1:{rr}
-                </text>
-                <text
-                  x={105}
-                  y={14}
-                  fill="#089981"
-                  fontSize={10}
-                  fontWeight="bold"
-                  fontFamily="monospace"
-                >
-                  Target: +{tpPips}p
+                  {badgeText}
                 </text>
               </g>
             </g>
@@ -2588,47 +2516,47 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           !d.locked &&
           (() => {
             const isPosition = d.type === 'long_position' || d.type === 'short_position';
-            let ptsToRender: { x: number; y: number; cursor?: string; color?: string; pointIndex: number; title?: string }[] = [];
+            let ptsToRender: { x: number; y: number; cursor?: string; color?: string; pointIndex: number; title?: string; isVisible?: boolean }[] = [];
 
             if (isPosition) {
               const startX = screenPts[0].x;
               const endX = screenPts.length >= 4 ? screenPts[3].x : (transformer.timeToX(d.points[0].time + 7200) ?? startX + 150);
-              const minX = Math.min(startX, endX);
-              const maxX = Math.max(startX, endX);
-              const width = Math.max(20, maxX - minX);
-              const midX = minX + width / 2;
 
               const entryPrice = d.points[0].price;
               const slPrice = d.points.length >= 2 ? d.points[1].price : (d.type === 'long_position' ? entryPrice - 0.00150 : entryPrice + 0.00150);
-              const tpPrice = d.points.length >= 3 ? d.points[2].price : (d.type === 'long_position' ? entryPrice + 0.00300 : entryPrice - 0.00300);
+              const tpPrice = d.points.length >= 3 ? d.points[2].price : (d.type === 'long_position' ? entryPrice + 0.00150 : entryPrice - 0.00150);
 
               const entryY = screenPts[0].y;
               const slY = transformer.priceToY(slPrice) ?? (screenPts[1]?.y ?? entryY + 40);
-              const tpY = transformer.priceToY(tpPrice) ?? (screenPts[2]?.y ?? entryY - 80);
+              const tpY = transformer.priceToY(tpPrice) ?? (screenPts[2]?.y ?? entryY - 40);
 
-              // 6 Intuitive Handles that go wherever the mouse goes:
-              // 0: Left Entry (minX, entryY)
-              // 1: Center Stop Loss (midX, slY)
-              // 2: Center Take Profit (midX, tpY)
-              // 3: Middle-Right Entry/Width Anchor (maxX, entryY)
-              // 4: Top-Right Take Profit Anchor (maxX, tpY)
-              // 5: Bottom-Right Stop Loss Anchor (maxX, slY)
+              const isLong = d.type === 'long_position';
+              const topY = isLong ? tpY : slY;
+              const bottomY = isLong ? slY : tpY;
+              const topPointIndex = isLong ? 2 : 1;
+              const bottomPointIndex = isLong ? 1 : 2;
+
+              // TradingView Signature 4 Handles:
+              // 1. Top-Left: (startX, topY) -> controls top level (TP for Long, SL for Short)
+              // 2. Middle-Left: (startX, entryY) -> controls entry & moves entire bracket
+              // 3. Bottom-Left: (startX, bottomY) -> controls bottom level (SL for Long, TP for Short)
+              // 4. Middle-Right: (endX, entryY) -> controls width / duration
               ptsToRender = [
-                { x: startX, y: entryY, cursor: 'cursor-move', color: '#2962ff', pointIndex: 0, title: 'Entry & Start' },
-                { x: midX, y: slY, cursor: 'cursor-ns-resize', color: '#f23645', pointIndex: 1, title: 'Stop Loss Level' },
-                { x: midX, y: tpY, cursor: 'cursor-ns-resize', color: '#089981', pointIndex: 2, title: 'Take Profit Level' },
-                { x: endX, y: entryY, cursor: 'cursor-move', color: '#38bdf8', pointIndex: 3, title: 'Right Width & Entry Anchor' },
-                { x: endX, y: tpY, cursor: 'cursor-move', color: '#089981', pointIndex: 4, title: 'Right Take Profit Anchor' },
-                { x: endX, y: slY, cursor: 'cursor-move', color: '#f23645', pointIndex: 5, title: 'Right Stop Loss Anchor' },
+                { x: startX, y: topY, cursor: 'cursor-ns-resize', pointIndex: topPointIndex, isVisible: true },
+                { x: startX, y: entryY, cursor: 'cursor-move', pointIndex: 0, isVisible: true },
+                { x: startX, y: bottomY, cursor: 'cursor-ns-resize', pointIndex: bottomPointIndex, isVisible: true },
+                { x: endX, y: entryY, cursor: 'cursor-ew-resize', pointIndex: 3, isVisible: true },
+                // Corner hit targets on right edge:
+                { x: endX, y: topY, cursor: 'cursor-ns-resize', pointIndex: 4, isVisible: false },
+                { x: endX, y: bottomY, cursor: 'cursor-ns-resize', pointIndex: 5, isVisible: false },
               ];
             } else {
               ptsToRender = screenPts.map((pt, idx) => ({
                 x: pt.x,
                 y: pt.y,
                 cursor: 'cursor-crosshair',
-                color: '#2962ff',
                 pointIndex: idx,
-                title: 'Anchor Handle',
+                isVisible: true,
               }));
             }
 
@@ -2642,7 +2570,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                   r={14}
                   fill="transparent"
                   className={`pointer-events-auto ${pt.cursor}`}
-                                    onMouseDown={(e) => {
+                  onMouseDown={(e) => {
                     e.stopPropagation();
                     e.preventDefault();
                     const rect = svgRef.current?.getBoundingClientRect();
@@ -2656,18 +2584,20 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                     });
                   }}
                 />
-                {/* Visible anchor handle (9x9 rounded white box with color-coded border) */}
-                <rect
-                  x={pt.x - 4.5}
-                  y={pt.y - 4.5}
-                  width={9}
-                  height={9}
-                  rx={2}
-                  fill="#ffffff"
-                  stroke={pt.color}
-                  strokeWidth={2}
-                  className="pointer-events-none shadow"
-                />
+                {/* TradingView Signature 10x10 Rounded Square with #2962ff border */}
+                {pt.isVisible && (
+                  <rect
+                    x={pt.x - 5}
+                    y={pt.y - 5}
+                    width={10}
+                    height={10}
+                    rx={2.5}
+                    fill="#131722"
+                    stroke="#2962ff"
+                    strokeWidth={2}
+                    className="pointer-events-none shadow"
+                  />
+                )}
               </g>
             ));
           })()}
@@ -2974,10 +2904,26 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
       {selectedDrawing && (
         <DrawingToolbarPopup
           drawing={selectedDrawing}
-          position={{
-            x: transformer.timeToX(selectedDrawing.points[0].time) ?? 200,
-            y: transformer.priceToY(selectedDrawing.points[0].price) ?? 200,
-          }}
+          position={(() => {
+            const isPos = selectedDrawing.type === 'long_position' || selectedDrawing.type === 'short_position';
+            if (isPos && selectedDrawing.points.length >= 3) {
+              const p0 = selectedDrawing.points[0].price;
+              const p1 = selectedDrawing.points[1].price;
+              const p2 = selectedDrawing.points[2].price;
+              const maxP = Math.max(p0, p1, p2);
+              const minT = Math.min(selectedDrawing.points[0].time, selectedDrawing.points.length >= 4 ? selectedDrawing.points[3].time : selectedDrawing.points[0].time);
+              const maxT = Math.max(selectedDrawing.points[0].time, selectedDrawing.points.length >= 4 ? selectedDrawing.points[3].time : selectedDrawing.points[0].time);
+              const midT = minT + (maxT - minT) / 2;
+              return {
+                x: transformer.timeToX(midT) ?? 200,
+                y: transformer.priceToY(maxP) ?? 200,
+              };
+            }
+            return {
+              x: transformer.timeToX(selectedDrawing.points[0].time) ?? 200,
+              y: transformer.priceToY(selectedDrawing.points[0].price) ?? 200,
+            };
+          })()}
           onUpdate={onUpdate}
           onDuplicate={onDuplicateDrawing || ((orig) => {
             const dupl: DrawingObject = {
