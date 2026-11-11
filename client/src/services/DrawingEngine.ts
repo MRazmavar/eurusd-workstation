@@ -96,7 +96,7 @@ export class DrawingEngine {
       if (selectedDrawingId === d.id) {
         for (let pIdx = 0; pIdx < screenPoints.length; pIdx++) {
           const dHandle = this.dist(mouse, screenPoints[pIdx]);
-          if (dHandle <= 8) {
+          if (dHandle <= 16) {
             return { drawing: d, pointIndex: pIdx };
           }
         }
