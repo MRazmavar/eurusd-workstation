@@ -1271,9 +1271,9 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                     }}
                   />
                 )}
-                {/* TP Badge */}
+                {/* Compact TP Label on right border */}
                 <g
-                  transform={`translate(${boxLeft + 10}, ${tpY - 12})`}
+                  transform={`translate(${boxRight - 55}, ${tpY - 18})`}
                   className={!isClosed ? "cursor-ns-resize pointer-events-auto" : "pointer-events-none"}
                   onMouseDown={!isClosed ? (e) => {
                     e.stopPropagation();
@@ -1282,22 +1282,23 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                   data-testid={`on-chart-tp-badge-${trade.id}`}
                 >
                   <rect
-                    width={310}
-                    height={24}
-                    rx={4}
+                    width={50}
+                    height={16}
+                    rx={3}
                     fill="#089981"
-                    className="shadow-md"
+                    fillOpacity={0.9}
+                    className="shadow-sm"
                   />
-                  <circle cx={10} cy={12} r={3} fill="#fff" />
                   <text
-                    x={20}
-                    y={16}
+                    x={25}
+                    y={12}
                     fill="#ffffff"
-                    fontSize={11}
+                    fontSize={10}
                     fontWeight="bold"
                     fontFamily="monospace"
+                    textAnchor="middle"
                   >
-                    TP: {tpPrice.toFixed(5)} (+{tpDiffPips.toFixed(1)}p | +${tpGainUsd.toFixed(2)}) | R:R {rrRatio.toFixed(2)}
+                    TP
                   </text>
                 </g>
               </g>
@@ -1349,9 +1350,9 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                     }}
                   />
                 )}
-                {/* SL Badge */}
+                {/* Compact SL Label on right border */}
                 <g
-                  transform={`translate(${boxLeft + 10}, ${slY - 12})`}
+                  transform={`translate(${boxRight - 55}, ${slY - 18})`}
                   className={!isClosed ? "cursor-ns-resize pointer-events-auto" : "pointer-events-none"}
                   onMouseDown={!isClosed ? (e) => {
                     e.stopPropagation();
@@ -1360,22 +1361,23 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                   data-testid={`on-chart-sl-badge-${trade.id}`}
                 >
                   <rect
-                    width={310}
-                    height={24}
-                    rx={4}
+                    width={50}
+                    height={16}
+                    rx={3}
                     fill="#f23645"
-                    className="shadow-md"
+                    fillOpacity={0.9}
+                    className="shadow-sm"
                   />
-                  <circle cx={10} cy={12} r={3} fill="#fff" />
                   <text
-                    x={20}
-                    y={16}
+                    x={25}
+                    y={12}
                     fill="#ffffff"
-                    fontSize={11}
+                    fontSize={10}
                     fontWeight="bold"
                     fontFamily="monospace"
+                    textAnchor="middle"
                   >
-                    SL: {slPrice.toFixed(5)} (-{slDiffPips.toFixed(1)}p | -${slLossUsd.toFixed(2)})
+                    SL
                   </text>
                 </g>
               </g>
@@ -1411,238 +1413,31 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 } : undefined}
               />
 
-              {/* Main Entry Interactive Information Badge Card */}
+              {/* Compact Entry Tag at right border */}
               <g
-                transform={`translate(${cardX}, ${entryY - 16})`}
-                className="pointer-events-auto select-none"
+                transform={`translate(${boxRight - 65}, ${entryY - 18})`}
+                className="pointer-events-none select-none"
                 data-testid={`on-chart-entry-badge-${trade.id}`}
               >
-                {/* Background Card */}
                 <rect
-                  width={isOpen ? 530 : (isClosed ? 490 : 420)}
-                  height={32}
-                  rx={6}
+                  width={60}
+                  height={16}
+                  rx={3}
                   fill="#1e222d"
                   stroke={isPending ? '#ff9800' : (isBuy ? '#089981' : '#f23645')}
-                  strokeWidth={1.5}
-                  className="shadow-xl"
+                  strokeWidth={1}
                 />
-
-                {/* Direction Indicator Pill */}
-                <g transform="translate(6, 5)">
-                  <rect
-                    width={46}
-                    height={22}
-                    rx={4}
-                    fill={isBuy ? '#089981' : '#f23645'}
-                  />
-                  <text
-                    x={23}
-                    y={15}
-                    fill="#ffffff"
-                    fontSize={10}
-                    fontWeight="bold"
-                    textAnchor="middle"
-                  >
-                    {trade.type}
-                  </text>
-                </g>
-
-                {/* Trade Details & Entry Point & Market Price */}
                 <text
-                  x={58}
-                  y={20}
-                  fill="#e0e3eb"
-                  fontSize={11}
+                  x={30}
+                  y={12}
+                  fill={isBuy ? '#089981' : '#f23645'}
+                  fontSize={10}
                   fontWeight="bold"
                   fontFamily="monospace"
+                  textAnchor="middle"
                 >
-                  {trade.lot_size.toFixed(2)}L @ {entryPrice.toFixed(5)} {isOpen ? `| Mkt: ${effectiveMarketPrice.toFixed(5)}` : ''}
+                  {trade.type}
                 </text>
-
-                {/* Real-Time Live Profit / Loss Display for OPEN trades */}
-                {isOpen ? (
-                  <g transform="translate(290, 5)" data-testid={`on-chart-pnl-${trade.id}`}>
-                    <rect
-                      width={125}
-                      height={22}
-                      rx={4}
-                      fill={isProfit ? '#089981' : '#f23645'}
-                      fillOpacity={0.2}
-                      stroke={isProfit ? '#089981' : '#f23645'}
-                      strokeWidth={1}
-                    />
-                    <text
-                      x={62}
-                      y={15}
-                      fill={isProfit ? '#26a69a' : '#ef5350'}
-                      fontSize={11}
-                      fontWeight="bold"
-                      fontFamily="monospace"
-                      textAnchor="middle"
-                    >
-                      {isProfit ? '+' : ''}${liveNetPnl.toFixed(2)} ({isProfit ? '+' : ''}{pipDiff.toFixed(1)}p)
-                    </text>
-                  </g>
-                ) : isClosed ? (
-                  /* Completed Trade Summary */
-                  <g transform="translate(270, 5)">
-                    <rect
-                      width={210}
-                      height={22}
-                      rx={4}
-                      fill={isProfit ? '#089981' : '#f23645'}
-                      fillOpacity={0.2}
-                      stroke={isProfit ? '#089981' : '#f23645'}
-                      strokeWidth={1}
-                    />
-                    <text
-                      x={105}
-                      y={15}
-                      fill={isProfit ? '#26a69a' : '#ef5350'}
-                      fontSize={10}
-                      fontWeight="bold"
-                      fontFamily="monospace"
-                      textAnchor="middle"
-                    >
-                      CLOSED ({trade.exit_reason || 'MANUAL'}): {isProfit ? '+' : ''}${liveNetPnl.toFixed(2)} ({trade.pnl_pips ? `${trade.pnl_pips >= 0 ? '+' : ''}${trade.pnl_pips.toFixed(1)}p` : ''})
-                    </text>
-                  </g>
-                ) : (
-                  /* Pending Order Tag */
-                  <g transform="translate(270, 5)">
-                    <rect
-                      width={80}
-                      height={22}
-                      rx={4}
-                      fill="#ff9800"
-                      fillOpacity={0.2}
-                      stroke="#ff9800"
-                      strokeWidth={1}
-                    />
-                    <text
-                      x={40}
-                      y={15}
-                      fill="#ffb74d"
-                      fontSize={10}
-                      fontWeight="bold"
-                      textAnchor="middle"
-                    >
-                      PENDING
-                    </text>
-                  </g>
-                )}
-
-                {/* Breakeven Button [BE] */}
-                {isOpen && trade.sl !== entryPrice && (
-                  <g
-                    transform="translate(422, 5)"
-                    className="cursor-pointer"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onModifyTrade?.(trade.id, { sl: entryPrice });
-                      onShowToast?.(`Moved SL to Breakeven @ ${entryPrice.toFixed(5)}`);
-                    }}
-                  >
-                    <title>Move Stop Loss to Break-Even</title>
-                    <rect
-                      width={32}
-                      height={22}
-                      rx={4}
-                      fill="#2a2e39"
-                      stroke="#787b86"
-                      strokeWidth={1}
-                      className="hover:fill-[#363c4e] transition-colors"
-                    />
-                    <text
-                      x={16}
-                      y={15}
-                      fill="#e0e3eb"
-                      fontSize={10}
-                      fontWeight="bold"
-                      textAnchor="middle"
-                      className="pointer-events-none"
-                    >
-                      BE
-                    </text>
-                  </g>
-                )}
-
-                {/* Close / Cancel Button */}
-                {isOpen ? (
-                  <g
-                    transform="translate(460, 5)"
-                    className="cursor-pointer pointer-events-auto"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onCloseTrade?.(trade.id);
-                    }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    data-testid={`on-chart-close-btn-${trade.id}`}
-                  >
-                    <rect
-                      width={62}
-                      height={22}
-                      rx={4}
-                      fill="#2a2e39"
-                      stroke="#f23645"
-                      strokeWidth={1}
-                      className="hover:fill-[#f23645] transition-colors pointer-events-auto cursor-pointer"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onCloseTrade?.(trade.id);
-                      }}
-                      onMouseDown={(e) => e.stopPropagation()}
-                    />
-                    <text
-                      x={31}
-                      y={15}
-                      fill="#ffffff"
-                      fontSize={10}
-                      fontWeight="bold"
-                      textAnchor="middle"
-                      className="pointer-events-none"
-                    >
-                      ✕ Close
-                    </text>
-                  </g>
-                ) : isPending ? (
-                  <g
-                    transform="translate(355, 5)"
-                    className="cursor-pointer pointer-events-auto"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onCancelTrade?.(trade.id);
-                    }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                  >
-                    <rect
-                      width={60}
-                      height={22}
-                      rx={4}
-                      fill="#2a2e39"
-                      stroke="#f23645"
-                      strokeWidth={1}
-                      className="pointer-events-auto cursor-pointer"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onCancelTrade?.(trade.id);
-                      }}
-                      onMouseDown={(e) => e.stopPropagation()}
-                    />
-                    <text
-                      x={30}
-                      y={15}
-                      fill="#ffffff"
-                      fontSize={10}
-                      fontWeight="bold"
-                      textAnchor="middle"
-                      className="pointer-events-none"
-                    >
-                      ✕ Cancel
-                    </text>
-                  </g>
-                ) : null}
               </g>
             </g>
           );
@@ -1760,25 +1555,11 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             strokeWidth={1.5}
             className="shadow"
           />
-          <g transform={`translate(${boxLeft + 10}, ${tpY - 12})`}>
-            <rect
-              width={280}
-              height={24}
-              rx={4}
-              fill="#089981"
-              className="shadow-lg"
-            />
-            <circle cx={10} cy={12} r={3} fill="#fff" />
-            <text
-              x={22}
-              y={16}
-              fill="#ffffff"
-              fontSize={11}
-              fontWeight="bold"
-              fontFamily="monospace"
-              className="pointer-events-none"
-            >
-              TP: {activeSetup.tpPrice.toFixed(5)} (+{tpPips}p | +${activeSetup.rewardUsd.toFixed(2)})
+          {/* Compact TP Label on right border */}
+          <g transform={`translate(${boxRight - 55}, ${tpY - 18})`}>
+            <rect width={50} height={16} rx={3} fill="#089981" fillOpacity={0.9} />
+            <text x={25} y={12} fill="#ffffff" fontSize={10} fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+              TP
             </text>
           </g>
         </g>
@@ -1819,25 +1600,11 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             strokeWidth={1.5}
             className="shadow"
           />
-          <g transform={`translate(${boxLeft + 10}, ${entryY - 12})`}>
-            <rect
-              width={260}
-              height={24}
-              rx={4}
-              fill="#2962ff"
-              className="shadow-lg"
-            />
-            <circle cx={10} cy={12} r={3} fill="#fff" />
-            <text
-              x={22}
-              y={16}
-              fill="#ffffff"
-              fontSize={11}
-              fontWeight="bold"
-              fontFamily="monospace"
-              className="pointer-events-none"
-            >
-              ENTRY ({activeSetup.type}): {activeSetup.entryPrice.toFixed(5)} [Drag to move]
+          {/* Compact Entry Label on right border */}
+          <g transform={`translate(${boxRight - 65}, ${entryY - 18})`}>
+            <rect width={60} height={16} rx={3} fill="#2962ff" fillOpacity={0.9} />
+            <text x={30} y={12} fill="#ffffff" fontSize={10} fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+              {activeSetup.type}
             </text>
           </g>
         </g>
@@ -1879,87 +1646,11 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             strokeWidth={1.5}
             className="shadow"
           />
-          <g transform={`translate(${boxLeft + 10}, ${slY - 12})`}>
-            <rect
-              width={310}
-              height={24}
-              rx={4}
-              fill="#f23645"
-              className="shadow-lg"
-            />
-            <circle cx={10} cy={12} r={3} fill="#fff" />
-            <text
-              x={22}
-              y={16}
-              fill="#ffffff"
-              fontSize={11}
-              fontWeight="bold"
-              fontFamily="monospace"
-              className="pointer-events-none"
-            >
-              SL: {activeSetup.slPrice.toFixed(5)} (-{slPips}p | -${activeSetup.riskUsd.toFixed(2)}{activeSetup.riskPercent ? ` [${activeSetup.riskPercent.toFixed(1)}%]` : ''})
-            </text>
-          </g>
-        </g>
-
-        {/* Central Risk / Reward Badge & Action Buttons */}
-        <g
-          transform={`translate(${cardX}, ${entryY + (activeSetup.type === 'BUY' ? 20 : -52)})`}
-          className="pointer-events-auto"
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          <rect
-            width={430}
-            height={32}
-            rx={6}
-            fill="#1e222d"
-            stroke="#2a2e39"
-            strokeWidth={1.5}
-            className="shadow-xl"
-          />
-          <text
-            x={12}
-            y={20}
-            fill="#fff"
-            fontSize={11}
-            fontWeight="bold"
-            fontFamily="sans-serif"
-            className="pointer-events-none"
-          >
-            R:R 1 : {activeSetup.riskReward.toFixed(2)} | {activeSetup.lotSize} Lots{activeSetup.riskPercent ? ` (${activeSetup.riskPercent.toFixed(1)}% Risk)` : ''}
-          </text>
-
-          {/* Confirm Button directly on chart line */}
-          <g
-            transform="translate(285, 4)"
-            className="cursor-pointer"
-            data-testid="on-chart-confirm-setup-btn"
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onConfirmSetup?.();
-            }}
-          >
-            <rect width={75} height={24} rx={4} fill="#089981" />
-            <text x={37} y={16} fill="#ffffff" fontSize={11} fontWeight="bold" textAnchor="middle" className="pointer-events-none">
-              ✓ Confirm
-            </text>
-          </g>
-
-          {/* Cancel Button directly on chart line */}
-          <g
-            transform="translate(365, 4)"
-            className="cursor-pointer"
-            data-testid="on-chart-cancel-setup-btn"
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onCancelSetup?.();
-            }}
-          >
-            <rect width={60} height={24} rx={4} fill="#2a2e39" stroke="#f23645" strokeWidth={1} />
-            <text x={30} y={16} fill="#f23645" fontSize={11} fontWeight="bold" textAnchor="middle" className="pointer-events-none">
-              ✕ Cancel
+          {/* Compact SL Label on right border */}
+          <g transform={`translate(${boxRight - 55}, ${slY - 18})`}>
+            <rect width={50} height={16} rx={3} fill="#f23645" fillOpacity={0.9} />
+            <text x={25} y={12} fill="#ffffff" fontSize={10} fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+              SL
             </text>
           </g>
         </g>

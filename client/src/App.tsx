@@ -34,6 +34,7 @@ import { JumpDateTimeModal } from './components/JumpDateTimeModal';
 import { DrawingPropertiesModal } from './components/DrawingPropertiesModal';
 import { QuickTimeframeModal } from './components/QuickTimeframeModal';
 import { FavoritesToolbar } from './components/FavoritesToolbar';
+import { FloatingTradeControlPanel } from './components/FloatingTradeControlPanel';
 import { NewsOverlay } from './components/NewsOverlay';
 import { DEFAULT_FAVORITE_TOOLS } from './utils/drawingTools';
 import { generateEconomicNewsEvents } from './utils/economicNews';
@@ -1169,6 +1170,25 @@ export const App: React.FC = () => {
                 onClose={() => setShowFavoritesToolbar(false)}
               />
             )}
+
+            {/* Draggable Floating Trade Settings & Control Panel (Lowest Left by default) */}
+            <FloatingTradeControlPanel
+              trades={trades}
+              activeSetup={activeSetup}
+              currentPrice={visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : (quote?.bid || (masterCandles.length > 0 ? masterCandles[masterCandles.length - 1].close : 1.11380))}
+              onConfirmSetup={() => backtestingEngine.confirmTradeSetup(replayEngine.getCurrentCandle()?.time || Math.floor(Date.now() / 1000))}
+              onCancelSetup={() => backtestingEngine.cancelTradeSetup()}
+              onCloseTrade={(tradeId) => {
+                const curP = visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : (quote?.bid || (masterCandles.length > 0 ? masterCandles[masterCandles.length - 1].close : 1.11380));
+                const time = replayEngine.getCurrentCandle()?.time || Math.floor(Date.now() / 1000);
+                backtestingEngine.closeTrade(tradeId, curP, time, 'MANUAL');
+                showToast('Closed Position');
+              }}
+              onModifyTrade={(tradeId, updates) => {
+                backtestingEngine.modifyTrade(tradeId, updates);
+                showToast('Updated Trade Level');
+              }}
+            />
           </div>
 
           {/* Oscillator Sub-panels (e.g. RSI, MACD, etc.) */}
