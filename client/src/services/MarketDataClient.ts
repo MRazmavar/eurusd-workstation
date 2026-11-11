@@ -15,6 +15,13 @@ export class MarketDataClient {
   private reconnectTimer: any = null;
   private isConnecting: boolean = false;
 
+  private get baseUrl(): string {
+    if (typeof window !== 'undefined') {
+      return `${window.location.protocol}//${window.location.hostname}:8008`;
+    }
+    return 'http://127.0.0.1:8008';
+  }
+
   constructor() {
     this.connectWebSocket();
   }
@@ -90,7 +97,7 @@ export class MarketDataClient {
     if (startTime) params.append('start_time', startTime.toString());
     if (endTime) params.append('end_time', endTime.toString());
     
-    const resp = await fetch(`http://127.0.0.1:8008/api/market/candles?${params.toString()}`);
+    const resp = await fetch(`${this.baseUrl}/api/market/candles?${params.toString()}`);
     if (!resp.ok) {
       throw new Error(`Failed to load historical candles: ${resp.statusText}`);
     }
@@ -100,13 +107,13 @@ export class MarketDataClient {
   async validateData(timeframe: Timeframe = '1h', range?: string): Promise<DataValidationReport> {
     const params = new URLSearchParams({ timeframe });
     if (range) params.append('range', range);
-    const resp = await fetch(`http://127.0.0.1:8008/api/market/validate?${params.toString()}`);
+    const resp = await fetch(`${this.baseUrl}/api/market/validate?${params.toString()}`);
     if (!resp.ok) throw new Error('Validation request failed');
     return resp.json();
   }
 
   async fetchQuote(): Promise<Quote> {
-    const resp = await fetch('http://127.0.0.1:8008/api/market/quote');
+    const resp = await fetch(`${this.baseUrl}/api/market/quote`);
     if (!resp.ok) throw new Error('Failed to fetch quote');
     return resp.json();
   }
@@ -118,7 +125,7 @@ export class MarketDataClient {
         end_time: endTime.toString(),
       });
       if (minImpact) params.append('min_impact', minImpact);
-      const resp = await fetch(`http://127.0.0.1:8008/api/market/news?${params.toString()}`);
+      const resp = await fetch(`${this.baseUrl}/api/market/news?${params.toString()}`);
       if (resp.ok) {
         return await resp.json();
       }
@@ -129,13 +136,13 @@ export class MarketDataClient {
   }
 
   async fetchTrades(): Promise<Trade[]> {
-    const resp = await fetch('http://127.0.0.1:8008/api/trades');
+    const resp = await fetch(`${this.baseUrl}/api/trades`);
     if (!resp.ok) return [];
     return resp.json();
   }
 
   async saveTrade(trade: Trade): Promise<Trade> {
-    const resp = await fetch('http://127.0.0.1:8008/api/trades', {
+    const resp = await fetch(`${this.baseUrl}/api/trades`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(trade),
@@ -144,18 +151,18 @@ export class MarketDataClient {
   }
 
   async deleteTrade(tradeId: string): Promise<boolean> {
-    const resp = await fetch(`http://127.0.0.1:8008/api/trades/${tradeId}`, { method: 'DELETE' });
+    const resp = await fetch(`${this.baseUrl}/api/trades/${tradeId}`, { method: 'DELETE' });
     return resp.ok;
   }
 
   async fetchDrawings(): Promise<DrawingObject[]> {
-    const resp = await fetch('http://127.0.0.1:8008/api/drawings');
+    const resp = await fetch(`${this.baseUrl}/api/drawings`);
     if (!resp.ok) return [];
     return resp.json();
   }
 
   async saveDrawing(drawing: DrawingObject): Promise<DrawingObject> {
-    const resp = await fetch('http://127.0.0.1:8008/api/drawings', {
+    const resp = await fetch(`${this.baseUrl}/api/drawings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(drawing),
@@ -164,17 +171,17 @@ export class MarketDataClient {
   }
 
   async deleteDrawing(drawingId: string): Promise<boolean> {
-    const resp = await fetch(`http://127.0.0.1:8008/api/drawings/${drawingId}`, { method: 'DELETE' });
+    const resp = await fetch(`${this.baseUrl}/api/drawings/${drawingId}`, { method: 'DELETE' });
     return resp.ok;
   }
 
   async clearAllDrawings(): Promise<boolean> {
-    const resp = await fetch('http://127.0.0.1:8008/api/drawings', { method: 'DELETE' });
+    const resp = await fetch(`${this.baseUrl}/api/drawings`, { method: 'DELETE' });
     return resp.ok;
   }
 
   async fetchSettings(): Promise<UserSettings> {
-    const resp = await fetch('http://127.0.0.1:8008/api/settings');
+    const resp = await fetch(`${this.baseUrl}/api/settings`);
     if (!resp.ok) {
       return {
         initial_balance: 10000,
@@ -194,7 +201,7 @@ export class MarketDataClient {
   }
 
   async saveSettings(settings: UserSettings): Promise<UserSettings> {
-    const resp = await fetch('http://127.0.0.1:8008/api/settings', {
+    const resp = await fetch(`${this.baseUrl}/api/settings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(settings),
@@ -204,19 +211,19 @@ export class MarketDataClient {
 
   // Sessions API
   async listSessions(): Promise<any[]> {
-    const resp = await fetch('http://127.0.0.1:8008/api/sessions');
+    const resp = await fetch(`${this.baseUrl}/api/sessions`);
     if (!resp.ok) return [];
     return resp.json();
   }
 
   async fetchSession(sessionId: string): Promise<BacktestSession> {
-    const resp = await fetch(`http://127.0.0.1:8008/api/sessions/${sessionId}`);
+    const resp = await fetch(`${this.baseUrl}/api/sessions/${sessionId}`);
     if (!resp.ok) throw new Error('Failed to load session');
     return resp.json();
   }
 
   async saveSession(session: BacktestSession): Promise<BacktestSession> {
-    const resp = await fetch('http://127.0.0.1:8008/api/sessions', {
+    const resp = await fetch(`${this.baseUrl}/api/sessions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(session),
@@ -225,7 +232,7 @@ export class MarketDataClient {
   }
 
   async deleteSession(sessionId: string): Promise<boolean> {
-    const resp = await fetch(`http://127.0.0.1:8008/api/sessions/${sessionId}`, { method: 'DELETE' });
+    const resp = await fetch(`${this.baseUrl}/api/sessions/${sessionId}`, { method: 'DELETE' });
     return resp.ok;
   }
 }
