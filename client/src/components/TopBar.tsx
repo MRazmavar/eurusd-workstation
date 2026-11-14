@@ -1,7 +1,8 @@
 /**
- * TradingView-Style Top Navigation Bar.
+ * TradingView-Style Top Navigation Bar with Smooth Horizontal Scrolling.
+ * Supports touch swiping on mobile and mouse wheel + scroll buttons on desktop.
  */
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   BarChart2,
   CandlestickChart,
@@ -15,6 +16,8 @@ import {
   Minimize2,
   Settings,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Activity,
   Calendar,
   Layers,
@@ -128,6 +131,87 @@ export const TopBar: React.FC<TopBarProps> = ({
   const [showChartTypeDropdown, setShowChartTypeDropdown] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  // References and states for horizontal toolbar scrolling
+  const desktopScrollRef = useRef<HTMLDivElement>(null);
+  const mobileScrollRef = useRef<HTMLDivElement>(null);
+
+  const [desktopCanScrollLeft, setDesktopCanScrollLeft] = useState(false);
+  const [desktopCanScrollRight, setDesktopCanScrollRight] = useState(false);
+  const [mobileCanScrollLeft, setMobileCanScrollLeft] = useState(false);
+  const [mobileCanScrollRight, setMobileCanScrollRight] = useState(false);
+
+  const checkDesktopScroll = useCallback(() => {
+    const el = desktopScrollRef.current;
+    if (!el) return;
+    const canLeft = el.scrollLeft > 4;
+    const canRight = el.scrollLeft + el.clientWidth < el.scrollWidth - 4;
+    setDesktopCanScrollLeft(canLeft);
+    setDesktopCanScrollRight(canRight);
+  }, []);
+
+  const checkMobileScroll = useCallback(() => {
+    const el = mobileScrollRef.current;
+    if (!el) return;
+    const canLeft = el.scrollLeft > 4;
+    const canRight = el.scrollLeft + el.clientWidth < el.scrollWidth - 4;
+    setMobileCanScrollLeft(canLeft);
+    setMobileCanScrollRight(canRight);
+  }, []);
+
+  useEffect(() => {
+    checkDesktopScroll();
+    checkMobileScroll();
+    const handleResize = () => {
+      checkDesktopScroll();
+      checkMobileScroll();
+    };
+    window.addEventListener('resize', handleResize);
+    const timer = setTimeout(() => {
+      checkDesktopScroll();
+      checkMobileScroll();
+    }, 200);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      clearTimeout(timer);
+    };
+  }, [checkDesktopScroll, checkMobileScroll, quote, balance, timeframe]);
+
+  // Handle vertical mouse wheel conversion to horizontal scroll on desktop
+  const handleDesktopWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    const el = desktopScrollRef.current;
+    if (!el) return;
+    if (e.deltaY !== 0) {
+      el.scrollLeft += e.deltaY;
+      checkDesktopScroll();
+    }
+  };
+
+  // Handle vertical mouse wheel conversion to horizontal scroll on mobile
+  const handleMobileWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    const el = mobileScrollRef.current;
+    if (!el) return;
+    if (e.deltaY !== 0) {
+      el.scrollLeft += e.deltaY;
+      checkMobileScroll();
+    }
+  };
+
+  const scrollDesktop = (direction: 'left' | 'right') => {
+    const el = desktopScrollRef.current;
+    if (!el) return;
+    const amount = direction === 'left' ? -260 : 260;
+    el.scrollBy({ left: amount, behavior: 'smooth' });
+    setTimeout(checkDesktopScroll, 350);
+  };
+
+  const scrollMobile = (direction: 'left' | 'right') => {
+    const el = mobileScrollRef.current;
+    if (!el) return;
+    const amount = direction === 'left' ? -200 : 200;
+    el.scrollBy({ left: amount, behavior: 'smooth' });
+    setTimeout(checkMobileScroll, 350);
+  };
+
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(() => {});
@@ -140,28 +224,50 @@ export const TopBar: React.FC<TopBarProps> = ({
 
   const isBull = (quote?.change ?? 0) >= 0;
 
-  // Mobile Top Bar
+  // ==========================================
+  // MOBILE TOP BAR (Swipeable & Scrollable Row)
+  // ==========================================
   if (isMobile) {
     return (
-      <div className="h-11 bg-[#131722] border-b border-[#2a2e39] flex items-center justify-between px-2 text-xs select-none z-30">
-        {/* Left: Symbol & Live Bid Price */}
-        <div className="flex items-center space-x-1.5 min-w-0">
-          <div className="flex items-center space-x-1 px-1.5 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-white font-bold text-xs">
+      <div className="relative h-11 bg-[#131722] border-b border-[#2a2e39] flex items-center text-xs select-none z-30 w-full min-w-0">
+        {/* Left Scroll Chevron Button (appears when scrolled right) */}
+        {mobileCanScrollLeft && (
+          <button
+            onClick={() => scrollMobile('left')}
+            data-testid="mobile-topbar-scroll-left-btn"
+            className="absolute left-0 z-40 h-full px-1.5 bg-gradient-to-r from-[#131722] via-[#131722]/95 to-transparent flex items-center justify-center text-gray-300 hover:text-white transition-all shadow-md active:scale-95"
+            title="Scroll left"
+          >
+            <ChevronLeft size={15} />
+          </button>
+        )}
+
+        {/* Scrollable Container with all options */}
+        <div
+          ref={mobileScrollRef}
+          onScroll={checkMobileScroll}
+          onWheel={handleMobileWheel}
+          data-testid="mobile-topbar-scroll"
+          className="flex-1 flex items-center space-x-1.5 px-2 overflow-x-auto scroll-smooth no-scrollbar h-full touch-pan-x min-w-0"
+        >
+          {/* 1. Symbol badge */}
+          <div className="flex items-center space-x-1 px-1.5 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-white font-bold text-xs flex-shrink-0">
             <span className="text-[#2962ff] text-xs">●</span>
             <span>EUR/USD</span>
           </div>
 
+          {/* 2. Live Bid Price */}
           {quote && (
             <span
               data-testid="mobile-topbar-bid"
-              className={`font-mono text-xs font-semibold tabular-nums ${isBull ? 'text-[#089981]' : 'text-[#f23645]'}`}
+              className={`font-mono text-xs font-semibold tabular-nums flex-shrink-0 ${isBull ? 'text-[#089981]' : 'text-[#f23645]'}`}
             >
               {quote.bid.toFixed(5)}
             </span>
           )}
 
-          {/* Timeframe Selector Dropdown */}
-          <div className="relative">
+          {/* 3. Timeframe Selector Dropdown */}
+          <div className="relative flex-shrink-0">
             <button
               onClick={() => setShowTfDropdown(!showTfDropdown)}
               data-testid="mobile-tf-btn"
@@ -214,8 +320,8 @@ export const TopBar: React.FC<TopBarProps> = ({
             )}
           </div>
 
-          {/* Chart Type Selector */}
-          <div className="relative">
+          {/* 4. Chart Type Selector */}
+          <div className="relative flex-shrink-0">
             <button
               onClick={() => setShowChartTypeDropdown(!showChartTypeDropdown)}
               data-testid="mobile-chart-type-btn"
@@ -259,53 +365,216 @@ export const TopBar: React.FC<TopBarProps> = ({
               </div>
             )}
           </div>
-        </div>
 
-        {/* Right: Mode Switcher, Replay, Mobile Hamburger Menu */}
-        <div className="flex items-center space-x-1.5">
-          {/* Mode Switcher Pill */}
+          {/* 5. Indicators Dialog Trigger with Count Badge */}
+          <button
+            onClick={onOpenIndicators}
+            data-testid="mobile-indicators-btn"
+            className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-200 hover:text-white flex-shrink-0"
+            title="Technical Indicators"
+          >
+            <Sliders size={12} className="text-[#2962ff]" />
+            <span className="text-[11px] font-semibold">Ind</span>
+            {activeIndicatorsCount > 0 && (
+              <span className="bg-[#2962ff] text-white text-[9px] px-1 rounded-full font-bold">
+                {activeIndicatorsCount}
+              </span>
+            )}
+          </button>
+
+          {/* 6. Forex Sessions Indicator Toggle with Live Badge */}
+          <button
+            onClick={onToggleSessionsIndicator}
+            data-testid="mobile-sessions-btn"
+            className={`flex items-center space-x-1 px-2 py-1 rounded border flex-shrink-0 text-[11px] font-semibold transition-colors ${
+              sessionsIndicatorActive
+                ? 'bg-[#8b5cf6]/20 border-[#8b5cf6] text-purple-200'
+                : 'bg-[#1e222d] border-[#2a2e39] text-gray-400'
+            }`}
+            title="Toggle Forex Sessions (Asia, Frankfurt, London, NY)"
+          >
+            <Clock size={12} className={sessionsIndicatorActive ? 'text-purple-400' : 'text-gray-400'} />
+            <span>Sess</span>
+            <span
+              className={`text-[9px] px-1 py-0.2 rounded font-mono font-bold ${
+                sessionsIndicatorActive ? 'bg-[#8b5cf6] text-white' : 'bg-gray-700 text-gray-300'
+              }`}
+            >
+              {sessionsIndicatorActive ? (activeSessionLabel || 'ON') : 'OFF'}
+            </span>
+          </button>
+
+          {/* 7. Forex Factory News Events Toggle */}
+          <button
+            onClick={onToggleNews}
+            data-testid="mobile-news-btn"
+            className={`flex items-center space-x-1 px-2 py-1 rounded border flex-shrink-0 text-[11px] font-semibold transition-colors ${
+              newsActive
+                ? 'bg-[#ef4444]/20 border-[#ef4444] text-red-200'
+                : 'bg-[#1e222d] border-[#2a2e39] text-gray-400'
+            }`}
+            title="Toggle Forex Factory Economic Calendar Events"
+          >
+            <Newspaper size={12} className={newsActive ? 'text-red-400' : 'text-gray-400'} />
+            <span>News</span>
+            <span
+              className={`text-[9px] px-1 py-0.2 rounded font-mono font-bold ${
+                newsActive ? 'bg-[#ef4444] text-white' : 'bg-gray-700 text-gray-300'
+              }`}
+            >
+              {newsActive ? 'ON' : 'OFF'}
+            </span>
+          </button>
+
+          {/* 8. Bar Replay button */}
+          <button
+            onClick={onToggleReplay}
+            data-testid="topbar-replay-btn"
+            className={`flex items-center space-x-1 px-2 py-1 rounded border flex-shrink-0 text-[11px] font-semibold transition-colors ${
+              replayActive ? 'bg-[#2962ff] text-white border-[#2962ff]' : 'bg-[#1e222d] border-[#2a2e39] text-gray-300 hover:text-white'
+            }`}
+            title="Toggle Bar Replay"
+          >
+            <Play size={12} className={replayActive ? 'fill-white' : 'text-[#089981]'} />
+            <span>Replay</span>
+          </button>
+
+          {/* 9. Random Date Backtest Button */}
+          {onRandomDateReplay && (
+            <button
+              onClick={onRandomDateReplay}
+              data-testid="topbar-random-date-btn"
+              className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-purple-300 hover:text-white flex-shrink-0 text-[11px] font-semibold"
+              title="Jump to a Random Past Date"
+            >
+              <Dices size={12} className="text-purple-400" />
+              <span>Random</span>
+            </button>
+          )}
+
+          {/* 10. Saved Sessions Trigger */}
+          {onOpenSessions && (
+            <button
+              onClick={onOpenSessions}
+              data-testid="mobile-saved-sessions-btn"
+              className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-amber-300 hover:text-white flex-shrink-0 text-[11px] font-semibold"
+              title="Saved Sessions"
+            >
+              <FolderOpen size={12} className="text-amber-400" />
+              <span>Saved</span>
+            </button>
+          )}
+
+          {/* 11. Market Data Integrity Audit */}
+          {onOpenValidation && (
+            <button
+              onClick={onOpenValidation}
+              data-testid="mobile-audit-btn"
+              className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-[#089981] hover:text-white flex-shrink-0 text-[11px] font-semibold"
+              title="Audit Data Quality"
+            >
+              <ShieldCheck size={12} className="text-[#089981]" />
+              <span>Audit</span>
+            </button>
+          )}
+
+          {/* 12. Account Balance Widget */}
+          {balance !== undefined && onOpenBalanceModal && (
+            <button
+              onClick={onOpenBalanceModal}
+              data-testid="mobile-balance-btn"
+              className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-200 hover:text-white flex-shrink-0 text-[11px] font-mono"
+              title="View / Edit Account Balance"
+            >
+              <Wallet size={12} className="text-[#089981]" />
+              <span className="font-bold">${Math.round(balance).toLocaleString()}</span>
+            </button>
+          )}
+
+          {/* 13. Settings Dialog Trigger */}
+          <button
+            onClick={onOpenSettings}
+            data-testid="mobile-settings-btn"
+            className="p-1.5 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-300 hover:text-white flex-shrink-0"
+            title="Settings"
+          >
+            <Settings size={13} />
+          </button>
+
+          {/* 14. Fullscreen Toggle */}
+          <button
+            onClick={toggleFullscreen}
+            data-testid="mobile-fullscreen-btn"
+            className="p-1.5 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-300 hover:text-white flex-shrink-0"
+            title="Toggle Fullscreen"
+          >
+            {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+          </button>
+
+          {/* 15. Mode Switcher Pill */}
           {onToggleMode && (
             <button
               onClick={onToggleMode}
               data-testid="topbar-mode-toggle"
-              className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-[#2962ff] text-[10px] font-semibold shadow-sm"
-              title="Click to switch to Desktop Mode"
+              className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-[#2962ff] text-[10px] font-semibold shadow-sm flex-shrink-0"
+              title="Switch to Desktop Mode"
             >
               <Smartphone size={12} />
               <span>Mobile</span>
             </button>
           )}
 
-          {/* Bar Replay button */}
-          <button
-            onClick={onToggleReplay}
-            data-testid="topbar-replay-btn"
-            className={`p-1.5 rounded border transition-colors ${
-              replayActive ? 'bg-[#2962ff] text-white border-[#2962ff]' : 'bg-[#1e222d] border-[#2a2e39] text-gray-300 hover:text-white'
-            }`}
-            title="Toggle Bar Replay"
-          >
-            <Play size={13} className={replayActive ? 'fill-white' : 'text-[#089981]'} />
-          </button>
-
-          {/* Menu Drawer Hamburger */}
+          {/* 16. Menu Drawer Hamburger */}
           <button
             onClick={onOpenMobileMenu}
             data-testid="topbar-mobile-menu-btn"
-            className="p-1.5 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-200 hover:text-white hover:border-[#38bdf8] transition-colors"
+            className="p-1.5 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-200 hover:text-white hover:border-[#38bdf8] transition-colors flex-shrink-0"
             title="Open Workstation Menu"
           >
-            <Menu size={16} />
+            <Menu size={15} />
           </button>
         </div>
+
+        {/* Right Scroll Chevron Button (appears when more options exist to the right) */}
+        {mobileCanScrollRight && (
+          <button
+            onClick={() => scrollMobile('right')}
+            data-testid="mobile-topbar-scroll-right-btn"
+            className="absolute right-0 z-40 h-full px-1.5 bg-gradient-to-l from-[#131722] via-[#131722]/95 to-transparent flex items-center justify-center text-gray-300 hover:text-white transition-all shadow-md active:scale-95"
+            title="Scroll right"
+          >
+            <ChevronRight size={15} />
+          </button>
+        )}
       </div>
     );
   }
 
+  // ==========================================
+  // DESKTOP TOP BAR (Horizontal Scroll + Wheel)
+  // ==========================================
   return (
-    <div className="h-11 bg-[#131722] border-b border-[#2a2e39] flex items-center justify-between px-2 text-xs select-none z-30 overflow-x-auto no-scrollbar">
-      {/* Left: Symbol, Price, Timeframes, Chart Type */}
-      <div className="flex items-center space-x-1.5 h-full flex-shrink-0">
+    <div className="relative h-11 bg-[#131722] border-b border-[#2a2e39] flex items-center text-xs select-none z-30 w-full min-w-0">
+      {/* Left Scroll Navigation Chevron (visible when scrolled right) */}
+      {desktopCanScrollLeft && (
+        <button
+          onClick={() => scrollDesktop('left')}
+          data-testid="topbar-scroll-left-btn"
+          className="absolute left-0 z-40 h-full px-2 bg-gradient-to-r from-[#131722] via-[#131722]/95 to-transparent flex items-center justify-center text-gray-300 hover:text-white hover:bg-[#1e222d]/60 transition-all shadow-md active:scale-95 cursor-pointer"
+          title="Scroll left (or use mouse wheel)"
+        >
+          <ChevronLeft size={16} />
+        </button>
+      )}
+
+      {/* Main Continuous Scrollable Options Row */}
+      <div
+        ref={desktopScrollRef}
+        onScroll={checkDesktopScroll}
+        onWheel={handleDesktopWheel}
+        data-testid="desktop-topbar-scroll"
+        className="flex-1 flex items-center space-x-2 px-3 overflow-x-auto scroll-smooth toolbar-scroll h-full min-w-0"
+      >
         {/* Symbol badge */}
         <div className="flex items-center space-x-1.5 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-white font-bold cursor-pointer hover:border-[#363c4e] flex-shrink-0">
           <span className="text-[#2962ff] text-sm">●</span>
@@ -328,7 +597,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 
         {/* Live Price & Spread */}
         {quote && (
-          <div className="flex items-center space-x-2 px-2 py-0.5 border-r border-[#2a2e39]">
+          <div className="flex items-center space-x-2 px-2 py-0.5 border-r border-[#2a2e39] flex-shrink-0">
             {quote.market_status === 'OPEN' ? (
               <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#089981]/20 text-[#089981] border border-[#089981]/40 shadow-sm" title="Real-time interbank stream is active">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#089981] animate-pulse"></span>
@@ -352,7 +621,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         )}
 
         {/* Favorite Timeframes Quick Access */}
-        <div className="flex items-center space-x-0.5">
+        <div className="flex items-center space-x-0.5 flex-shrink-0">
           {FAVORITE_TIMEFRAMES.map((tf) => (
             <button
               key={tf}
@@ -465,10 +734,10 @@ export const TopBar: React.FC<TopBarProps> = ({
           </div>
         </div>
 
-        <div className="h-4 w-[1px] bg-[#2a2e39] mx-1" />
+        <div className="h-4 w-[1px] bg-[#2a2e39] mx-1 flex-shrink-0" />
 
         {/* Chart Type Selector */}
-        <div className="relative">
+        <div className="relative flex-shrink-0">
           <button
             onClick={() => setShowChartTypeDropdown(!showChartTypeDropdown)}
             className="flex items-center space-x-1 px-2 py-1 rounded text-gray-300 hover:bg-[#1e222d] hover:text-white"
@@ -514,12 +783,12 @@ export const TopBar: React.FC<TopBarProps> = ({
           )}
         </div>
 
-        <div className="h-4 w-[1px] bg-[#2a2e39] mx-1" />
+        <div className="h-4 w-[1px] bg-[#2a2e39] mx-1 flex-shrink-0" />
 
         {/* Indicators Dialog Trigger */}
         <button
           onClick={onOpenIndicators}
-          className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-200 hover:text-white hover:border-[#363c4e]"
+          className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-200 hover:text-white hover:border-[#363c4e] flex-shrink-0"
           title="Technical Indicators"
         >
           <Sliders size={14} className="text-[#2962ff]" />
@@ -535,7 +804,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           onClick={onToggleReplay}
           data-testid="topbar-replay-btn"
-          className={`flex items-center space-x-1.5 px-2.5 py-1 rounded border transition-colors ${
+          className={`flex items-center space-x-1.5 px-2.5 py-1 rounded border transition-colors flex-shrink-0 ${
             replayActive
               ? 'bg-[#2962ff] text-white border-[#2962ff] shadow-md shadow-[#2962ff]/20'
               : 'bg-[#1e222d] border-[#2a2e39] text-gray-200 hover:text-white hover:border-[#363c4e]'
@@ -550,7 +819,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           onClick={onRandomDateReplay}
           data-testid="topbar-random-date-btn"
-          className="flex items-center space-x-1.5 px-2.5 py-1 rounded border transition-colors bg-[#1e222d] border-[#2a2e39] text-purple-300 hover:text-white hover:border-purple-500 hover:bg-[#2a2e39]"
+          className="flex items-center space-x-1.5 px-2.5 py-1 rounded border transition-colors bg-[#1e222d] border-[#2a2e39] text-purple-300 hover:text-white hover:border-purple-500 hover:bg-[#2a2e39] flex-shrink-0"
           title="Jump to a random historical date for blind backtesting"
         >
           <Dices size={13} className="text-purple-400" />
@@ -561,7 +830,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           onClick={onToggleSessionsIndicator}
           data-testid="topbar-sessions-btn"
-          className={`flex items-center space-x-1.5 px-2.5 py-1 rounded border transition-colors ${
+          className={`flex items-center space-x-1.5 px-2.5 py-1 rounded border transition-colors flex-shrink-0 ${
             sessionsIndicatorActive
               ? 'bg-[#8b5cf6]/20 border-[#8b5cf6] text-purple-200 shadow-sm'
               : 'bg-[#1e222d] border-[#2a2e39] text-gray-400 hover:text-white hover:border-[#363c4e]'
@@ -590,7 +859,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           onClick={onToggleNews}
           data-testid="topbar-news-btn"
-          className={`flex items-center space-x-1.5 px-2.5 py-1 rounded border transition-colors ${
+          className={`flex items-center space-x-1.5 px-2.5 py-1 rounded border transition-colors flex-shrink-0 ${
             newsActive
               ? 'bg-[#ef4444]/20 border-[#ef4444] text-red-200 shadow-sm'
               : 'bg-[#1e222d] border-[#2a2e39] text-gray-400 hover:text-white hover:border-[#363c4e]'
@@ -612,7 +881,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           onClick={onOpenSessions}
           data-testid="topbar-saved-sessions-btn"
-          className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-200 hover:text-white hover:border-[#363c4e]"
+          className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-200 hover:text-white hover:border-[#363c4e] flex-shrink-0"
           title="Manage Saved Backtesting Sessions"
         >
           <FolderOpen size={14} className="text-amber-400" />
@@ -622,21 +891,21 @@ export const TopBar: React.FC<TopBarProps> = ({
         {/* Data Quality / Audit Button */}
         <button
           onClick={onOpenValidation}
-          className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-300 hover:text-white hover:border-[#363c4e]"
+          className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-300 hover:text-white hover:border-[#363c4e] flex-shrink-0"
           title="Market Data Integrity Audit"
         >
           <ShieldCheck size={14} className="text-[#089981]" />
           <span className="hidden xl:inline">Audit</span>
         </button>
-      </div>
 
-      {/* Right Controls: Auto-Scale, Reset, Status, Settings */}
-      <div className="flex items-center space-x-2">
+        {/* Flexible spacer between primary tools and system controls */}
+        <div className="flex-1 min-w-[12px]" />
+
         {/* Account Capital & Balance Widget */}
         {balance !== undefined && (
           <button
             onClick={onOpenBalanceModal}
-            className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-[#1e222d] border border-[#2a2e39] hover:border-[#38bdf8] text-gray-200 hover:text-white transition-all text-xs font-mono group"
+            className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-[#1e222d] border border-[#2a2e39] hover:border-[#38bdf8] text-gray-200 hover:text-white transition-all text-xs font-mono group flex-shrink-0"
             title="Click to view or change default account balance"
             data-testid="topbar-balance-btn"
           >
@@ -660,14 +929,14 @@ export const TopBar: React.FC<TopBarProps> = ({
         {/* Quick Viewport Helpers */}
         <button
           onClick={onFitData}
-          className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#1e222d]"
+          className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#1e222d] flex-shrink-0"
           title="Fit All Available Data"
         >
           <Layers size={14} />
         </button>
         <button
           onClick={onResetChart}
-          className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#1e222d]"
+          className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#1e222d] flex-shrink-0"
           title="Reset Chart Viewport"
         >
           <RotateCcw size={14} />
@@ -675,7 +944,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 
         {/* Feed & Market Status Pill */}
         {quote && (
-          <div className="flex items-center space-x-1.5 px-2 py-0.5 rounded bg-[#1e222d] border border-[#2a2e39]">
+          <div className="flex items-center space-x-1.5 px-2 py-0.5 rounded bg-[#1e222d] border border-[#2a2e39] flex-shrink-0">
             <span
               className={`w-2 h-2 rounded-full ${
                 quote.status === 'LIVE'
@@ -702,7 +971,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         {/* Fullscreen Toggle */}
         <button
           onClick={toggleFullscreen}
-          className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-[#1e222d]"
+          className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-[#1e222d] flex-shrink-0"
           title="Fullscreen (F)"
         >
           {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
@@ -711,7 +980,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         {/* Settings Dialog Trigger */}
         <button
           onClick={onOpenSettings}
-          className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-[#1e222d]"
+          className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-[#1e222d] flex-shrink-0"
           title="Workstation Settings"
         >
           <Settings size={15} />
@@ -732,6 +1001,18 @@ export const TopBar: React.FC<TopBarProps> = ({
           </button>
         )}
       </div>
+
+      {/* Right Scroll Navigation Chevron (visible when more options exist to the right) */}
+      {desktopCanScrollRight && (
+        <button
+          onClick={() => scrollDesktop('right')}
+          data-testid="topbar-scroll-right-btn"
+          className="absolute right-0 z-40 h-full px-2 bg-gradient-to-l from-[#131722] via-[#131722]/95 to-transparent flex items-center justify-center text-gray-300 hover:text-white hover:bg-[#1e222d]/60 transition-all shadow-md active:scale-95 cursor-pointer"
+          title="Scroll right (or use mouse wheel)"
+        >
+          <ChevronRight size={16} />
+        </button>
+      )}
     </div>
   );
 };

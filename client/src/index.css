@@ -63,6 +63,30 @@
   background: #363c4e;
 }
 
+/* Custom sleek toolbar scrollbar */
+.toolbar-scroll::-webkit-scrollbar {
+  height: 3px;
+}
+.toolbar-scroll::-webkit-scrollbar-track {
+  background: rgba(19, 23, 34, 0.4);
+}
+.toolbar-scroll::-webkit-scrollbar-thumb {
+  background: rgba(42, 46, 57, 0.8);
+  border-radius: 2px;
+}
+.toolbar-scroll::-webkit-scrollbar-thumb:hover {
+  background: #2962ff;
+}
+
+/* Hide scrollbar for touch/clean containers */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* Numeric tabular figures for prices */
 .tabular-nums {
   font-variant-numeric: tabular-nums;
