@@ -45,34 +45,55 @@ export const FavoritesToolbar: React.FC<FavoritesToolbarProps> = ({
   const dragStartRef = useRef<{ mouseX: number; mouseY: number; startX: number; startY: number } | null>(null);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
 
-  // Dragging logic
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  // Dragging logic (supports Mouse and Touch for mobile/tablet)
+  const handleDragStart = useCallback((clientX: number, clientY: number) => {
     setIsDragging(true);
     dragStartRef.current = {
-      mouseX: e.clientX,
-      mouseY: e.clientY,
+      mouseX: clientX,
+      mouseY: clientY,
       startX: position.x,
       startY: position.y,
     };
   }, [position]);
 
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleDragStart(e.clientX, e.clientY);
+  }, [handleDragStart]);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      e.stopPropagation();
+      handleDragStart(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  }, [handleDragStart]);
+
   useEffect(() => {
     if (!isDragging) return;
 
-    const handleMouseMove = (e: MouseEvent) => {
+    const handleMove = (clientX: number, clientY: number) => {
       if (!dragStartRef.current) return;
-      const dx = e.clientX - dragStartRef.current.mouseX;
-      const dy = e.clientY - dragStartRef.current.mouseY;
+      const dx = clientX - dragStartRef.current.mouseX;
+      const dy = clientY - dragStartRef.current.mouseY;
 
-      const newX = Math.max(10, Math.min(window.innerWidth - 300, dragStartRef.current.startX + dx));
-      const newY = Math.max(40, Math.min(window.innerHeight - 100, dragStartRef.current.startY + dy));
+      const newX = Math.max(10, Math.min(window.innerWidth - 120, dragStartRef.current.startX + dx));
+      const newY = Math.max(40, Math.min(window.innerHeight - 80, dragStartRef.current.startY + dy));
 
       setPosition({ x: newX, y: newY });
     };
 
-    const handleMouseUp = () => {
+    const handleMouseMove = (e: MouseEvent) => {
+      handleMove(e.clientX, e.clientY);
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        handleMove(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    };
+
+    const handleEnd = () => {
       setIsDragging(false);
       dragStartRef.current = null;
       try {
@@ -81,11 +102,17 @@ export const FavoritesToolbar: React.FC<FavoritesToolbarProps> = ({
     };
 
     window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('mouseup', handleEnd);
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchend', handleEnd);
+    window.addEventListener('touchcancel', handleEnd);
 
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mouseup', handleEnd);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleEnd);
+      window.removeEventListener('touchcancel', handleEnd);
     };
   }, [isDragging, position]);
 
@@ -109,7 +136,8 @@ export const FavoritesToolbar: React.FC<FavoritesToolbarProps> = ({
       <div
         data-testid="favorites-toolbar-handle"
         onMouseDown={handleMouseDown}
-        className="flex items-center justify-center w-5 h-8 text-gray-500 hover:text-gray-300 cursor-grab active:cursor-grabbing px-0.5 group"
+        onTouchStart={handleTouchStart}
+        className="flex items-center justify-center w-5 h-8 text-gray-500 hover:text-gray-300 cursor-grab active:cursor-grabbing px-0.5 group touch-none"
         title="Drag to reposition favorites toolbar"
       >
         <GripVertical size={14} className="group-hover:scale-110 transition-transform" />

@@ -47,6 +47,10 @@ interface BottomPanelProps {
   onRandomDateReplay?: () => void;
   replayTickIntervalSec?: number;
   onOpenBalanceModal?: () => void;
+  isMobile?: boolean;
+  onCloseMobile?: () => void;
+  initialTab?: BottomTab;
+  hideReplayBar?: boolean;
 }
 
 type BottomTab = 'analytics' | 'history' | 'positions';
@@ -69,9 +73,13 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   onRandomDateReplay,
   replayTickIntervalSec = 1.0,
   onOpenBalanceModal,
+  isMobile = false,
+  onCloseMobile,
+  initialTab = 'analytics',
+  hideReplayBar = false,
 }) => {
   const [collapsed, setCollapsed] = useState(false);
-  const [activeTab, setActiveTab] = useState<BottomTab>('analytics');
+  const [activeTab, setActiveTab] = useState<BottomTab>(initialTab);
 
   const openTrades = trades.filter(t => t.status === 'OPEN');
   const pendingTrades = trades.filter(t => t.status === 'PENDING');
@@ -123,7 +131,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   return (
     <div className="bg-[#131722] border-t border-[#2a2e39] flex flex-col z-30 select-none">
       {/* 1. REPLAY CONTROLLER BAR (Visible when Replay Mode is Active) */}
-      {replayActive && (
+      {replayActive && !hideReplayBar && (
         <div className="h-10 bg-[#1e222d] border-b border-[#2a2e39] px-3 flex items-center justify-between text-xs">
           <div className="flex items-center space-x-2">
             <span className="font-bold text-[#2962ff] flex items-center space-x-1">
@@ -367,13 +375,24 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
             </span>
           </div>
 
-          <button
-            onClick={() => setCollapsed(!collapsed)}
-            className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#1e222d]"
-            title={collapsed ? 'Expand Dock' : 'Collapse Dock'}
-          >
-            {collapsed ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-          </button>
+          {isMobile ? (
+            <button
+              onClick={onCloseMobile}
+              data-testid="mobile-dock-close-btn"
+              className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#1e222d]"
+              title="Close"
+            >
+              <X size={16} />
+            </button>
+          ) : (
+            <button
+              onClick={() => setCollapsed(!collapsed)}
+              className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#1e222d]"
+              title={collapsed ? 'Expand Dock' : 'Collapse Dock'}
+            >
+              {collapsed ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+            </button>
+          )}
         </div>
       </div>
 

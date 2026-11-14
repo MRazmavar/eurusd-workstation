@@ -26,6 +26,9 @@ import {
   Clock,
   Globe,
   Newspaper,
+  Menu,
+  Smartphone,
+  Monitor,
 } from 'lucide-react';
 import { ChartType, Timeframe, Quote } from '../types';
 
@@ -58,6 +61,11 @@ interface TopBarProps {
   onToggleNews?: () => void;
   newsFilter?: 'ALL' | 'HIGH_ONLY';
   onToggleNewsFilter?: () => void;
+  isMobile?: boolean;
+  effectiveMode?: 'mobile' | 'desktop';
+  viewMode?: 'auto' | 'mobile' | 'desktop';
+  onToggleMode?: () => void;
+  onOpenMobileMenu?: () => void;
 }
 
 const TIMEFRAMES: { label: string; value: Timeframe }[] = [
@@ -110,6 +118,11 @@ export const TopBar: React.FC<TopBarProps> = ({
   onToggleNews,
   newsFilter = 'ALL',
   onToggleNewsFilter,
+  isMobile = false,
+  effectiveMode = 'desktop',
+  viewMode = 'auto',
+  onToggleMode,
+  onOpenMobileMenu,
 }) => {
   const [showTfDropdown, setShowTfDropdown] = useState(false);
   const [showChartTypeDropdown, setShowChartTypeDropdown] = useState(false);
@@ -126,6 +139,168 @@ export const TopBar: React.FC<TopBarProps> = ({
   };
 
   const isBull = (quote?.change ?? 0) >= 0;
+
+  // Mobile Top Bar
+  if (isMobile) {
+    return (
+      <div className="h-11 bg-[#131722] border-b border-[#2a2e39] flex items-center justify-between px-2 text-xs select-none z-30">
+        {/* Left: Symbol & Live Bid Price */}
+        <div className="flex items-center space-x-1.5 min-w-0">
+          <div className="flex items-center space-x-1 px-1.5 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-white font-bold text-xs">
+            <span className="text-[#2962ff] text-xs">●</span>
+            <span>EUR/USD</span>
+          </div>
+
+          {quote && (
+            <span
+              data-testid="mobile-topbar-bid"
+              className={`font-mono text-xs font-semibold tabular-nums ${isBull ? 'text-[#089981]' : 'text-[#f23645]'}`}
+            >
+              {quote.bid.toFixed(5)}
+            </span>
+          )}
+
+          {/* Timeframe Selector Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setShowTfDropdown(!showTfDropdown)}
+              data-testid="mobile-tf-btn"
+              className="flex items-center space-x-0.5 px-2 py-1 rounded bg-[#1e222d] text-gray-200 border border-[#2a2e39] font-mono font-semibold text-[11px] hover:text-white"
+            >
+              <span>{timeframe}</span>
+              <ChevronDown size={11} className="text-gray-400" />
+            </button>
+
+            {showTfDropdown && (
+              <div
+                className="absolute top-8 left-0 w-36 bg-[#1e222d] border border-[#2a2e39] rounded shadow-xl py-1 z-50 max-h-72 overflow-y-auto"
+                onMouseLeave={() => setShowTfDropdown(false)}
+              >
+                <div className="px-2 py-1 text-[10px] text-gray-400 font-semibold uppercase tracking-wider">
+                  Quick Timeframes
+                </div>
+                {FAVORITE_TIMEFRAMES.map((tf) => (
+                  <button
+                    key={tf}
+                    onClick={() => {
+                      onTimeframeChange(tf);
+                      setShowTfDropdown(false);
+                    }}
+                    className={`w-full text-left px-3 py-1.5 hover:bg-[#2a2e39] flex justify-between ${
+                      timeframe === tf ? 'text-[#2962ff] font-bold' : 'text-gray-200'
+                    }`}
+                  >
+                    <span>{tf}</span>
+                  </button>
+                ))}
+                <div className="px-2 py-1 text-[10px] text-gray-400 font-semibold uppercase tracking-wider border-t border-[#2a2e39] mt-1">
+                  All Timeframes
+                </div>
+                {TIMEFRAMES.filter(t => !FAVORITE_TIMEFRAMES.includes(t.value)).map((item) => (
+                  <button
+                    key={item.value}
+                    onClick={() => {
+                      onTimeframeChange(item.value);
+                      setShowTfDropdown(false);
+                    }}
+                    className={`w-full text-left px-3 py-1.5 hover:bg-[#2a2e39] flex justify-between ${
+                      timeframe === item.value ? 'text-[#2962ff] font-bold' : 'text-gray-200'
+                    }`}
+                  >
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Chart Type Selector */}
+          <div className="relative">
+            <button
+              onClick={() => setShowChartTypeDropdown(!showChartTypeDropdown)}
+              data-testid="mobile-chart-type-btn"
+              className="p-1.5 rounded bg-[#1e222d] text-gray-300 border border-[#2a2e39] hover:text-white"
+              title="Chart Type"
+            >
+              {chartType === 'candlestick' && <CandlestickChart size={13} />}
+              {chartType === 'hollow' && <CandlestickChart size={13} className="text-gray-400" />}
+              {chartType === 'bar' && <BarChart2 size={13} />}
+              {chartType === 'line' && <LineChart size={13} />}
+              {chartType === 'area' && <AreaChart size={13} />}
+              {chartType === 'baseline' && <Activity size={13} />}
+            </button>
+
+            {showChartTypeDropdown && (
+              <div
+                className="absolute top-8 left-0 w-36 bg-[#1e222d] border border-[#2a2e39] rounded shadow-xl py-1 z-50"
+                onMouseLeave={() => setShowChartTypeDropdown(false)}
+              >
+                {[
+                  { id: 'candlestick', label: 'Candles', icon: CandlestickChart },
+                  { id: 'hollow', label: 'Hollow', icon: CandlestickChart },
+                  { id: 'bar', label: 'Bars', icon: BarChart2 },
+                  { id: 'line', label: 'Line', icon: LineChart },
+                  { id: 'area', label: 'Area', icon: AreaChart },
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      onChartTypeChange(item.id as ChartType);
+                      setShowChartTypeDropdown(false);
+                    }}
+                    className={`w-full text-left px-3 py-1.5 hover:bg-[#2a2e39] flex items-center space-x-2 ${
+                      chartType === item.id ? 'text-[#2962ff] font-semibold' : 'text-gray-200'
+                    }`}
+                  >
+                    <item.icon size={13} />
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right: Mode Switcher, Replay, Mobile Hamburger Menu */}
+        <div className="flex items-center space-x-1.5">
+          {/* Mode Switcher Pill */}
+          {onToggleMode && (
+            <button
+              onClick={onToggleMode}
+              data-testid="topbar-mode-toggle"
+              className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-[#2962ff] text-[10px] font-semibold shadow-sm"
+              title="Click to switch to Desktop Mode"
+            >
+              <Smartphone size={12} />
+              <span>Mobile</span>
+            </button>
+          )}
+
+          {/* Bar Replay button */}
+          <button
+            onClick={onToggleReplay}
+            data-testid="topbar-replay-btn"
+            className={`p-1.5 rounded border transition-colors ${
+              replayActive ? 'bg-[#2962ff] text-white border-[#2962ff]' : 'bg-[#1e222d] border-[#2a2e39] text-gray-300 hover:text-white'
+            }`}
+            title="Toggle Bar Replay"
+          >
+            <Play size={13} className={replayActive ? 'fill-white' : 'text-[#089981]'} />
+          </button>
+
+          {/* Menu Drawer Hamburger */}
+          <button
+            onClick={onOpenMobileMenu}
+            data-testid="topbar-mobile-menu-btn"
+            className="p-1.5 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-200 hover:text-white hover:border-[#38bdf8] transition-colors"
+            title="Open Workstation Menu"
+          >
+            <Menu size={16} />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-11 bg-[#131722] border-b border-[#2a2e39] flex items-center justify-between px-2 text-xs select-none z-30">
@@ -528,6 +703,21 @@ export const TopBar: React.FC<TopBarProps> = ({
         >
           <Settings size={15} />
         </button>
+
+        {/* Display Mode Toggle (Desktop / Mobile) */}
+        {onToggleMode && (
+          <button
+            onClick={onToggleMode}
+            data-testid="topbar-mode-toggle"
+            className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] hover:border-[#2962ff] text-gray-300 hover:text-white transition-colors"
+            title={`Display Mode: ${viewMode?.toUpperCase() || 'AUTO'} (Click to switch to Mobile view)`}
+          >
+            <Monitor size={13} className="text-[#2962ff]" />
+            <span className="text-[11px] font-medium hidden md:inline">
+              {viewMode === 'auto' ? 'Auto (Desktop)' : 'Desktop'}
+            </span>
+          </button>
+        )}
       </div>
     </div>
   );

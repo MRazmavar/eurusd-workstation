@@ -36,6 +36,11 @@ import { QuickTimeframeModal } from './components/QuickTimeframeModal';
 import { FavoritesToolbar } from './components/FavoritesToolbar';
 import { FloatingTradeControlPanel } from './components/FloatingTradeControlPanel';
 import { NewsOverlay } from './components/NewsOverlay';
+import { useDeviceMode } from './hooks/useDeviceMode';
+import { MobileBottomNav, MobileTab } from './components/MobileBottomNav';
+import { MobileToolsSheet } from './components/MobileToolsSheet';
+import { MobileDrawer } from './components/MobileDrawer';
+import { MobileReplayBar } from './components/MobileReplayBar';
 import { DEFAULT_FAVORITE_TOOLS } from './utils/drawingTools';
 import { generateEconomicNewsEvents } from './utils/economicNews';
 import { getSessionStatusesForTime } from './utils/sessions';
@@ -148,6 +153,12 @@ export const App: React.FC = () => {
   // HUD Toast Notification
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimerRef = useRef<any>(null);
+
+  // Device Mode Recognition & Mobile Responsiveness
+  const { viewMode, effectiveMode, isMobile, setViewMode, toggleMode } = useDeviceMode();
+  const [mobileActiveTab, setMobileActiveTab] = useState<MobileTab>('chart');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
+  const [isMobileToolsOpen, setIsMobileToolsOpen] = useState<boolean>(false);
 
   const showToast = useCallback((msg: string) => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -1041,40 +1052,60 @@ export const App: React.FC = () => {
         onToggleNews={handleToggleNews}
         newsFilter={newsFilter}
         onToggleNewsFilter={handleToggleNewsFilter}
+        isMobile={isMobile}
+        effectiveMode={effectiveMode}
+        viewMode={viewMode}
+        onToggleMode={toggleMode}
+        onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
       />
+
+      {/* Mobile Bar Replay Controller Header */}
+      {isMobile && replayActive && (
+        <MobileReplayBar
+          replayPlaying={replayPlaying}
+          replaySpeed={replaySpeed}
+          replayCurrentIndex={replayCurrentIndex}
+          replayTotalCandles={masterCandles.length}
+          onExitReplay={handleToggleReplay}
+          onStartSelectCut={() => setIsSelectingReplayCut(true)}
+          isSelectingCut={isSelectingReplayCut}
+        />
+      )}
 
       {/* 2. MAIN WORKSPACE AREA */}
       <div className="flex flex-1 overflow-hidden relative">
-        {/* Left Vertical Drawing Toolbar */}
-        <LeftToolbar
-          activeTool={activeTool}
-          onSelectTool={setActiveTool}
-          magnetMode={magnetMode}
-          onToggleMagnet={(mode) => {
-            if (mode) {
-              setMagnetMode(mode);
-            } else {
-              setMagnetMode(prev => (prev === 'off' ? 'weak' : prev === 'weak' ? 'strong' : 'off'));
-            }
-          }}
-          lockedAll={lockedAll}
-          onToggleLockAll={() => {
-            const next = !lockedAll;
-            setLockedAll(next);
-            setDrawings(prev => prev.map(d => ({ ...d, locked: next })));
-          }}
-          hiddenAll={hiddenAll}
-          onToggleHideAll={() => {
-            const next = !hiddenAll;
-            setHiddenAll(next);
-            setDrawings(prev => prev.map(d => ({ ...d, hidden: next })));
-          }}
-          onDeleteAll={handleDeleteAllDrawings}
-          favoriteTools={favoriteTools}
-          onToggleFavorite={handleToggleFavorite}
-          showFavoritesToolbar={showFavoritesToolbar}
-          onToggleShowFavoritesToolbar={() => setShowFavoritesToolbar(prev => !prev)}
-        />
+        {/* Left Vertical Drawing Toolbar (Desktop Mode) */}
+        {!isMobile && (
+          <LeftToolbar
+            activeTool={activeTool}
+            onSelectTool={setActiveTool}
+            magnetMode={magnetMode}
+            onToggleMagnet={(mode) => {
+              if (mode) {
+                setMagnetMode(mode);
+              } else {
+                setMagnetMode(prev => (prev === 'off' ? 'weak' : prev === 'weak' ? 'strong' : 'off'));
+              }
+            }}
+            lockedAll={lockedAll}
+            onToggleLockAll={() => {
+              const next = !lockedAll;
+              setLockedAll(next);
+              setDrawings(prev => prev.map(d => ({ ...d, locked: next })));
+            }}
+            hiddenAll={hiddenAll}
+            onToggleHideAll={() => {
+              const next = !hiddenAll;
+              setHiddenAll(next);
+              setDrawings(prev => prev.map(d => ({ ...d, hidden: next })));
+            }}
+            onDeleteAll={handleDeleteAllDrawings}
+            favoriteTools={favoriteTools}
+            onToggleFavorite={handleToggleFavorite}
+            showFavoritesToolbar={showFavoritesToolbar}
+            onToggleShowFavoritesToolbar={() => setShowFavoritesToolbar(prev => !prev)}
+          />
+        )}
 
         {/* Center Chart Viewport with Interactive Drawing Layer */}
         <div className="flex-1 flex flex-col relative overflow-hidden bg-[#131722]">
@@ -1224,44 +1255,206 @@ export const App: React.FC = () => {
           />
         </div>
 
-        {/* Right Sidebar (Order Ticket, Market Depth, Object Tree) */}
-        <RightSidebar
-          quote={quote}
-          drawings={drawings}
-          onSelectDrawing={setSelectedDrawingId}
-          onUpdateDrawing={handleUpdateDrawing}
-          onDeleteDrawing={handleDeleteDrawing}
-          selectedDrawingId={selectedDrawingId}
-          currentReplayCandleTime={replayEngine.getCurrentCandle()?.time}
-          currentChartPrice={visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : (masterCandles.length > 0 ? masterCandles[masterCandles.length - 1].close : (quote?.bid || 1.11380))}
-          settings={settings}
-          balance={currentBalance}
-          equity={currentEquity}
-          onOpenBalanceModal={() => setIsBalanceModalOpen(true)}
-          onOpenDrawingProperties={setEditingDrawing}
-          candles={visibleCandles}
-        />
+        {/* Right Sidebar (Desktop Mode) */}
+        {!isMobile && (
+          <RightSidebar
+            quote={quote}
+            drawings={drawings}
+            onSelectDrawing={setSelectedDrawingId}
+            onUpdateDrawing={handleUpdateDrawing}
+            onDeleteDrawing={handleDeleteDrawing}
+            selectedDrawingId={selectedDrawingId}
+            currentReplayCandleTime={replayEngine.getCurrentCandle()?.time}
+            currentChartPrice={visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : (masterCandles.length > 0 ? masterCandles[masterCandles.length - 1].close : (quote?.bid || 1.11380))}
+            settings={settings}
+            balance={currentBalance}
+            equity={currentEquity}
+            onOpenBalanceModal={() => setIsBalanceModalOpen(true)}
+            onOpenDrawingProperties={setEditingDrawing}
+            candles={visibleCandles}
+          />
+        )}
       </div>
 
-      {/* 3. BOTTOM DOCK (REPLAY CONTROLLER, OPEN POSITIONS, TRADE LOG & ANALYTICS) */}
-      <BottomPanel
-        replayActive={replayActive}
-        replayPlaying={replayPlaying}
-        replaySpeed={replaySpeed}
-        replayCurrentIndex={replayCurrentIndex}
-        replayTotalCandles={masterCandles.length}
-        replayMode={replayMode}
-        intrabarPhase={intrabarPhase}
-        trades={trades}
-        currentPrice={quote ? quote.bid : 1.1143}
-        settings={settings}
-        onExitReplay={handleToggleReplay}
-        onStartSelectCut={() => setIsSelectingReplayCut(true)}
-        isSelectingCut={isSelectingReplayCut}
-        onOpenJumpDateTime={() => setIsJumpDateTimeModalOpen(true)}
-        onRandomDateReplay={handleRandomDateReplay}
-        replayTickIntervalSec={replayTickIntervalSec}
+      {/* 3. BOTTOM DOCK (Desktop Mode) */}
+      {!isMobile && (
+        <BottomPanel
+          replayActive={replayActive}
+          replayPlaying={replayPlaying}
+          replaySpeed={replaySpeed}
+          replayCurrentIndex={replayCurrentIndex}
+          replayTotalCandles={masterCandles.length}
+          replayMode={replayMode}
+          intrabarPhase={intrabarPhase}
+          trades={trades}
+          currentPrice={quote ? quote.bid : 1.1143}
+          settings={settings}
+          onExitReplay={handleToggleReplay}
+          onStartSelectCut={() => setIsSelectingReplayCut(true)}
+          isSelectingCut={isSelectingReplayCut}
+          onOpenJumpDateTime={() => setIsJumpDateTimeModalOpen(true)}
+          onRandomDateReplay={handleRandomDateReplay}
+          replayTickIntervalSec={replayTickIntervalSec}
+          onOpenBalanceModal={() => setIsBalanceModalOpen(true)}
+        />
+      )}
+
+      {/* 4. MOBILE BOTTOM NAVIGATION (Mobile Mode) */}
+      {isMobile && (
+        <MobileBottomNav
+          activeTab={mobileActiveTab}
+          onTabChange={(tab) => {
+            if (tab === 'tools') {
+              setIsMobileToolsOpen(true);
+            } else {
+              setMobileActiveTab(tab);
+            }
+          }}
+          openPositionsCount={trades.filter(t => t.status === 'OPEN').length}
+          hasActiveTradeSetup={Boolean(activeSetup?.active)}
+          activeDrawingTool={activeTool}
+        />
+      )}
+
+      {/* 5. MOBILE MODALS & SHEETS */}
+      {/* Mobile Trade / Order Ticket Sheet */}
+      {isMobile && mobileActiveTab === 'trade' && (
+        <div
+          data-testid="mobile-trade-sheet"
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm flex flex-col justify-end animate-in fade-in duration-200"
+          onClick={() => setMobileActiveTab('chart')}
+        >
+          <div
+            className="bg-[#131722] border-t border-[#2a2e39] rounded-t-2xl h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-250"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <RightSidebar
+              quote={quote}
+              drawings={drawings}
+              onSelectDrawing={setSelectedDrawingId}
+              onUpdateDrawing={handleUpdateDrawing}
+              onDeleteDrawing={handleDeleteDrawing}
+              selectedDrawingId={selectedDrawingId}
+              currentReplayCandleTime={replayEngine.getCurrentCandle()?.time}
+              currentChartPrice={visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : (masterCandles.length > 0 ? masterCandles[masterCandles.length - 1].close : (quote?.bid || 1.11380))}
+              settings={settings}
+              balance={currentBalance}
+              equity={currentEquity}
+              onOpenBalanceModal={() => setIsBalanceModalOpen(true)}
+              onOpenDrawingProperties={setEditingDrawing}
+              candles={visibleCandles}
+              isMobile={true}
+              onCloseMobile={() => setMobileActiveTab('chart')}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Positions / Analytics Sheet */}
+      {isMobile && (mobileActiveTab === 'positions' || mobileActiveTab === 'analytics') && (
+        <div
+          data-testid="mobile-dock-sheet"
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm flex flex-col justify-end animate-in fade-in duration-200"
+          onClick={() => setMobileActiveTab('chart')}
+        >
+          <div
+            className="bg-[#131722] border-t border-[#2a2e39] rounded-t-2xl h-[80vh] flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-250"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <BottomPanel
+              replayActive={replayActive}
+              replayPlaying={replayPlaying}
+              replaySpeed={replaySpeed}
+              replayCurrentIndex={replayCurrentIndex}
+              replayTotalCandles={masterCandles.length}
+              replayMode={replayMode}
+              intrabarPhase={intrabarPhase}
+              trades={trades}
+              currentPrice={quote ? quote.bid : 1.1143}
+              settings={settings}
+              onExitReplay={handleToggleReplay}
+              onStartSelectCut={() => setIsSelectingReplayCut(true)}
+              isSelectingCut={isSelectingReplayCut}
+              onOpenJumpDateTime={() => setIsJumpDateTimeModalOpen(true)}
+              onRandomDateReplay={handleRandomDateReplay}
+              replayTickIntervalSec={replayTickIntervalSec}
+              onOpenBalanceModal={() => setIsBalanceModalOpen(true)}
+              isMobile={true}
+              initialTab={mobileActiveTab === 'positions' ? 'positions' : 'analytics'}
+              hideReplayBar={true}
+              onCloseMobile={() => setMobileActiveTab('chart')}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Tools Sheet */}
+      <MobileToolsSheet
+        isOpen={isMobileToolsOpen}
+        onClose={() => {
+          setIsMobileToolsOpen(false);
+          setMobileActiveTab('chart');
+        }}
+        activeTool={activeTool}
+        onSelectTool={(t) => {
+          setActiveTool(t);
+          setIsMobileToolsOpen(false);
+          setMobileActiveTab('chart');
+          showToast(`Selected ${t.replace('_', ' ')}`);
+        }}
+        magnetMode={magnetMode}
+        onToggleMagnet={(mode) => {
+          if (mode) setMagnetMode(mode);
+          else setMagnetMode(prev => (prev === 'off' ? 'weak' : prev === 'weak' ? 'strong' : 'off'));
+        }}
+        lockedAll={lockedAll}
+        onToggleLockAll={() => {
+          const next = !lockedAll;
+          setLockedAll(next);
+          setDrawings(prev => prev.map(d => ({ ...d, locked: next })));
+        }}
+        hiddenAll={hiddenAll}
+        onToggleHideAll={() => {
+          const next = !hiddenAll;
+          setHiddenAll(next);
+          setDrawings(prev => prev.map(d => ({ ...d, hidden: next })));
+        }}
+        onDeleteAll={handleDeleteAllDrawings}
+        favoriteTools={favoriteTools}
+        onToggleFavorite={handleToggleFavorite}
+      />
+
+      {/* Mobile Menu Drawer */}
+      <MobileDrawer
+        isOpen={isMobileMenuOpen}
+        onClose={() => setIsMobileMenuOpen(false)}
+        viewMode={viewMode}
+        effectiveMode={effectiveMode}
+        onSetViewMode={(mode) => {
+          setViewMode(mode);
+          setIsMobileMenuOpen(false);
+          showToast(`Switched to ${mode.toUpperCase()} view mode`);
+        }}
+        balance={currentBalance}
+        equity={currentEquity}
         onOpenBalanceModal={() => setIsBalanceModalOpen(true)}
+        onOpenIndicators={() => setIsIndicatorsModalOpen(true)}
+        activeIndicatorsCount={indicators.filter(i => i.visible).length}
+        sessionsIndicatorActive={indicators.find(i => i.type === 'SESSIONS')?.visible ?? true}
+        activeSessionLabel={activeSessionSummary?.session.shortLabel}
+        onToggleSessionsIndicator={handleToggleSessions}
+        onOpenSessions={() => setIsSessionsModalOpen(true)}
+        newsActive={newsActive}
+        onToggleNews={handleToggleNews}
+        newsFilter={newsFilter}
+        onToggleNewsFilter={handleToggleNewsFilter}
+        replayActive={replayActive}
+        onToggleReplay={handleToggleReplay}
+        onRandomDateReplay={handleRandomDateReplay}
+        onOpenValidation={() => setIsValidationModalOpen(true)}
+        onOpenSettings={() => setIsSettingsModalOpen(true)}
+        onResetChart={() => chartHelpersRef.current?.resetScale()}
+        onFitData={() => chartHelpersRef.current?.fitContent()}
       />
 
       {/* Workstation HUD Toast */}

@@ -86,32 +86,44 @@ export const FloatingTradeControlPanel: React.FC<FloatingTradeControlPanelProps>
     } catch {}
   }, []);
 
-  // Dragging logic
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  // Dragging logic (supports both Mouse and Touch for mobile)
+  const handleDragStart = useCallback((clientX: number, clientY: number) => {
     setIsDragging(true);
     dragStartRef.current = {
-      mouseX: e.clientX,
-      mouseY: e.clientY,
+      mouseX: clientX,
+      mouseY: clientY,
       startX: positionRef.current.x,
       startY: positionRef.current.y,
     };
   }, []);
 
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleDragStart(e.clientX, e.clientY);
+  }, [handleDragStart]);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      e.stopPropagation();
+      handleDragStart(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  }, [handleDragStart]);
+
   useEffect(() => {
     if (!isDragging) return;
 
-    const handleMouseMove = (e: MouseEvent) => {
+    const handleMove = (clientX: number, clientY: number) => {
       if (!dragStartRef.current) return;
-      const dx = e.clientX - dragStartRef.current.mouseX;
-      const dy = e.clientY - dragStartRef.current.mouseY;
+      const dx = clientX - dragStartRef.current.mouseX;
+      const dy = clientY - dragStartRef.current.mouseY;
 
       const parent = panelRef.current?.parentElement;
       const parentW = parent ? parent.clientWidth : window.innerWidth;
       const parentH = parent ? parent.clientHeight : window.innerHeight;
 
-      const maxX = Math.max(10, parentW - 330);
+      const panelW = panelRef.current ? panelRef.current.offsetWidth : 300;
+      const maxX = Math.max(10, parentW - panelW - 10);
       const maxY = Math.max(20, parentH - 50);
 
       const newX = Math.max(10, Math.min(maxX, dragStartRef.current.startX + dx));
@@ -122,7 +134,17 @@ export const FloatingTradeControlPanel: React.FC<FloatingTradeControlPanelProps>
       positionRef.current = updated;
     };
 
-    const handleMouseUp = () => {
+    const handleMouseMove = (e: MouseEvent) => {
+      handleMove(e.clientX, e.clientY);
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        handleMove(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    };
+
+    const handleEnd = () => {
       setIsDragging(false);
       dragStartRef.current = null;
       try {
@@ -131,11 +153,17 @@ export const FloatingTradeControlPanel: React.FC<FloatingTradeControlPanelProps>
     };
 
     window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('mouseup', handleEnd);
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchend', handleEnd);
+    window.addEventListener('touchcancel', handleEnd);
 
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mouseup', handleEnd);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleEnd);
+      window.removeEventListener('touchcancel', handleEnd);
     };
   }, [isDragging]);
 
@@ -170,15 +198,16 @@ export const FloatingTradeControlPanel: React.FC<FloatingTradeControlPanelProps>
           left: `${position.x}px`,
           top: `${position.y}px`,
         }}
-        className={`absolute z-30 w-[320px] bg-[#1e222d]/95 backdrop-blur-md border border-[#2a2e39] rounded-lg shadow-2xl select-none font-sans text-xs transition-shadow ${
+        className={`absolute z-30 w-[92vw] max-w-[320px] bg-[#1e222d]/95 backdrop-blur-md border border-[#2a2e39] rounded-lg shadow-2xl select-none font-sans text-xs transition-shadow ${
           isDragging ? 'shadow-blue-500/20 ring-1 ring-[#2962ff]/50' : 'shadow-black/70'
         }`}
       >
         {/* Drag Handle Bar */}
         <div
           onMouseDown={handleMouseDown}
+          onTouchStart={handleTouchStart}
           data-testid="trade-panel-drag-handle"
-          className="flex items-center justify-between px-3 py-1.5 bg-[#131722]/90 border-b border-[#2a2e39] cursor-grab active:cursor-grabbing rounded-t-lg"
+          className="flex items-center justify-between px-3 py-1.5 bg-[#131722]/90 border-b border-[#2a2e39] cursor-grab active:cursor-grabbing rounded-t-lg touch-none"
           title="Drag to move trade settings anywhere on chart"
         >
           <div className="flex items-center space-x-1.5 text-gray-300 font-semibold text-[11px]">
@@ -305,15 +334,16 @@ export const FloatingTradeControlPanel: React.FC<FloatingTradeControlPanelProps>
         left: `${position.x}px`,
         top: `${position.y}px`,
       }}
-      className={`absolute z-30 w-[320px] bg-[#1e222d]/95 backdrop-blur-md border border-[#2a2e39] rounded-lg shadow-2xl select-none font-sans text-xs transition-shadow ${
+      className={`absolute z-30 w-[92vw] max-w-[320px] bg-[#1e222d]/95 backdrop-blur-md border border-[#2a2e39] rounded-lg shadow-2xl select-none font-sans text-xs transition-shadow ${
         isDragging ? 'shadow-blue-500/20 ring-1 ring-[#2962ff]/50' : 'shadow-black/70'
       }`}
     >
       {/* Drag Handle Bar */}
       <div
         onMouseDown={handleMouseDown}
+        onTouchStart={handleTouchStart}
         data-testid="trade-panel-drag-handle"
-        className="flex items-center justify-between px-3 py-1.5 bg-[#131722]/90 border-b border-[#2a2e39] cursor-grab active:cursor-grabbing rounded-t-lg"
+        className="flex items-center justify-between px-3 py-1.5 bg-[#131722]/90 border-b border-[#2a2e39] cursor-grab active:cursor-grabbing rounded-t-lg touch-none"
         title="Drag to move trade settings anywhere on chart"
       >
         <div className="flex items-center space-x-1.5 text-gray-300 font-semibold text-[11px]">

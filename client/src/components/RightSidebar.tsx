@@ -21,6 +21,7 @@ import {
   Crosshair,
   Wallet,
   Settings,
+  X,
 } from 'lucide-react';
 import { Quote, DrawingObject, Trade, UserSettings, DraggableTradeSetup, Candle } from '../types';
 import { backtestingEngine } from '../services/BacktestingEngine';
@@ -42,6 +43,9 @@ interface RightSidebarProps {
   onOpenBalanceModal?: () => void;
   onOpenDrawingProperties?: (d: DrawingObject) => void;
   candles?: Candle[];
+  isMobile?: boolean;
+  onCloseMobile?: () => void;
+  initialTab?: TabType;
 }
 
 type TabType = 'market' | 'order' | 'objects' | 'alerts';
@@ -61,9 +65,12 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   onOpenBalanceModal,
   onOpenDrawingProperties,
   candles = [],
+  isMobile = false,
+  onCloseMobile,
+  initialTab = 'order',
 }) => {
   const [collapsed, setCollapsed] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabType>('order');
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
 
   const effectiveRefTime = currentReplayCandleTime ?? (
     candles.length > 0 ? candles[candles.length - 1].time : (quote?.timestamp ? Math.floor(new Date(quote.timestamp).getTime() / 1000) : Math.floor(Date.now() / 1000))
@@ -226,9 +233,12 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       backtestingEngine.cancelTradeSetup();
     }
     setTradeNotes('');
+    if (isMobile && onCloseMobile) {
+      onCloseMobile();
+    }
   };
 
-  if (collapsed) {
+  if (collapsed && !isMobile) {
     return (
       <div className="w-10 bg-[#131722] border-l border-[#2a2e39] flex flex-col items-center py-2 space-y-3 z-20 select-none">
         <button
@@ -264,7 +274,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   }
 
   return (
-    <div className="w-72 bg-[#131722] border-l border-[#2a2e39] flex flex-col h-full z-20 text-xs select-none">
+    <div className={isMobile ? 'w-full bg-[#131722] flex flex-col h-full z-20 text-xs select-none' : 'w-72 bg-[#131722] border-l border-[#2a2e39] flex flex-col h-full z-20 text-xs select-none'}>
       {/* Sidebar Header Tabs */}
       <div className="h-10 bg-[#131722] border-b border-[#2a2e39] flex items-center justify-between px-2">
         <div className="flex items-center space-x-1">
@@ -300,13 +310,24 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
           </button>
         </div>
 
-        <button
-          onClick={() => setCollapsed(true)}
-          className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#1e222d]"
-          title="Collapse Sidebar"
-        >
-          <ChevronRight size={15} />
-        </button>
+        {isMobile ? (
+          <button
+            onClick={onCloseMobile}
+            data-testid="mobile-sidebar-close-btn"
+            className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#1e222d]"
+            title="Close"
+          >
+            <X size={16} />
+          </button>
+        ) : (
+          <button
+            onClick={() => setCollapsed(true)}
+            className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#1e222d]"
+            title="Collapse Sidebar"
+          >
+            <ChevronRight size={15} />
+          </button>
+        )}
       </div>
 
       {/* Tab Content */}

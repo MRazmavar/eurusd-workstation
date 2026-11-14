@@ -608,12 +608,27 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
       }
     };
 
+    const handleWindowTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        handleWindowMouseMove({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY } as any);
+      }
+    };
+    const handleWindowTouchEnd = () => {
+      handleWindowMouseUp();
+    };
+
     window.addEventListener('mousemove', handleWindowMouseMove);
     window.addEventListener('mouseup', handleWindowMouseUp);
+    window.addEventListener('touchmove', handleWindowTouchMove, { passive: false });
+    window.addEventListener('touchend', handleWindowTouchEnd);
+    window.addEventListener('touchcancel', handleWindowTouchEnd);
 
     return () => {
       window.removeEventListener('mousemove', handleWindowMouseMove);
       window.removeEventListener('mouseup', handleWindowMouseUp);
+      window.removeEventListener('touchmove', handleWindowTouchMove);
+      window.removeEventListener('touchend', handleWindowTouchEnd);
+      window.removeEventListener('touchcancel', handleWindowTouchEnd);
     };
   }, [dragState !== null || draggingSetupLine !== null || draggingTradeLine !== null, onUpdate, onUpdateSetup, onModifyTrade]);
 
@@ -2582,6 +2597,20 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                       startMouse: { x: rawX, y: rawY },
                       initialPoints: [...d.points],
                     });
+                  }}
+                  onTouchStart={(e) => {
+                    if (e.touches.length === 1) {
+                      e.stopPropagation();
+                      const rect = svgRef.current?.getBoundingClientRect();
+                      const rawX = e.touches[0].clientX - (rect?.left || 0);
+                      const rawY = e.touches[0].clientY - (rect?.top || 0);
+                      setDragState({
+                        drawingId: d.id,
+                        pointIndex: pt.pointIndex,
+                        startMouse: { x: rawX, y: rawY },
+                        initialPoints: [...d.points],
+                      });
+                    }
                   }}
                 />
                 {/* TradingView Signature 10x10 Rounded Square with #2962ff border */}
