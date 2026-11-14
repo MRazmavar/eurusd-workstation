@@ -22,6 +22,7 @@ interface FloatingTradeControlPanelProps {
   trades: Trade[];
   activeSetup?: DraggableTradeSetup | null;
   currentPrice: number;
+  isMobile?: boolean;
   onConfirmSetup?: () => void;
   onCancelSetup?: () => void;
   onCloseTrade?: (tradeId: string) => void;
@@ -32,6 +33,7 @@ export const FloatingTradeControlPanel: React.FC<FloatingTradeControlPanelProps>
   trades,
   activeSetup,
   currentPrice,
+  isMobile = false,
   onConfirmSetup,
   onCancelSetup,
   onCloseTrade,
@@ -42,20 +44,35 @@ export const FloatingTradeControlPanel: React.FC<FloatingTradeControlPanelProps>
   const hasSetup = activeSetup && activeSetup.active;
   const isVisible = hasSetup || openTrades.length > 0;
 
+  const isMobileViewport = isMobile || (typeof window !== 'undefined' && window.innerWidth < 768);
+  const storageKey = isMobileViewport ? 'eurusd_trade_panel_pos_mobile' : 'eurusd_trade_panel_pos';
+
   // Selected trade index if multiple open trades exist
   const [selectedTradeIndex, setSelectedTradeIndex] = useState<number>(0);
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
 
-  // Position state (default: lowest left of viewport)
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  // Position state (default: lowest left on desktop, centered bottom on mobile)
   const getDefaultPosition = useCallback(() => {
-    const parentH = panelRef.current?.parentElement?.clientHeight || (typeof window !== 'undefined' ? window.innerHeight - 150 : 600);
+    const parent = panelRef.current?.parentElement;
+    const parentW = parent?.clientWidth || (typeof window !== 'undefined' ? window.innerWidth : 390);
+    const parentH = parent?.clientHeight || (typeof window !== 'undefined' ? window.innerHeight - 150 : 600);
+    const panelW = panelRef.current?.offsetWidth || (isMobileViewport ? Math.min(340, parentW - 20) : 320);
+    const panelH = panelRef.current?.offsetHeight || 190;
+
+    if (isMobileViewport) {
+      const defaultY = Math.max(10, parentH - panelH - 10);
+      const defaultX = Math.max(10, Math.floor((parentW - panelW) / 2));
+      return { x: defaultX, y: defaultY };
+    }
     const defaultY = Math.max(20, parentH - 240);
     return { x: 16, y: defaultY };
-  }, []);
+  }, [isMobileViewport]);
 
   const [position, setPosition] = useState<{ x: number; y: number }>(() => {
     try {
-      const saved = localStorage.getItem('eurusd_trade_panel_pos');
+      const saved = localStorage.getItem(storageKey);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
@@ -63,6 +80,9 @@ export const FloatingTradeControlPanel: React.FC<FloatingTradeControlPanelProps>
         }
       }
     } catch {}
+    if (typeof window !== 'undefined' && (isMobile || window.innerWidth < 768)) {
+      return { x: 10, y: Math.max(10, window.innerHeight - 380) };
+    }
     return { x: 16, y: 500 };
   });
 
@@ -71,20 +91,45 @@ export const FloatingTradeControlPanel: React.FC<FloatingTradeControlPanelProps>
 
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const dragStartRef = useRef<{ mouseX: number; mouseY: number; startX: number; startY: number } | null>(null);
-  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  // Auto-clamp position inside container bounds on resize or mount
+  useEffect(() => {
+    const clampToVisible = () => {
+      const parent = panelRef.current?.parentElement;
+      const parentW = parent?.clientWidth || (typeof window !== 'undefined' ? window.innerWidth : 390);
+      const parentH = parent?.clientHeight || (typeof window !== 'undefined' ? window.innerHeight - 150 : 600);
+      const panelW = panelRef.current?.offsetWidth || (isMobileViewport ? Math.min(340, parentW - 20) : 320);
+      const panelH = panelRef.current?.offsetHeight || 190;
+
+      setPosition((prev) => {
+        const maxX = Math.max(10, parentW - panelW - 10);
+        const maxY = Math.max(10, parentH - panelH - 10);
+        const clampedX = Math.max(10, Math.min(maxX, prev.x));
+        const clampedY = Math.max(10, Math.min(maxY, prev.y));
+        if (clampedX !== prev.x || clampedY !== prev.y) {
+          positionRef.current = { x: clampedX, y: clampedY };
+          return { x: clampedX, y: clampedY };
+        }
+        return prev;
+      });
+    };
+
+    clampToVisible();
+    window.addEventListener('resize', clampToVisible);
+    return () => window.removeEventListener('resize', clampToVisible);
+  }, [isMobileViewport, isMinimized]);
 
   // Position calibration on initial mount if not explicitly saved
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('eurusd_trade_panel_pos');
+      const saved = localStorage.getItem(storageKey);
       if (!saved && panelRef.current?.parentElement) {
-        const parentH = panelRef.current.parentElement.clientHeight;
-        const initialPos = { x: 16, y: Math.max(20, parentH - 240) };
+        const initialPos = getDefaultPosition();
         setPosition(initialPos);
         positionRef.current = initialPos;
       }
     } catch {}
-  }, []);
+  }, [storageKey, getDefaultPosition]);
 
   // Dragging logic (supports both Mouse and Touch for mobile)
   const handleDragStart = useCallback((clientX: number, clientY: number) => {
@@ -148,7 +193,7 @@ export const FloatingTradeControlPanel: React.FC<FloatingTradeControlPanelProps>
       setIsDragging(false);
       dragStartRef.current = null;
       try {
-        localStorage.setItem('eurusd_trade_panel_pos', JSON.stringify(positionRef.current));
+        localStorage.setItem(storageKey, JSON.stringify(positionRef.current));
       } catch {}
     };
 
@@ -165,7 +210,7 @@ export const FloatingTradeControlPanel: React.FC<FloatingTradeControlPanelProps>
       window.removeEventListener('touchend', handleEnd);
       window.removeEventListener('touchcancel', handleEnd);
     };
-  }, [isDragging]);
+  }, [isDragging, storageKey]);
 
   const handleResetPosition = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -173,7 +218,7 @@ export const FloatingTradeControlPanel: React.FC<FloatingTradeControlPanelProps>
     setPosition(pos);
     positionRef.current = pos;
     try {
-      localStorage.setItem('eurusd_trade_panel_pos', JSON.stringify(pos));
+      localStorage.setItem(storageKey, JSON.stringify(pos));
     } catch {}
   };
 
@@ -211,7 +256,9 @@ export const FloatingTradeControlPanel: React.FC<FloatingTradeControlPanelProps>
           left: `${position.x}px`,
           top: `${position.y}px`,
         }}
-        className={`absolute z-30 w-[92vw] max-w-[320px] bg-[#1e222d]/95 backdrop-blur-md border border-[#2a2e39] rounded-lg shadow-2xl select-none font-sans text-xs transition-shadow ${
+        className={`absolute z-30 ${
+          isMobileViewport ? 'w-[calc(100%-20px)] max-w-[360px]' : 'w-[92vw] max-w-[320px]'
+        } bg-[#1e222d]/95 backdrop-blur-md border border-[#2a2e39] rounded-lg shadow-2xl select-none font-sans text-xs transition-shadow ${
           isDragging ? 'shadow-blue-500/20 ring-1 ring-[#2962ff]/50' : 'shadow-black/70'
         }`}
       >
@@ -223,15 +270,34 @@ export const FloatingTradeControlPanel: React.FC<FloatingTradeControlPanelProps>
           className="flex items-center justify-between px-3 py-1.5 bg-[#131722]/90 border-b border-[#2a2e39] cursor-grab active:cursor-grabbing rounded-t-lg touch-none"
           title="Drag to move trade settings anywhere on chart"
         >
-          <div className="flex items-center space-x-1.5 text-gray-300 font-semibold text-[11px]">
-            <GripHorizontal className="w-3.5 h-3.5 text-gray-400" />
-            <span>TRADE SETTINGS (NEW SETUP)</span>
+          <div className="flex items-center space-x-1.5 text-gray-300 font-semibold text-[11px] min-w-0">
+            <GripHorizontal className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+            <span className="truncate">{isMinimized ? `${orderTypeLabel}` : 'TRADE SETTINGS'}</span>
+            {isMinimized && (
+              <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold text-white uppercase shrink-0 ${isBuy ? 'bg-[#089981]' : 'bg-[#f23645]'}`}>
+                {activeSetup.lotSize}L
+              </span>
+            )}
           </div>
-          <div className="flex items-center space-x-1">
+          <div className="flex items-center space-x-1 shrink-0">
+            {isMinimized && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onConfirmSetup?.();
+                }}
+                data-testid="trade-panel-minimized-confirm-btn"
+                className="flex items-center space-x-1 px-2.5 py-0.5 rounded bg-[#089981] hover:bg-[#07806c] active:bg-[#066e5d] text-white font-bold text-[10px] shadow transition-colors cursor-pointer"
+                title="Confirm & Execute Order"
+              >
+                <Check className="w-3 h-3" />
+                <span>Confirm</span>
+              </button>
+            )}
             <button
               onClick={handleResetPosition}
               className="p-1 text-gray-400 hover:text-white rounded hover:bg-[#2a2e39]"
-              title="Reset position to lowest left"
+              title="Reset position"
             >
               <RotateCcw className="w-3 h-3" />
             </button>
@@ -301,17 +367,17 @@ export const FloatingTradeControlPanel: React.FC<FloatingTradeControlPanelProps>
               <button
                 onClick={onConfirmSetup}
                 data-testid="trade-panel-confirm-setup-btn"
-                className="flex-1 flex items-center justify-center space-x-1 py-1.5 rounded font-semibold text-white bg-[#089981] hover:bg-[#07806c] shadow transition-colors cursor-pointer"
+                className="flex-1 flex items-center justify-center space-x-1.5 py-2 px-3 rounded font-bold text-white bg-[#089981] hover:bg-[#07806c] active:bg-[#066e5d] shadow transition-colors cursor-pointer text-xs min-h-[40px]"
               >
-                <Check className="w-3.5 h-3.5" />
-                <span>{isPendingOrder ? `Place ${orderTypeLabel}` : `Execute Market ${activeSetup.type}`}</span>
+                <Check className="w-4 h-4 shrink-0" />
+                <span className="truncate">{isPendingOrder ? `Place ${orderTypeLabel}` : `Execute Market ${activeSetup.type}`}</span>
               </button>
               <button
                 onClick={onCancelSetup}
                 data-testid="trade-panel-cancel-setup-btn"
-                className="flex-1 flex items-center justify-center space-x-1 py-1.5 rounded font-semibold text-gray-300 bg-[#2a2e39] hover:bg-[#363c4e] transition-colors cursor-pointer"
+                className="flex items-center justify-center space-x-1 py-2 px-3 rounded font-semibold text-gray-300 bg-[#2a2e39] hover:bg-[#363c4e] active:bg-[#444b5f] transition-colors cursor-pointer text-xs min-h-[40px]"
               >
-                <X className="w-3.5 h-3.5" />
+                <X className="w-4 h-4 shrink-0" />
                 <span>Cancel</span>
               </button>
             </div>
@@ -354,7 +420,9 @@ export const FloatingTradeControlPanel: React.FC<FloatingTradeControlPanelProps>
         left: `${position.x}px`,
         top: `${position.y}px`,
       }}
-      className={`absolute z-30 w-[92vw] max-w-[320px] bg-[#1e222d]/95 backdrop-blur-md border border-[#2a2e39] rounded-lg shadow-2xl select-none font-sans text-xs transition-shadow ${
+      className={`absolute z-30 ${
+        isMobileViewport ? 'w-[calc(100%-20px)] max-w-[360px]' : 'w-[92vw] max-w-[320px]'
+      } bg-[#1e222d]/95 backdrop-blur-md border border-[#2a2e39] rounded-lg shadow-2xl select-none font-sans text-xs transition-shadow ${
         isDragging ? 'shadow-blue-500/20 ring-1 ring-[#2962ff]/50' : 'shadow-black/70'
       }`}
     >

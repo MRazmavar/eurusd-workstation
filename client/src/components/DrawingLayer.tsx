@@ -68,6 +68,7 @@ interface DrawingLayerProps {
   sessionsActive?: boolean;
   currentReplayTimestamp?: number | null;
   isLoadingCandles?: boolean;
+  isMobile?: boolean;
 }
 
 export const DrawingLayer: React.FC<DrawingLayerProps> = ({
@@ -107,7 +108,11 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   sessionsActive = true,
   currentReplayTimestamp,
   isLoadingCandles = false,
+  isMobile = false,
 }) => {
+  const isMobileScreen = isMobile || (typeof window !== 'undefined' && window.innerWidth < 768);
+  const hitTargetWidth = isMobileScreen ? 36 : 16;
+  const handleHitRadius = isMobileScreen ? 24 : 12;
   const svgRef = useRef<SVGSVGElement | null>(null);
   const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -383,7 +388,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     };
   }, []);
 
-  const getMouseCoord = (e: React.MouseEvent | MouseEvent): {
+  const getMouseCoord = (e: React.MouseEvent | MouseEvent | React.TouchEvent | TouchEvent): {
     x: number;
     y: number;
     time: number;
@@ -392,8 +397,22 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   } | null => {
     if (!svgRef.current) return null;
     const rect = svgRef.current.getBoundingClientRect();
-    const rawX = e.clientX - rect.left;
-    const rawY = e.clientY - rect.top;
+    let clientX = 0;
+    let clientY = 0;
+    if ('touches' in e && e.touches.length > 0) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else if ('changedTouches' in e && (e as any).changedTouches.length > 0) {
+      clientX = (e as any).changedTouches[0].clientX;
+      clientY = (e as any).changedTouches[0].clientY;
+    } else if ('clientX' in e) {
+      clientX = (e as MouseEvent).clientX;
+      clientY = (e as MouseEvent).clientY;
+    } else {
+      return null;
+    }
+    const rawX = clientX - rect.left;
+    const rawY = clientY - rect.top;
 
     const snap = calculateMagnetSnap(
       rawX,
@@ -691,6 +710,11 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
 
     const handleWindowTouchMove = (e: TouchEvent) => {
       if (e.touches.length === 1) {
+        if (dragStateRef.current || draggingSetupLineRef.current || draggingTradeLineRef.current) {
+          if (e.cancelable) {
+            e.preventDefault();
+          }
+        }
         handleWindowMouseMove({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY } as any);
       }
     };
@@ -1534,6 +1558,13 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                       e.stopPropagation();
                       setDraggingTradeLine({ tradeId: trade.id, lineType: 'tp' });
                     }}
+                    onTouchStart={(e) => {
+                      if (e.touches.length === 1) {
+                        e.stopPropagation();
+                        if (e.cancelable) e.preventDefault();
+                        setDraggingTradeLine({ tradeId: trade.id, lineType: 'tp' });
+                      }
+                    }}
                   />
                 )}
                 {/* Compact TP Label on right border */}
@@ -1543,6 +1574,13 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                   onMouseDown={!isClosed ? (e) => {
                     e.stopPropagation();
                     setDraggingTradeLine({ tradeId: trade.id, lineType: 'tp' });
+                  } : undefined}
+                  onTouchStart={!isClosed ? (e) => {
+                    if (e.touches.length === 1) {
+                      e.stopPropagation();
+                      if (e.cancelable) e.preventDefault();
+                      setDraggingTradeLine({ tradeId: trade.id, lineType: 'tp' });
+                    }
                   } : undefined}
                   data-testid={`on-chart-tp-badge-${trade.id}`}
                 >
@@ -1583,6 +1621,13 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                     e.stopPropagation();
                     setDraggingTradeLine({ tradeId: trade.id, lineType: 'sl' });
                   } : undefined}
+                  onTouchStart={!isClosed ? (e) => {
+                    if (e.touches.length === 1) {
+                      e.stopPropagation();
+                      if (e.cancelable) e.preventDefault();
+                      setDraggingTradeLine({ tradeId: trade.id, lineType: 'sl' });
+                    }
+                  } : undefined}
                 />
                 {!isClosed && (
                   <line
@@ -1591,11 +1636,18 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                     x2={boxRight}
                     y2={slY}
                     stroke="transparent"
-                    strokeWidth={16}
+                    strokeWidth={hitTargetWidth}
                     className="cursor-ns-resize pointer-events-auto"
                     onMouseDown={(e) => {
                       e.stopPropagation();
                       setDraggingTradeLine({ tradeId: trade.id, lineType: 'sl' });
+                    }}
+                    onTouchStart={(e) => {
+                      if (e.touches.length === 1) {
+                        e.stopPropagation();
+                        if (e.cancelable) e.preventDefault();
+                        setDraggingTradeLine({ tradeId: trade.id, lineType: 'sl' });
+                      }
                     }}
                   />
                 )}
@@ -1613,6 +1665,13 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                       e.stopPropagation();
                       setDraggingTradeLine({ tradeId: trade.id, lineType: 'sl' });
                     }}
+                    onTouchStart={(e) => {
+                      if (e.touches.length === 1) {
+                        e.stopPropagation();
+                        if (e.cancelable) e.preventDefault();
+                        setDraggingTradeLine({ tradeId: trade.id, lineType: 'sl' });
+                      }
+                    }}
                   />
                 )}
                 {/* Compact SL Label on right border */}
@@ -1622,6 +1681,13 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                   onMouseDown={!isClosed ? (e) => {
                     e.stopPropagation();
                     setDraggingTradeLine({ tradeId: trade.id, lineType: 'sl' });
+                  } : undefined}
+                  onTouchStart={!isClosed ? (e) => {
+                    if (e.touches.length === 1) {
+                      e.stopPropagation();
+                      if (e.cancelable) e.preventDefault();
+                      setDraggingTradeLine({ tradeId: trade.id, lineType: 'sl' });
+                    }
                   } : undefined}
                   data-testid={`on-chart-sl-badge-${trade.id}`}
                 >
@@ -1661,6 +1727,13 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                   e.stopPropagation();
                   setDraggingTradeLine({ tradeId: trade.id, lineType: 'entry' });
                 } : undefined}
+                onTouchStart={isPending ? (e) => {
+                  if (e.touches.length === 1) {
+                    e.stopPropagation();
+                    if (e.cancelable) e.preventDefault();
+                    setDraggingTradeLine({ tradeId: trade.id, lineType: 'entry' });
+                  }
+                } : undefined}
                 data-testid={`position-entry-line-${trade.id}`}
               />
               {/* Entry Anchor Handle at Right Edge */}
@@ -1675,6 +1748,13 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 onMouseDown={isPending ? (e) => {
                   e.stopPropagation();
                   setDraggingTradeLine({ tradeId: trade.id, lineType: 'entry' });
+                } : undefined}
+                onTouchStart={isPending ? (e) => {
+                  if (e.touches.length === 1) {
+                    e.stopPropagation();
+                    if (e.cancelable) e.preventDefault();
+                    setDraggingTradeLine({ tradeId: trade.id, lineType: 'entry' });
+                  }
                 } : undefined}
               />
 
@@ -1788,6 +1868,24 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
               endTime: setupEndTime,
             };
           }}
+          onTouchStart={(e) => {
+            if (e.touches.length === 1) {
+              e.stopPropagation();
+              if (e.cancelable) e.preventDefault();
+              setDraggingSetupLine('body');
+              draggingSetupLineRef.current = 'body';
+              const mouse = getMouseCoord(e);
+              dragSetupInitialRef.current = {
+                mouseTime: mouse?.time || setupStartTime,
+                mousePrice: mouse?.price || activeSetup.entryPrice,
+                entry: activeSetup.entryPrice,
+                sl: activeSetup.slPrice,
+                tp: activeSetup.tpPrice,
+                startTime: setupStartTime,
+                endTime: setupEndTime,
+              };
+            }
+          }}
         />
         {/* Shaded Risk Zone - Drag body to freely move trade setup in time (left/right) & price (up/down) */}
         <rect
@@ -1816,6 +1914,24 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
               endTime: setupEndTime,
             };
           }}
+          onTouchStart={(e) => {
+            if (e.touches.length === 1) {
+              e.stopPropagation();
+              if (e.cancelable) e.preventDefault();
+              setDraggingSetupLine('body');
+              draggingSetupLineRef.current = 'body';
+              const mouse = getMouseCoord(e);
+              dragSetupInitialRef.current = {
+                mouseTime: mouse?.time || setupStartTime,
+                mousePrice: mouse?.price || activeSetup.entryPrice,
+                entry: activeSetup.entryPrice,
+                sl: activeSetup.slPrice,
+                tp: activeSetup.tpPrice,
+                startTime: setupStartTime,
+                endTime: setupEndTime,
+              };
+            }
+          }}
         />
 
         {/* Bounding Vertical Left Side Line (Drag Start Time Left/Right) */}
@@ -1827,6 +1943,14 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             setDraggingSetupLine('start');
             draggingSetupLineRef.current = 'start';
           }}
+          onTouchStart={(e) => {
+            if (e.touches.length === 1) {
+              e.stopPropagation();
+              if (e.cancelable) e.preventDefault();
+              setDraggingSetupLine('start');
+              draggingSetupLineRef.current = 'start';
+            }
+          }}
         >
           <line
             x1={boxLeft}
@@ -1834,7 +1958,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             x2={boxLeft}
             y2={Math.max(maxRewardY, maxRiskY)}
             stroke="transparent"
-            strokeWidth={16}
+            strokeWidth={hitTargetWidth}
           />
           <line
             x1={boxLeft}
@@ -1845,6 +1969,13 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             strokeWidth={1.5}
             strokeDasharray="3,3"
             opacity={0.8}
+          />
+          <circle
+            cx={boxLeft}
+            cy={entryY}
+            r={handleHitRadius}
+            fill="transparent"
+            stroke="transparent"
           />
           <circle
             cx={boxLeft}
@@ -1866,6 +1997,14 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             setDraggingSetupLine('end');
             draggingSetupLineRef.current = 'end';
           }}
+          onTouchStart={(e) => {
+            if (e.touches.length === 1) {
+              e.stopPropagation();
+              if (e.cancelable) e.preventDefault();
+              setDraggingSetupLine('end');
+              draggingSetupLineRef.current = 'end';
+            }
+          }}
         >
           <line
             x1={boxRight}
@@ -1873,7 +2012,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             x2={boxRight}
             y2={Math.max(maxRewardY, maxRiskY)}
             stroke="transparent"
-            strokeWidth={16}
+            strokeWidth={hitTargetWidth}
           />
           <line
             x1={boxRight}
@@ -1884,6 +2023,13 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             strokeWidth={1.5}
             strokeDasharray="3,3"
             opacity={0.8}
+          />
+          <circle
+            cx={boxRight}
+            cy={entryY}
+            r={handleHitRadius}
+            fill="transparent"
+            stroke="transparent"
           />
           <circle
             cx={boxRight}
@@ -1905,15 +2051,23 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             setDraggingSetupLine('tp');
             draggingSetupLineRef.current = 'tp';
           }}
+          onTouchStart={(e) => {
+            if (e.touches.length === 1) {
+              e.stopPropagation();
+              if (e.cancelable) e.preventDefault();
+              setDraggingSetupLine('tp');
+              draggingSetupLineRef.current = 'tp';
+            }
+          }}
         >
-          {/* 14px wide hit area */}
+          {/* Hit area */}
           <line
             x1={boxLeft}
             y1={tpY}
             x2={boxRight}
             y2={tpY}
             stroke="transparent"
-            strokeWidth={14}
+            strokeWidth={hitTargetWidth}
           />
           <line
             x1={boxLeft}
@@ -1923,6 +2077,14 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             stroke="#089981"
             strokeWidth={2}
             strokeDasharray="4,4"
+          />
+          {/* TP Anchor Handle Dot Touch Target */}
+          <circle
+            cx={boxRight}
+            cy={tpY}
+            r={handleHitRadius}
+            fill="transparent"
+            stroke="transparent"
           />
           {/* TP Anchor Handle Dot */}
           <circle
@@ -1962,15 +2124,33 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
               endTime: setupEndTime,
             };
           }}
+          onTouchStart={(e) => {
+            if (e.touches.length === 1) {
+              e.stopPropagation();
+              if (e.cancelable) e.preventDefault();
+              setDraggingSetupLine('entry');
+              draggingSetupLineRef.current = 'entry';
+              const mouse = getMouseCoord(e);
+              dragSetupInitialRef.current = {
+                mouseTime: mouse?.time || setupStartTime,
+                mousePrice: mouse?.price || activeSetup.entryPrice,
+                entry: activeSetup.entryPrice,
+                sl: activeSetup.slPrice,
+                tp: activeSetup.tpPrice,
+                startTime: setupStartTime,
+                endTime: setupEndTime,
+              };
+            }
+          }}
         >
-          {/* 12px wide hit area */}
+          {/* Hit area */}
           <line
             x1={boxLeft}
             y1={entryY}
             x2={boxRight}
             y2={entryY}
             stroke="transparent"
-            strokeWidth={12}
+            strokeWidth={hitTargetWidth}
           />
           <line
             x1={boxLeft}
@@ -1979,6 +2159,14 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             y2={entryY}
             stroke="#2962ff"
             strokeWidth={2.5}
+          />
+          {/* Entry Anchor Handle Dot Touch Target */}
+          <circle
+            cx={boxRight}
+            cy={entryY}
+            r={handleHitRadius}
+            fill="transparent"
+            stroke="transparent"
           />
           {/* Entry Anchor Handle Dot */}
           <circle
@@ -2008,15 +2196,23 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             setDraggingSetupLine('sl');
             draggingSetupLineRef.current = 'sl';
           }}
+          onTouchStart={(e) => {
+            if (e.touches.length === 1) {
+              e.stopPropagation();
+              if (e.cancelable) e.preventDefault();
+              setDraggingSetupLine('sl');
+              draggingSetupLineRef.current = 'sl';
+            }
+          }}
         >
-          {/* 8px wide invisible hit area */}
+          {/* Invisible hit area */}
           <line
             x1={boxLeft}
             y1={slY}
             x2={boxRight}
             y2={slY}
             stroke="transparent"
-            strokeWidth={8}
+            strokeWidth={hitTargetWidth}
           />
           <line
             x1={boxLeft}
@@ -2026,6 +2222,14 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             stroke="#f23645"
             strokeWidth={2}
             strokeDasharray="4,4"
+          />
+          {/* SL Anchor Handle Dot Touch Target */}
+          <circle
+            cx={boxRight}
+            cy={slY}
+            r={handleHitRadius}
+            fill="transparent"
+            stroke="transparent"
           />
           {/* SL Anchor Handle Dot */}
           <circle

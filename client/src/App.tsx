@@ -1292,6 +1292,7 @@ export const App: React.FC = () => {
               timezone={settings.timezone}
               sessionsActive={indicators.find(i => i.type === 'SESSIONS')?.visible ?? true}
               currentReplayTimestamp={replayActive ? (replayEngine.getCurrentCandle()?.time || null) : null}
+              isMobile={isMobile}
             />
 
             {/* Forex Factory Economic Calendar News Events Overlay */}
@@ -1321,6 +1322,7 @@ export const App: React.FC = () => {
               trades={trades}
               activeSetup={activeSetup}
               currentPrice={visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : (quote?.bid || (masterCandles.length > 0 ? masterCandles[masterCandles.length - 1].close : 1.11380))}
+              isMobile={isMobile}
               onConfirmSetup={() => {
                 const curP = visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : (quote?.bid || (masterCandles.length > 0 ? masterCandles[masterCandles.length - 1].close : 1.11380));
                 const time = replayEngine.getCurrentCandle()?.time || Math.floor(Date.now() / 1000);

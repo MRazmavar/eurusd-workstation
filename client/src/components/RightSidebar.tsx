@@ -185,6 +185,11 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         riskPercent,
         effectiveBalance
       );
+
+      // On mobile devices, automatically close the 85vh trade sheet so the user is directly viewing their on-chart setup
+      if (isMobile && onCloseMobile) {
+        onCloseMobile();
+      }
     }
   };
 
