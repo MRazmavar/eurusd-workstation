@@ -1,8 +1,10 @@
 /**
  * TradingView-Style Top Navigation Bar with Smooth Horizontal Scrolling.
  * Supports touch swiping on mobile and mouse wheel + scroll buttons on desktop.
+ * Uses fixed-positioned dropdown overlays to prevent container overflow clipping.
  */
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   BarChart2,
   CandlestickChart,
@@ -127,8 +129,14 @@ export const TopBar: React.FC<TopBarProps> = ({
   onToggleMode,
   onOpenMobileMenu,
 }) => {
+  // Dropdown visibility states
   const [showTfDropdown, setShowTfDropdown] = useState(false);
   const [showChartTypeDropdown, setShowChartTypeDropdown] = useState(false);
+
+  // Exact fixed coordinates for dropdown overlays so they escape overflow-x containers
+  const [tfDropdownPos, setTfDropdownPos] = useState<{ top: number; left: number } | null>(null);
+  const [chartTypeDropdownPos, setChartTypeDropdownPos] = useState<{ top: number; left: number } | null>(null);
+
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // References and states for horizontal toolbar scrolling
@@ -164,6 +172,8 @@ export const TopBar: React.FC<TopBarProps> = ({
     const handleResize = () => {
       checkDesktopScroll();
       checkMobileScroll();
+      setShowTfDropdown(false);
+      setShowChartTypeDropdown(false);
     };
     window.addEventListener('resize', handleResize);
     const timer = setTimeout(() => {
@@ -176,6 +186,27 @@ export const TopBar: React.FC<TopBarProps> = ({
     };
   }, [checkDesktopScroll, checkMobileScroll, quote, balance, timeframe]);
 
+  // Handle dropdown open with viewport boundary clamping
+  const handleOpenTfDropdown = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const dropdownWidth = 155;
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - dropdownWidth - 8));
+    setTfDropdownPos({ top: rect.bottom + 4, left });
+    setShowTfDropdown((prev) => !prev);
+    setShowChartTypeDropdown(false);
+  };
+
+  const handleOpenChartTypeDropdown = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const dropdownWidth = 155;
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - dropdownWidth - 8));
+    setChartTypeDropdownPos({ top: rect.bottom + 4, left });
+    setShowChartTypeDropdown((prev) => !prev);
+    setShowTfDropdown(false);
+  };
+
   // Handle vertical mouse wheel conversion to horizontal scroll on desktop
   const handleDesktopWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     const el = desktopScrollRef.current;
@@ -183,6 +214,8 @@ export const TopBar: React.FC<TopBarProps> = ({
     if (e.deltaY !== 0) {
       el.scrollLeft += e.deltaY;
       checkDesktopScroll();
+      if (showTfDropdown) setShowTfDropdown(false);
+      if (showChartTypeDropdown) setShowChartTypeDropdown(false);
     }
   };
 
@@ -193,6 +226,8 @@ export const TopBar: React.FC<TopBarProps> = ({
     if (e.deltaY !== 0) {
       el.scrollLeft += e.deltaY;
       checkMobileScroll();
+      if (showTfDropdown) setShowTfDropdown(false);
+      if (showChartTypeDropdown) setShowChartTypeDropdown(false);
     }
   };
 
@@ -223,6 +258,170 @@ export const TopBar: React.FC<TopBarProps> = ({
   };
 
   const isBull = (quote?.change ?? 0) >= 0;
+
+  // ==========================================
+  // FIXED DROPDOWN OVERLAYS (Portaled to document.body)
+  // ==========================================
+  const renderTimeframeDropdown = () => {
+    if (!showTfDropdown || !tfDropdownPos || typeof document === 'undefined') return null;
+    return createPortal(
+      <>
+        {/* Invisible backdrop to dismiss dropdown on click outside */}
+        <div
+          data-testid="tf-dropdown-backdrop"
+          className="fixed inset-0 z-[9998] cursor-default"
+          onClick={() => setShowTfDropdown(false)}
+        />
+        <div
+          data-testid="timeframe-dropdown-menu"
+          style={{
+            position: 'fixed',
+            top: `${tfDropdownPos.top}px`,
+            left: `${tfDropdownPos.left}px`,
+          }}
+          className="w-40 bg-[#1e222d] border border-[#2a2e39] rounded-lg shadow-2xl py-1 z-[9999] max-h-72 overflow-y-auto animate-in fade-in zoom-in-95 duration-100 font-sans select-none"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="px-2.5 py-1 text-[10px] text-gray-400 font-semibold uppercase tracking-wider">
+            Quick Timeframes
+          </div>
+          {FAVORITE_TIMEFRAMES.map((tf) => (
+            <button
+              key={tf}
+              data-testid={`tf-select-${tf}`}
+              onClick={() => {
+                onTimeframeChange(tf);
+                setShowTfDropdown(false);
+              }}
+              className={`w-full text-left px-3 py-1.5 hover:bg-[#2a2e39] flex justify-between cursor-pointer transition-colors ${
+                timeframe === tf ? 'text-[#2962ff] font-bold bg-[#2962ff]/10' : 'text-gray-200'
+              }`}
+            >
+              <span>{tf}</span>
+            </button>
+          ))}
+          <div className="px-2.5 py-1 text-[10px] text-gray-400 font-semibold uppercase tracking-wider border-t border-[#2a2e39] mt-1">
+            Seconds
+          </div>
+          {['1s', '5s', '15s', '30s'].map((tf) => (
+            <button
+              key={tf}
+              data-testid={`tf-select-${tf}`}
+              onClick={() => {
+                onTimeframeChange(tf as Timeframe);
+                setShowTfDropdown(false);
+              }}
+              className="w-full text-left px-3 py-1 hover:bg-[#2a2e39] text-gray-200 flex justify-between cursor-pointer transition-colors"
+            >
+              <span>{tf}</span>
+              <span className="text-[10px] text-gray-400">Sec</span>
+            </button>
+          ))}
+          <div className="px-2.5 py-1 text-[10px] text-gray-400 font-semibold uppercase tracking-wider border-t border-[#2a2e39] mt-1">
+            Minutes
+          </div>
+          {['1m', '3m', '5m', '15m', '30m', '45m'].map((tf) => (
+            <button
+              key={tf}
+              data-testid={`tf-select-${tf}`}
+              onClick={() => {
+                onTimeframeChange(tf as Timeframe);
+                setShowTfDropdown(false);
+              }}
+              className="w-full text-left px-3 py-1 hover:bg-[#2a2e39] text-gray-200 flex justify-between cursor-pointer transition-colors"
+            >
+              <span>{tf}</span>
+              <span className="text-[10px] text-gray-400">Min</span>
+            </button>
+          ))}
+          <div className="px-2.5 py-1 text-[10px] text-gray-400 font-semibold uppercase tracking-wider border-t border-[#2a2e39] mt-1">
+            Hours & Days
+          </div>
+          {['1h', '2h', '4h', '1D', '1W', '1M'].map((tf) => (
+            <button
+              key={tf}
+              data-testid={`tf-select-${tf}`}
+              onClick={() => {
+                onTimeframeChange(tf as Timeframe);
+                setShowTfDropdown(false);
+              }}
+              className="w-full text-left px-3 py-1 hover:bg-[#2a2e39] text-gray-200 flex justify-between cursor-pointer transition-colors"
+            >
+              <span>{tf}</span>
+              <span className="text-[10px] text-gray-400">
+                {tf.includes('D') ? 'Day' : tf.includes('W') ? 'Week' : tf.includes('M') ? 'Month' : 'Hour'}
+              </span>
+            </button>
+          ))}
+
+          {/* Custom Interval trigger */}
+          <div className="p-1 border-t border-[#2a2e39] mt-1">
+            <button
+              onClick={() => {
+                setShowTfDropdown(false);
+                onOpenQuickTimeframe?.();
+              }}
+              data-testid="topbar-custom-interval-btn"
+              className="w-full text-left px-2 py-1.5 rounded hover:bg-[#2962ff] text-white font-medium text-[11px] flex items-center justify-between cursor-pointer transition-colors"
+            >
+              <span>Custom Interval...</span>
+              <span className="text-[10px] text-gray-300 font-mono bg-black/40 px-1 py-0.5 rounded">0-9</span>
+            </button>
+          </div>
+        </div>
+      </>,
+      document.body
+    );
+  };
+
+  const renderChartTypeDropdown = () => {
+    if (!showChartTypeDropdown || !chartTypeDropdownPos || typeof document === 'undefined') return null;
+    return createPortal(
+      <>
+        {/* Invisible backdrop to dismiss dropdown on click outside */}
+        <div
+          data-testid="chart-type-dropdown-backdrop"
+          className="fixed inset-0 z-[9998] cursor-default"
+          onClick={() => setShowChartTypeDropdown(false)}
+        />
+        <div
+          data-testid="chart-type-dropdown-menu"
+          style={{
+            position: 'fixed',
+            top: `${chartTypeDropdownPos.top}px`,
+            left: `${chartTypeDropdownPos.left}px`,
+          }}
+          className="w-40 bg-[#1e222d] border border-[#2a2e39] rounded-lg shadow-2xl py-1 z-[9999] animate-in fade-in zoom-in-95 duration-100 font-sans select-none"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {[
+            { id: 'candlestick', label: 'Candles', icon: CandlestickChart },
+            { id: 'hollow', label: 'Hollow Candles', icon: CandlestickChart },
+            { id: 'bar', label: 'Bars (OHLC)', icon: BarChart2 },
+            { id: 'line', label: 'Line', icon: LineChart },
+            { id: 'area', label: 'Area', icon: AreaChart },
+            { id: 'baseline', label: 'Baseline', icon: Activity },
+          ].map((item) => (
+            <button
+              key={item.id}
+              data-testid={`chart-type-select-${item.id}`}
+              onClick={() => {
+                onChartTypeChange(item.id as ChartType);
+                setShowChartTypeDropdown(false);
+              }}
+              className={`w-full text-left px-3 py-1.5 hover:bg-[#2a2e39] flex items-center space-x-2 cursor-pointer transition-colors ${
+                chartType === item.id ? 'text-[#2962ff] font-semibold bg-[#2962ff]/10' : 'text-gray-200'
+              }`}
+            >
+              <item.icon size={14} />
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </div>
+      </>,
+      document.body
+    );
+  };
 
   // ==========================================
   // MOBILE TOP BAR (Swipeable & Scrollable Row)
@@ -266,66 +465,25 @@ export const TopBar: React.FC<TopBarProps> = ({
             </span>
           )}
 
-          {/* 3. Timeframe Selector Dropdown */}
+          {/* 3. Timeframe Selector Dropdown Button */}
           <div className="relative flex-shrink-0">
             <button
-              onClick={() => setShowTfDropdown(!showTfDropdown)}
+              onClick={handleOpenTfDropdown}
               data-testid="mobile-tf-btn"
-              className="flex items-center space-x-0.5 px-2 py-1 rounded bg-[#1e222d] text-gray-200 border border-[#2a2e39] font-mono font-semibold text-[11px] hover:text-white"
+              className="flex items-center space-x-0.5 px-2 py-1 rounded bg-[#1e222d] text-gray-200 border border-[#2a2e39] font-mono font-semibold text-[11px] hover:text-white active:scale-95 cursor-pointer transition-all"
+              title="Select Timeframe"
             >
               <span>{timeframe}</span>
               <ChevronDown size={11} className="text-gray-400" />
             </button>
-
-            {showTfDropdown && (
-              <div
-                className="absolute top-8 left-0 w-36 bg-[#1e222d] border border-[#2a2e39] rounded shadow-xl py-1 z-50 max-h-72 overflow-y-auto"
-                onMouseLeave={() => setShowTfDropdown(false)}
-              >
-                <div className="px-2 py-1 text-[10px] text-gray-400 font-semibold uppercase tracking-wider">
-                  Quick Timeframes
-                </div>
-                {FAVORITE_TIMEFRAMES.map((tf) => (
-                  <button
-                    key={tf}
-                    onClick={() => {
-                      onTimeframeChange(tf);
-                      setShowTfDropdown(false);
-                    }}
-                    className={`w-full text-left px-3 py-1.5 hover:bg-[#2a2e39] flex justify-between ${
-                      timeframe === tf ? 'text-[#2962ff] font-bold' : 'text-gray-200'
-                    }`}
-                  >
-                    <span>{tf}</span>
-                  </button>
-                ))}
-                <div className="px-2 py-1 text-[10px] text-gray-400 font-semibold uppercase tracking-wider border-t border-[#2a2e39] mt-1">
-                  All Timeframes
-                </div>
-                {TIMEFRAMES.filter(t => !FAVORITE_TIMEFRAMES.includes(t.value)).map((item) => (
-                  <button
-                    key={item.value}
-                    onClick={() => {
-                      onTimeframeChange(item.value);
-                      setShowTfDropdown(false);
-                    }}
-                    className={`w-full text-left px-3 py-1.5 hover:bg-[#2a2e39] flex justify-between ${
-                      timeframe === item.value ? 'text-[#2962ff] font-bold' : 'text-gray-200'
-                    }`}
-                  >
-                    <span>{item.label}</span>
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
 
-          {/* 4. Chart Type Selector */}
+          {/* 4. Chart Type Selector Button */}
           <div className="relative flex-shrink-0">
             <button
-              onClick={() => setShowChartTypeDropdown(!showChartTypeDropdown)}
+              onClick={handleOpenChartTypeDropdown}
               data-testid="mobile-chart-type-btn"
-              className="p-1.5 rounded bg-[#1e222d] text-gray-300 border border-[#2a2e39] hover:text-white"
+              className="p-1.5 rounded bg-[#1e222d] text-gray-300 border border-[#2a2e39] hover:text-white active:scale-95 cursor-pointer transition-all"
               title="Chart Type"
             >
               {chartType === 'candlestick' && <CandlestickChart size={13} />}
@@ -335,42 +493,13 @@ export const TopBar: React.FC<TopBarProps> = ({
               {chartType === 'area' && <AreaChart size={13} />}
               {chartType === 'baseline' && <Activity size={13} />}
             </button>
-
-            {showChartTypeDropdown && (
-              <div
-                className="absolute top-8 left-0 w-36 bg-[#1e222d] border border-[#2a2e39] rounded shadow-xl py-1 z-50"
-                onMouseLeave={() => setShowChartTypeDropdown(false)}
-              >
-                {[
-                  { id: 'candlestick', label: 'Candles', icon: CandlestickChart },
-                  { id: 'hollow', label: 'Hollow', icon: CandlestickChart },
-                  { id: 'bar', label: 'Bars', icon: BarChart2 },
-                  { id: 'line', label: 'Line', icon: LineChart },
-                  { id: 'area', label: 'Area', icon: AreaChart },
-                ].map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => {
-                      onChartTypeChange(item.id as ChartType);
-                      setShowChartTypeDropdown(false);
-                    }}
-                    className={`w-full text-left px-3 py-1.5 hover:bg-[#2a2e39] flex items-center space-x-2 ${
-                      chartType === item.id ? 'text-[#2962ff] font-semibold' : 'text-gray-200'
-                    }`}
-                  >
-                    <item.icon size={13} />
-                    <span>{item.label}</span>
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
 
           {/* 5. Indicators Dialog Trigger with Count Badge */}
           <button
             onClick={onOpenIndicators}
             data-testid="mobile-indicators-btn"
-            className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-200 hover:text-white flex-shrink-0"
+            className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-200 hover:text-white flex-shrink-0 cursor-pointer"
             title="Technical Indicators"
           >
             <Sliders size={12} className="text-[#2962ff]" />
@@ -386,7 +515,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             onClick={onToggleSessionsIndicator}
             data-testid="mobile-sessions-btn"
-            className={`flex items-center space-x-1 px-2 py-1 rounded border flex-shrink-0 text-[11px] font-semibold transition-colors ${
+            className={`flex items-center space-x-1 px-2 py-1 rounded border flex-shrink-0 text-[11px] font-semibold transition-colors cursor-pointer ${
               sessionsIndicatorActive
                 ? 'bg-[#8b5cf6]/20 border-[#8b5cf6] text-purple-200'
                 : 'bg-[#1e222d] border-[#2a2e39] text-gray-400'
@@ -408,7 +537,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             onClick={onToggleNews}
             data-testid="mobile-news-btn"
-            className={`flex items-center space-x-1 px-2 py-1 rounded border flex-shrink-0 text-[11px] font-semibold transition-colors ${
+            className={`flex items-center space-x-1 px-2 py-1 rounded border flex-shrink-0 text-[11px] font-semibold transition-colors cursor-pointer ${
               newsActive
                 ? 'bg-[#ef4444]/20 border-[#ef4444] text-red-200'
                 : 'bg-[#1e222d] border-[#2a2e39] text-gray-400'
@@ -430,7 +559,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             onClick={onToggleReplay}
             data-testid="topbar-replay-btn"
-            className={`flex items-center space-x-1 px-2 py-1 rounded border flex-shrink-0 text-[11px] font-semibold transition-colors ${
+            className={`flex items-center space-x-1 px-2 py-1 rounded border flex-shrink-0 text-[11px] font-semibold transition-colors cursor-pointer ${
               replayActive ? 'bg-[#2962ff] text-white border-[#2962ff]' : 'bg-[#1e222d] border-[#2a2e39] text-gray-300 hover:text-white'
             }`}
             title="Toggle Bar Replay"
@@ -444,7 +573,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             <button
               onClick={onRandomDateReplay}
               data-testid="topbar-random-date-btn"
-              className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-purple-300 hover:text-white flex-shrink-0 text-[11px] font-semibold"
+              className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-purple-300 hover:text-white flex-shrink-0 text-[11px] font-semibold cursor-pointer"
               title="Jump to a Random Past Date"
             >
               <Dices size={12} className="text-purple-400" />
@@ -457,7 +586,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             <button
               onClick={onOpenSessions}
               data-testid="mobile-saved-sessions-btn"
-              className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-amber-300 hover:text-white flex-shrink-0 text-[11px] font-semibold"
+              className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-amber-300 hover:text-white flex-shrink-0 text-[11px] font-semibold cursor-pointer"
               title="Saved Sessions"
             >
               <FolderOpen size={12} className="text-amber-400" />
@@ -470,7 +599,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             <button
               onClick={onOpenValidation}
               data-testid="mobile-audit-btn"
-              className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-[#089981] hover:text-white flex-shrink-0 text-[11px] font-semibold"
+              className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-[#089981] hover:text-white flex-shrink-0 text-[11px] font-semibold cursor-pointer"
               title="Audit Data Quality"
             >
               <ShieldCheck size={12} className="text-[#089981]" />
@@ -483,7 +612,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             <button
               onClick={onOpenBalanceModal}
               data-testid="mobile-balance-btn"
-              className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-200 hover:text-white flex-shrink-0 text-[11px] font-mono"
+              className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-200 hover:text-white flex-shrink-0 text-[11px] font-mono cursor-pointer"
               title="View / Edit Account Balance"
             >
               <Wallet size={12} className="text-[#089981]" />
@@ -495,7 +624,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             onClick={onOpenSettings}
             data-testid="mobile-settings-btn"
-            className="p-1.5 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-300 hover:text-white flex-shrink-0"
+            className="p-1.5 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-300 hover:text-white flex-shrink-0 cursor-pointer"
             title="Settings"
           >
             <Settings size={13} />
@@ -505,7 +634,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             onClick={toggleFullscreen}
             data-testid="mobile-fullscreen-btn"
-            className="p-1.5 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-300 hover:text-white flex-shrink-0"
+            className="p-1.5 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-300 hover:text-white flex-shrink-0 cursor-pointer"
             title="Toggle Fullscreen"
           >
             {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
@@ -516,7 +645,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             <button
               onClick={onToggleMode}
               data-testid="topbar-mode-toggle"
-              className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-[#2962ff] text-[10px] font-semibold shadow-sm flex-shrink-0"
+              className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-[#2962ff] text-[10px] font-semibold shadow-sm flex-shrink-0 cursor-pointer"
               title="Switch to Desktop Mode"
             >
               <Smartphone size={12} />
@@ -528,7 +657,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             onClick={onOpenMobileMenu}
             data-testid="topbar-mobile-menu-btn"
-            className="p-1.5 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-200 hover:text-white hover:border-[#38bdf8] transition-colors flex-shrink-0"
+            className="p-1.5 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-200 hover:text-white hover:border-[#38bdf8] transition-colors flex-shrink-0 cursor-pointer"
             title="Open Workstation Menu"
           >
             <Menu size={15} />
@@ -546,6 +675,10 @@ export const TopBar: React.FC<TopBarProps> = ({
             <ChevronRight size={15} />
           </button>
         )}
+
+        {/* Fixed Dropdown Overlays */}
+        {renderTimeframeDropdown()}
+        {renderChartTypeDropdown()}
       </div>
     );
   }
@@ -587,7 +720,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             onClick={onToggleMode}
             data-testid="topbar-desktop-return-mobile-btn"
-            className="flex items-center space-x-1 px-2.5 py-1 rounded-md bg-[#2962ff] hover:bg-[#1f4cdb] text-white font-bold text-[11px] shadow-sm transition-all flex-shrink-0 active:scale-95"
+            className="flex items-center space-x-1 px-2.5 py-1 rounded-md bg-[#2962ff] hover:bg-[#1f4cdb] text-white font-bold text-[11px] shadow-sm transition-all flex-shrink-0 active:scale-95 cursor-pointer"
             title="Switch back to Mobile Mode"
           >
             <Smartphone size={12} className="text-white" />
@@ -627,7 +760,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               key={tf}
               data-testid={`topbar-tf-${tf}`}
               onClick={() => onTimeframeChange(tf)}
-              className={`px-2 py-1 rounded font-medium transition-colors ${
+              className={`px-2 py-1 rounded font-medium transition-colors cursor-pointer ${
                 timeframe === tf
                   ? 'bg-[#2962ff] text-white'
                   : 'text-gray-300 hover:bg-[#1e222d] hover:text-white'
@@ -642,7 +775,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             <button
               onClick={() => onOpenQuickTimeframe?.()}
               data-testid="topbar-custom-timeframe-pill"
-              className="px-2 py-1 rounded font-medium bg-[#2962ff] text-white shadow font-mono flex items-center space-x-1"
+              className="px-2 py-1 rounded font-medium bg-[#2962ff] text-white shadow font-mono flex items-center space-x-1 cursor-pointer"
               title={`Custom Timeframe: ${timeframe} (Click or type 0-9 to change)`}
             >
               <span>{timeframe}</span>
@@ -650,87 +783,15 @@ export const TopBar: React.FC<TopBarProps> = ({
           )}
 
           {/* Timeframes Dropdown Button */}
-          <div className="relative">
+          <div className="relative flex-shrink-0">
             <button
-              onClick={() => setShowTfDropdown(!showTfDropdown)}
-              className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#1e222d]"
+              onClick={handleOpenTfDropdown}
+              data-testid="topbar-tf-dropdown-btn"
+              className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#1e222d] cursor-pointer transition-colors active:scale-95"
               title="All Timeframes"
             >
               <ChevronDown size={14} />
             </button>
-
-            {showTfDropdown && (
-              <div
-                className="absolute top-8 left-0 w-36 bg-[#1e222d] border border-[#2a2e39] rounded shadow-xl py-1 z-50 max-h-72 overflow-y-auto"
-                onMouseLeave={() => setShowTfDropdown(false)}
-              >
-                <div className="px-2 py-1 text-[10px] text-gray-400 font-semibold uppercase tracking-wider">
-                  Seconds
-                </div>
-                {['1s', '5s', '15s', '30s'].map((tf) => (
-                  <button
-                    key={tf}
-                    onClick={() => {
-                      onTimeframeChange(tf as Timeframe);
-                      setShowTfDropdown(false);
-                    }}
-                    className="w-full text-left px-3 py-1 hover:bg-[#2a2e39] text-gray-200 flex justify-between"
-                  >
-                    <span>{tf}</span>
-                    <span className="text-[10px] text-gray-400">Sec</span>
-                  </button>
-                ))}
-                <div className="px-2 py-1 text-[10px] text-gray-400 font-semibold uppercase tracking-wider border-t border-[#2a2e39] mt-1">
-                  Minutes
-                </div>
-                {['1m', '3m', '5m', '15m', '30m', '45m'].map((tf) => (
-                  <button
-                    key={tf}
-                    onClick={() => {
-                      onTimeframeChange(tf as Timeframe);
-                      setShowTfDropdown(false);
-                    }}
-                    className="w-full text-left px-3 py-1 hover:bg-[#2a2e39] text-gray-200 flex justify-between"
-                  >
-                    <span>{tf}</span>
-                    <span className="text-[10px] text-gray-400">Min</span>
-                  </button>
-                ))}
-                <div className="px-2 py-1 text-[10px] text-gray-400 font-semibold uppercase tracking-wider border-t border-[#2a2e39] mt-1">
-                  Hours & Days
-                </div>
-                {['1h', '2h', '4h', '1D', '1W', '1M'].map((tf) => (
-                  <button
-                    key={tf}
-                    onClick={() => {
-                      onTimeframeChange(tf as Timeframe);
-                      setShowTfDropdown(false);
-                    }}
-                    className="w-full text-left px-3 py-1 hover:bg-[#2a2e39] text-gray-200 flex justify-between"
-                  >
-                    <span>{tf}</span>
-                    <span className="text-[10px] text-gray-400">
-                      {tf.includes('D') ? 'Day' : tf.includes('W') ? 'Week' : tf.includes('M') ? 'Month' : 'Hour'}
-                    </span>
-                  </button>
-                ))}
-
-                {/* Custom Interval trigger */}
-                <div className="p-1 border-t border-[#2a2e39] mt-1">
-                  <button
-                    onClick={() => {
-                      setShowTfDropdown(false);
-                      onOpenQuickTimeframe?.();
-                    }}
-                    data-testid="topbar-custom-interval-btn"
-                    className="w-full text-left px-2 py-1.5 rounded hover:bg-[#2962ff] text-white font-medium text-[11px] flex items-center justify-between transition-colors"
-                  >
-                    <span>Custom Interval...</span>
-                    <span className="text-[10px] text-gray-300 font-mono bg-black/40 px-1 py-0.5 rounded">0-9</span>
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
@@ -739,8 +800,9 @@ export const TopBar: React.FC<TopBarProps> = ({
         {/* Chart Type Selector */}
         <div className="relative flex-shrink-0">
           <button
-            onClick={() => setShowChartTypeDropdown(!showChartTypeDropdown)}
-            className="flex items-center space-x-1 px-2 py-1 rounded text-gray-300 hover:bg-[#1e222d] hover:text-white"
+            onClick={handleOpenChartTypeDropdown}
+            data-testid="topbar-chart-type-btn"
+            className="flex items-center space-x-1 px-2 py-1 rounded text-gray-300 hover:bg-[#1e222d] hover:text-white cursor-pointer transition-colors active:scale-95"
             title="Chart Type"
           >
             {chartType === 'candlestick' && <CandlestickChart size={15} />}
@@ -751,36 +813,6 @@ export const TopBar: React.FC<TopBarProps> = ({
             {chartType === 'baseline' && <Activity size={15} />}
             <ChevronDown size={12} className="text-gray-400 ml-0.5" />
           </button>
-
-          {showChartTypeDropdown && (
-            <div
-              className="absolute top-8 left-0 w-36 bg-[#1e222d] border border-[#2a2e39] rounded shadow-xl py-1 z-50"
-              onMouseLeave={() => setShowChartTypeDropdown(false)}
-            >
-              {[
-                { id: 'candlestick', label: 'Candles', icon: CandlestickChart },
-                { id: 'hollow', label: 'Hollow Candles', icon: CandlestickChart },
-                { id: 'bar', label: 'Bars (OHLC)', icon: BarChart2 },
-                { id: 'line', label: 'Line', icon: LineChart },
-                { id: 'area', label: 'Area', icon: AreaChart },
-                { id: 'baseline', label: 'Baseline', icon: Activity },
-              ].map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    onChartTypeChange(item.id as ChartType);
-                    setShowChartTypeDropdown(false);
-                  }}
-                  className={`w-full text-left px-3 py-1.5 hover:bg-[#2a2e39] flex items-center space-x-2 ${
-                    chartType === item.id ? 'text-[#2962ff] font-semibold' : 'text-gray-200'
-                  }`}
-                >
-                  <item.icon size={14} />
-                  <span>{item.label}</span>
-                </button>
-              ))}
-            </div>
-          )}
         </div>
 
         <div className="h-4 w-[1px] bg-[#2a2e39] mx-1 flex-shrink-0" />
@@ -788,7 +820,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         {/* Indicators Dialog Trigger */}
         <button
           onClick={onOpenIndicators}
-          className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-200 hover:text-white hover:border-[#363c4e] flex-shrink-0"
+          className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-200 hover:text-white hover:border-[#363c4e] flex-shrink-0 cursor-pointer"
           title="Technical Indicators"
         >
           <Sliders size={14} className="text-[#2962ff]" />
@@ -804,7 +836,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           onClick={onToggleReplay}
           data-testid="topbar-replay-btn"
-          className={`flex items-center space-x-1.5 px-2.5 py-1 rounded border transition-colors flex-shrink-0 ${
+          className={`flex items-center space-x-1.5 px-2.5 py-1 rounded border transition-colors flex-shrink-0 cursor-pointer ${
             replayActive
               ? 'bg-[#2962ff] text-white border-[#2962ff] shadow-md shadow-[#2962ff]/20'
               : 'bg-[#1e222d] border-[#2a2e39] text-gray-200 hover:text-white hover:border-[#363c4e]'
@@ -819,7 +851,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           onClick={onRandomDateReplay}
           data-testid="topbar-random-date-btn"
-          className="flex items-center space-x-1.5 px-2.5 py-1 rounded border transition-colors bg-[#1e222d] border-[#2a2e39] text-purple-300 hover:text-white hover:border-purple-500 hover:bg-[#2a2e39] flex-shrink-0"
+          className="flex items-center space-x-1.5 px-2.5 py-1 rounded border transition-colors bg-[#1e222d] border-[#2a2e39] text-purple-300 hover:text-white hover:border-purple-500 hover:bg-[#2a2e39] flex-shrink-0 cursor-pointer"
           title="Jump to a random historical date for blind backtesting"
         >
           <Dices size={13} className="text-purple-400" />
@@ -830,7 +862,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           onClick={onToggleSessionsIndicator}
           data-testid="topbar-sessions-btn"
-          className={`flex items-center space-x-1.5 px-2.5 py-1 rounded border transition-colors flex-shrink-0 ${
+          className={`flex items-center space-x-1.5 px-2.5 py-1 rounded border transition-colors flex-shrink-0 cursor-pointer ${
             sessionsIndicatorActive
               ? 'bg-[#8b5cf6]/20 border-[#8b5cf6] text-purple-200 shadow-sm'
               : 'bg-[#1e222d] border-[#2a2e39] text-gray-400 hover:text-white hover:border-[#363c4e]'
@@ -859,7 +891,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           onClick={onToggleNews}
           data-testid="topbar-news-btn"
-          className={`flex items-center space-x-1.5 px-2.5 py-1 rounded border transition-colors flex-shrink-0 ${
+          className={`flex items-center space-x-1.5 px-2.5 py-1 rounded border transition-colors flex-shrink-0 cursor-pointer ${
             newsActive
               ? 'bg-[#ef4444]/20 border-[#ef4444] text-red-200 shadow-sm'
               : 'bg-[#1e222d] border-[#2a2e39] text-gray-400 hover:text-white hover:border-[#363c4e]'
@@ -881,7 +913,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           onClick={onOpenSessions}
           data-testid="topbar-saved-sessions-btn"
-          className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-200 hover:text-white hover:border-[#363c4e] flex-shrink-0"
+          className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-200 hover:text-white hover:border-[#363c4e] flex-shrink-0 cursor-pointer"
           title="Manage Saved Backtesting Sessions"
         >
           <FolderOpen size={14} className="text-amber-400" />
@@ -891,7 +923,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         {/* Data Quality / Audit Button */}
         <button
           onClick={onOpenValidation}
-          className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-300 hover:text-white hover:border-[#363c4e] flex-shrink-0"
+          className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-gray-300 hover:text-white hover:border-[#363c4e] flex-shrink-0 cursor-pointer"
           title="Market Data Integrity Audit"
         >
           <ShieldCheck size={14} className="text-[#089981]" />
@@ -905,7 +937,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         {balance !== undefined && (
           <button
             onClick={onOpenBalanceModal}
-            className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-[#1e222d] border border-[#2a2e39] hover:border-[#38bdf8] text-gray-200 hover:text-white transition-all text-xs font-mono group flex-shrink-0"
+            className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-[#1e222d] border border-[#2a2e39] hover:border-[#38bdf8] text-gray-200 hover:text-white transition-all text-xs font-mono group flex-shrink-0 cursor-pointer"
             title="Click to view or change default account balance"
             data-testid="topbar-balance-btn"
           >
@@ -929,14 +961,14 @@ export const TopBar: React.FC<TopBarProps> = ({
         {/* Quick Viewport Helpers */}
         <button
           onClick={onFitData}
-          className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#1e222d] flex-shrink-0"
+          className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#1e222d] flex-shrink-0 cursor-pointer"
           title="Fit All Available Data"
         >
           <Layers size={14} />
         </button>
         <button
           onClick={onResetChart}
-          className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#1e222d] flex-shrink-0"
+          className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#1e222d] flex-shrink-0 cursor-pointer"
           title="Reset Chart Viewport"
         >
           <RotateCcw size={14} />
@@ -971,7 +1003,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         {/* Fullscreen Toggle */}
         <button
           onClick={toggleFullscreen}
-          className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-[#1e222d] flex-shrink-0"
+          className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-[#1e222d] flex-shrink-0 cursor-pointer"
           title="Fullscreen (F)"
         >
           {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
@@ -980,7 +1012,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         {/* Settings Dialog Trigger */}
         <button
           onClick={onOpenSettings}
-          className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-[#1e222d] flex-shrink-0"
+          className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-[#1e222d] flex-shrink-0 cursor-pointer"
           title="Workstation Settings"
         >
           <Settings size={15} />
@@ -991,7 +1023,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             onClick={onToggleMode}
             data-testid="topbar-mode-toggle"
-            className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] hover:border-[#2962ff] text-gray-300 hover:text-white transition-colors flex-shrink-0"
+            className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] hover:border-[#2962ff] text-gray-300 hover:text-white transition-colors flex-shrink-0 cursor-pointer"
             title={`Display Mode: ${viewMode?.toUpperCase() || 'AUTO'} (Click to switch to Mobile view)`}
           >
             <Smartphone size={13} className="text-[#2962ff]" />
@@ -1013,6 +1045,10 @@ export const TopBar: React.FC<TopBarProps> = ({
           <ChevronRight size={16} />
         </button>
       )}
+
+      {/* Fixed Dropdown Overlays */}
+      {renderTimeframeDropdown()}
+      {renderChartTypeDropdown()}
     </div>
   );
 };
