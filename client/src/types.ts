@@ -184,9 +184,12 @@ export interface ForexSession {
 export interface DraggableTradeSetup {
   active: boolean;
   type: 'BUY' | 'SELL';
+  order_type?: 'MARKET' | 'BUY_LIMIT' | 'SELL_LIMIT' | 'BUY_STOP' | 'SELL_STOP';
   entryPrice: number;
   slPrice: number;
   tpPrice: number;
+  startTime?: number;
+  endTime?: number;
   lotSize: number;
   riskUsd: number;
   rewardUsd: number;

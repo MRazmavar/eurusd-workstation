@@ -1182,7 +1182,19 @@ export const App: React.FC = () => {
               timeframe={timeframe}
               activeSetup={activeSetup}
               onUpdateSetup={(updates) => backtestingEngine.updateTradeSetup(updates)}
-              onConfirmSetup={() => backtestingEngine.confirmTradeSetup(replayEngine.getCurrentCandle()?.time || Math.floor(Date.now() / 1000))}
+              onConfirmSetup={() => {
+                const curP = visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : (quote?.bid || (masterCandles.length > 0 ? masterCandles[masterCandles.length - 1].close : 1.11380));
+                const time = replayEngine.getCurrentCandle()?.time || Math.floor(Date.now() / 1000);
+                backtestingEngine.confirmTradeSetup(time, curP).then((trade) => {
+                  if (trade) {
+                    if (trade.status === 'PENDING') {
+                      showToast(`Placed ${trade.order_type} Order at ${trade.entry_price.toFixed(5)}`);
+                    } else {
+                      showToast(`Executed ${trade.type} Market Order at ${trade.entry_price.toFixed(5)}`);
+                    }
+                  }
+                });
+              }}
               onCancelSetup={() => backtestingEngine.cancelTradeSetup()}
               externalMousePos={chartMousePos}
               onHoverCandle={setHoveredCandle}
@@ -1244,7 +1256,19 @@ export const App: React.FC = () => {
               trades={trades}
               activeSetup={activeSetup}
               currentPrice={visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : (quote?.bid || (masterCandles.length > 0 ? masterCandles[masterCandles.length - 1].close : 1.11380))}
-              onConfirmSetup={() => backtestingEngine.confirmTradeSetup(replayEngine.getCurrentCandle()?.time || Math.floor(Date.now() / 1000))}
+              onConfirmSetup={() => {
+                const curP = visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : (quote?.bid || (masterCandles.length > 0 ? masterCandles[masterCandles.length - 1].close : 1.11380));
+                const time = replayEngine.getCurrentCandle()?.time || Math.floor(Date.now() / 1000);
+                backtestingEngine.confirmTradeSetup(time, curP).then((trade) => {
+                  if (trade) {
+                    if (trade.status === 'PENDING') {
+                      showToast(`Placed ${trade.order_type} Order at ${trade.entry_price.toFixed(5)}`);
+                    } else {
+                      showToast(`Executed ${trade.type} Market Order at ${trade.entry_price.toFixed(5)}`);
+                    }
+                  }
+                });
+              }}
               onCancelSetup={() => backtestingEngine.cancelTradeSetup()}
               onCloseTrade={(tradeId) => {
                 const curP = visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : (quote?.bid || (masterCandles.length > 0 ? masterCandles[masterCandles.length - 1].close : 1.11380));

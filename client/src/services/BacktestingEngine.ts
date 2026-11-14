@@ -122,7 +122,9 @@ export class BacktestingEngine {
     customLotSize?: number,
     sizingMode: 'risk_percent' | 'lot_size' = 'lot_size',
     riskPercent: number = 1.0,
-    accountBalance?: number
+    accountBalance?: number,
+    startTime?: number,
+    endTime?: number
   ) {
     const slDistance = defaultSlPips * 0.0001;
     const tpDistance = defaultTpPips * 0.0001;
@@ -158,6 +160,8 @@ export class BacktestingEngine {
       entryPrice,
       slPrice,
       tpPrice,
+      startTime,
+      endTime,
       lotSize,
       riskUsd,
       rewardUsd,
@@ -288,20 +292,38 @@ export class BacktestingEngine {
     this.notifySetup();
   }
 
-  public async confirmTradeSetup(time: number): Promise<Trade | null> {
+  public async confirmTradeSetup(time: number, currentMarketPrice?: number): Promise<Trade | null> {
     if (!this.activeSetup) return null;
     const setup = this.activeSetup;
 
+    // Determine order type:
+    // If not explicitly set, deduce from entryPrice vs currentMarketPrice
+    const mktPrice = currentMarketPrice || setup.entryPrice;
+    let orderType = setup.order_type;
+
+    if (!orderType || orderType === 'MARKET') {
+      const pipDiff = (setup.entryPrice - mktPrice) / 0.0001;
+      if (Math.abs(pipDiff) <= 0.3) {
+        orderType = 'MARKET';
+      } else if (setup.type === 'BUY') {
+        orderType = setup.entryPrice < mktPrice ? 'BUY_LIMIT' : 'BUY_STOP';
+      } else {
+        orderType = setup.entryPrice > mktPrice ? 'SELL_LIMIT' : 'SELL_STOP';
+      }
+    }
+
     const trade = await this.openTrade({
       type: setup.type,
-      order_type: 'MARKET',
+      order_type: orderType,
       entryPrice: setup.entryPrice,
+      limit_price: (orderType === 'BUY_LIMIT' || orderType === 'SELL_LIMIT') ? setup.entryPrice : null,
+      stop_price: (orderType === 'BUY_STOP' || orderType === 'SELL_STOP') ? setup.entryPrice : null,
       sl: setup.slPrice,
       tp: setup.tpPrice,
       lotSize: setup.lotSize,
       riskUsd: setup.riskUsd,
       notes: setup.notes,
-      time,
+      time: setup.startTime || time,
     });
 
     this.activeSetup = null;
@@ -341,8 +363,8 @@ export class BacktestingEngine {
       order_type,
       entry_time: params.time,
       entry_price: Number(executedPrice.toFixed(5)),
-      limit_price: params.limit_price || null,
-      stop_price: params.stop_price || null,
+      limit_price: params.limit_price ?? ((order_type === 'BUY_LIMIT' || order_type === 'SELL_LIMIT') ? params.entryPrice : null),
+      stop_price: params.stop_price ?? ((order_type === 'BUY_STOP' || order_type === 'SELL_STOP') ? params.entryPrice : null),
       sl: params.sl ? Number(params.sl.toFixed(5)) : null,
       tp: params.tp ? Number(params.tp.toFixed(5)) : null,
       lot_size: params.lotSize,
@@ -484,26 +506,32 @@ export class BacktestingEngine {
       if (candle.time < p.entry_time) continue;
 
       let triggered = false;
-      let fillPrice = p.entry_price;
+      const targetPrice = (p.limit_price ?? p.stop_price) ?? p.entry_price;
+      let fillPrice = targetPrice;
 
-      if (p.order_type === 'BUY_LIMIT' && p.limit_price && candle.low <= p.limit_price) {
+      if (p.order_type === 'BUY_LIMIT' && candle.low <= targetPrice) {
         triggered = true;
-        fillPrice = p.limit_price;
-      } else if (p.order_type === 'SELL_LIMIT' && p.limit_price && candle.high >= p.limit_price) {
+        fillPrice = targetPrice;
+      } else if (p.order_type === 'SELL_LIMIT' && candle.high >= targetPrice) {
         triggered = true;
-        fillPrice = p.limit_price;
-      } else if (p.order_type === 'BUY_STOP' && p.stop_price && candle.high >= p.stop_price) {
+        fillPrice = targetPrice;
+      } else if (p.order_type === 'BUY_STOP' && candle.high >= targetPrice) {
         triggered = true;
-        fillPrice = p.stop_price;
-      } else if (p.order_type === 'SELL_STOP' && p.stop_price && candle.low <= p.stop_price) {
+        fillPrice = targetPrice;
+      } else if (p.order_type === 'SELL_STOP' && candle.low <= targetPrice) {
         triggered = true;
-        fillPrice = p.stop_price;
+        fillPrice = targetPrice;
       }
 
       if (triggered) {
+        const halfSpread = (this.settings.spread_pips * 0.0001) / 2;
+        const executedFill = p.type === 'BUY'
+          ? fillPrice + halfSpread
+          : fillPrice - halfSpread;
+
         this.modifyTrade(p.id, {
           status: 'OPEN',
-          entry_price: fillPrice,
+          entry_price: Number(executedFill.toFixed(5)),
           entry_time: candle.time,
         });
       }

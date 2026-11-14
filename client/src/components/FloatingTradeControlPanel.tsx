@@ -190,6 +190,19 @@ export const FloatingTradeControlPanel: React.FC<FloatingTradeControlPanelProps>
     const slPips = Math.abs(entry - sl) / 0.0001;
     const tpPips = Math.abs(tp - entry) / 0.0001;
 
+    // Deduce Order Type relative to current market price
+    const pipDiff = (entry - currentPrice) / 0.0001;
+    let deducedType = 'MARKET';
+    if (Math.abs(pipDiff) <= 0.3) {
+      deducedType = `${activeSetup.type} MKT`;
+    } else if (isBuy) {
+      deducedType = entry < currentPrice ? 'BUY LIMIT' : 'BUY STOP';
+    } else {
+      deducedType = entry > currentPrice ? 'SELL LIMIT' : 'SELL STOP';
+    }
+    const orderTypeLabel = activeSetup.order_type || deducedType;
+    const isPendingOrder = !orderTypeLabel.includes('MKT') && !orderTypeLabel.includes('MARKET');
+
     return (
       <div
         ref={panelRef}
@@ -235,15 +248,22 @@ export const FloatingTradeControlPanel: React.FC<FloatingTradeControlPanelProps>
         {/* Content Body */}
         {!isMinimized && (
           <div className="p-3 space-y-2.5">
-            {/* Direction & Lot Size */}
+            {/* Direction, Order Type & Lot Size */}
             <div className="flex items-center justify-between">
-              <span
-                className={`px-2 py-0.5 rounded text-[11px] font-bold text-white uppercase ${
-                  isBuy ? 'bg-[#089981]' : 'bg-[#f23645]'
-                }`}
-              >
-                {activeSetup.type} SETUP
-              </span>
+              <div className="flex items-center space-x-1.5">
+                <span
+                  className={`px-2 py-0.5 rounded text-[11px] font-bold text-white uppercase ${
+                    isBuy ? 'bg-[#089981]' : 'bg-[#f23645]'
+                  }`}
+                >
+                  {orderTypeLabel}
+                </span>
+                {isPendingOrder && (
+                  <span className="text-[10px] text-amber-400 font-semibold">
+                    (Pending)
+                  </span>
+                )}
+              </div>
               <span className="font-mono text-gray-200 font-medium">
                 {activeSetup.lotSize} Lots {activeSetup.riskPercent ? `(${activeSetup.riskPercent.toFixed(1)}% Risk)` : ''}
               </span>
@@ -281,15 +301,15 @@ export const FloatingTradeControlPanel: React.FC<FloatingTradeControlPanelProps>
               <button
                 onClick={onConfirmSetup}
                 data-testid="trade-panel-confirm-setup-btn"
-                className="flex-1 flex items-center justify-center space-x-1 py-1.5 rounded font-semibold text-white bg-[#089981] hover:bg-[#07806c] shadow transition-colors"
+                className="flex-1 flex items-center justify-center space-x-1 py-1.5 rounded font-semibold text-white bg-[#089981] hover:bg-[#07806c] shadow transition-colors cursor-pointer"
               >
                 <Check className="w-3.5 h-3.5" />
-                <span>Confirm Trade</span>
+                <span>{isPendingOrder ? `Place ${orderTypeLabel}` : `Execute Market ${activeSetup.type}`}</span>
               </button>
               <button
                 onClick={onCancelSetup}
                 data-testid="trade-panel-cancel-setup-btn"
-                className="flex-1 flex items-center justify-center space-x-1 py-1.5 rounded font-semibold text-gray-300 bg-[#2a2e39] hover:bg-[#363c4e] transition-colors"
+                className="flex-1 flex items-center justify-center space-x-1 py-1.5 rounded font-semibold text-gray-300 bg-[#2a2e39] hover:bg-[#363c4e] transition-colors cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
                 <span>Cancel</span>
@@ -396,7 +416,7 @@ export const FloatingTradeControlPanel: React.FC<FloatingTradeControlPanelProps>
                   isBuy ? 'bg-[#089981]' : 'bg-[#f23645]'
                 }`}
               >
-                {activeTrade.type}
+                {activeTrade.order_type || activeTrade.type}
               </span>
               <span className="font-mono text-gray-200 font-medium">
                 {activeTrade.lot_size.toFixed(2)}L @ {entryPrice.toFixed(5)}
@@ -407,27 +427,39 @@ export const FloatingTradeControlPanel: React.FC<FloatingTradeControlPanelProps>
             </div>
           </div>
 
-          {/* Real-time Profit / Loss Banner */}
-          <div
-            className={`p-2 rounded border flex items-center justify-between font-mono ${
-              isProfit
-                ? 'bg-[#089981]/15 border-[#089981]/40 text-[#26a69a]'
-                : 'bg-[#f23645]/15 border-[#f23645]/40 text-[#ef5350]'
-            }`}
-          >
-            <div className="flex items-center space-x-1.5">
-              {isProfit ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-              <span className="font-sans text-[11px] font-semibold text-gray-300">Live P&L:</span>
-            </div>
-            <div className="text-right">
-              <span className="text-sm font-bold">
-                {isProfit ? '+' : ''}${liveNetPnl.toFixed(2)}
-              </span>
-              <span className="text-[10px] ml-1.5 font-medium">
-                ({isProfit ? '+' : ''}{pipDiff.toFixed(1)}p)
+          {/* Real-time Profit / Loss Banner or Pending Order Status */}
+          {activeTrade.status === 'PENDING' ? (
+            <div className="p-2 rounded border border-amber-500/40 bg-amber-500/10 text-amber-300 font-mono flex items-center justify-between">
+              <div className="flex items-center space-x-1.5">
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse inline-block" />
+                <span className="font-sans text-[11px] font-semibold">ORDER PENDING:</span>
+              </div>
+              <span className="text-[10px] font-bold">
+                Waits for touch @ {entryPrice.toFixed(5)}
               </span>
             </div>
-          </div>
+          ) : (
+            <div
+              className={`p-2 rounded border flex items-center justify-between font-mono ${
+                isProfit
+                  ? 'bg-[#089981]/15 border-[#089981]/40 text-[#26a69a]'
+                  : 'bg-[#f23645]/15 border-[#f23645]/40 text-[#ef5350]'
+              }`}
+            >
+              <div className="flex items-center space-x-1.5">
+                {isProfit ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                <span className="font-sans text-[11px] font-semibold text-gray-300">Live P&L:</span>
+              </div>
+              <div className="text-right">
+                <span className="text-sm font-bold">
+                  {isProfit ? '+' : ''}${liveNetPnl.toFixed(2)}
+                </span>
+                <span className="text-[10px] ml-1.5 font-medium">
+                  ({isProfit ? '+' : ''}{pipDiff.toFixed(1)}p)
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* SL & TP Details Grid */}
           <div className="grid grid-cols-2 gap-2 bg-[#131722]/80 p-2 rounded border border-[#2a2e39]/60 font-mono text-[11px]">
@@ -472,11 +504,11 @@ export const FloatingTradeControlPanel: React.FC<FloatingTradeControlPanelProps>
             <button
               onClick={() => onCloseTrade?.(activeTrade.id)}
               data-testid="trade-panel-close-btn"
-              className="flex-1 flex items-center justify-center space-x-1 py-1.5 rounded font-semibold text-white bg-[#f23645] hover:bg-[#d32f2f] shadow transition-colors"
-              title="Close position at current market price"
+              className="flex-1 flex items-center justify-center space-x-1 py-1.5 rounded font-semibold text-white bg-[#f23645] hover:bg-[#d32f2f] shadow transition-colors cursor-pointer"
+              title={activeTrade.status === 'PENDING' ? "Cancel pending order" : "Close position at current market price"}
             >
               <X className="w-3.5 h-3.5" />
-              <span>Close Position</span>
+              <span>{activeTrade.status === 'PENDING' ? 'Cancel Order' : 'Close Position'}</span>
             </button>
           </div>
         </div>

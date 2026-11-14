@@ -126,8 +126,17 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     startPrice?: number;
   } | null>(null);
 
-  // Dragging interactive trade setup lines ('entry' | 'sl' | 'tp')
-  const [draggingSetupLine, setDraggingSetupLine] = useState<'entry' | 'sl' | 'tp' | null>(null);
+  // Dragging interactive trade setup lines ('entry' | 'sl' | 'tp' | 'body' | 'start' | 'end')
+  const [draggingSetupLine, setDraggingSetupLine] = useState<'entry' | 'sl' | 'tp' | 'body' | 'start' | 'end' | null>(null);
+  const dragSetupInitialRef = useRef<{
+    mouseTime: number;
+    mousePrice: number;
+    entry: number;
+    sl: number;
+    tp: number;
+    startTime: number;
+    endTime: number;
+  } | null>(null);
   // Dragging confirmed active trade lines (SL or TP or Entry of an active/pending trade)
   const [draggingTradeLine, setDraggingTradeLine] = useState<{ tradeId: string; lineType: 'sl' | 'tp' | 'entry' } | null>(null);
   const justCreatedTimeRef = useRef<number>(0);
@@ -436,12 +445,40 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
       // 1. Dragging Trade Setup Line
       if (draggingSetupLineRef.current && activeSetupRef.current && onUpdateSetup) {
         const rounded = Number(mouse.price.toFixed(5));
-        if (draggingSetupLineRef.current === 'entry') {
-          onUpdateSetup({ entryPrice: rounded });
-        } else if (draggingSetupLineRef.current === 'sl') {
+        const mode = draggingSetupLineRef.current;
+        if (mode === 'entry') {
+          const init = dragSetupInitialRef.current;
+          if (init) {
+            const deltaTime = Math.round(mouse.time - init.mouseTime);
+            onUpdateSetup({
+              entryPrice: rounded,
+              startTime: Math.round(init.startTime + deltaTime),
+              endTime: Math.round(init.endTime + deltaTime),
+            });
+          } else {
+            onUpdateSetup({ entryPrice: rounded });
+          }
+        } else if (mode === 'sl') {
           onUpdateSetup({ slPrice: rounded });
-        } else if (draggingSetupLineRef.current === 'tp') {
+        } else if (mode === 'tp') {
           onUpdateSetup({ tpPrice: rounded });
+        } else if (mode === 'start') {
+          onUpdateSetup({ startTime: mouse.time });
+        } else if (mode === 'end') {
+          onUpdateSetup({ endTime: mouse.time });
+        } else if (mode === 'body') {
+          const init = dragSetupInitialRef.current;
+          if (init) {
+            const deltaPrice = Number((mouse.price - init.mousePrice).toFixed(5));
+            const deltaTime = Math.round(mouse.time - init.mouseTime);
+            onUpdateSetup({
+              entryPrice: Number((init.entry + deltaPrice).toFixed(5)),
+              slPrice: Number((init.sl + deltaPrice).toFixed(5)),
+              tpPrice: Number((init.tp + deltaPrice).toFixed(5)),
+              startTime: Math.round(init.startTime + deltaTime),
+              endTime: Math.round(init.endTime + deltaTime),
+            });
+          }
         }
         return;
       }
@@ -643,6 +680,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
       }
       if (draggingSetupLineRef.current) {
         setDraggingSetupLine(null);
+        dragSetupInitialRef.current = null;
       }
       if (draggingTradeLineRef.current) {
         setDraggingTradeLine(null);
@@ -695,17 +733,33 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
       const entryY = transformer.priceToY(activeSetup.entryPrice);
       const slY = transformer.priceToY(activeSetup.slPrice);
       const tpY = transformer.priceToY(activeSetup.tpPrice);
+      const currentCandleTime = candles.length > 0 ? candles[candles.length - 1].time : Math.floor(Date.now() / 1000);
+      const tfSeconds = candles.length > 1 ? Math.max(60, candles[candles.length - 1].time - candles[candles.length - 2].time) : 900;
+      const sStart = activeSetup.startTime || currentCandleTime;
+      const sEnd = activeSetup.endTime || (sStart + tfSeconds * 15);
 
-      if (entryY !== null && Math.abs(mouse.y - entryY) <= 12) {
+      if (entryY !== null && Math.abs(mouse.y - entryY) <= 8) {
         setDraggingSetupLine('entry');
+        draggingSetupLineRef.current = 'entry';
+        dragSetupInitialRef.current = {
+          mouseTime: mouse.time,
+          mousePrice: mouse.price,
+          entry: activeSetup.entryPrice,
+          sl: activeSetup.slPrice,
+          tp: activeSetup.tpPrice,
+          startTime: sStart,
+          endTime: sEnd,
+        };
         return;
       }
-      if (slY !== null && Math.abs(mouse.y - slY) <= 12) {
+      if (slY !== null && Math.abs(mouse.y - slY) <= 8) {
         setDraggingSetupLine('sl');
+        draggingSetupLineRef.current = 'sl';
         return;
       }
-      if (tpY !== null && Math.abs(mouse.y - tpY) <= 12) {
+      if (tpY !== null && Math.abs(mouse.y - tpY) <= 8) {
         setDraggingSetupLine('tp');
+        draggingSetupLineRef.current = 'tp';
         return;
       }
     }
@@ -884,11 +938,45 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
       if (newPrice !== null) {
         const rounded = Number(newPrice.toFixed(5));
         if (draggingSetupLine === 'entry') {
-          onUpdateSetup({ entryPrice: rounded });
+          const init = dragSetupInitialRef.current;
+          if (init) {
+            const deltaTime = Math.round(mouse.time - init.mouseTime);
+            onUpdateSetup({
+              entryPrice: rounded,
+              startTime: Math.round(init.startTime + deltaTime),
+              endTime: Math.round(init.endTime + deltaTime),
+            });
+          } else {
+            onUpdateSetup({ entryPrice: rounded });
+          }
         } else if (draggingSetupLine === 'sl') {
           onUpdateSetup({ slPrice: rounded });
         } else if (draggingSetupLine === 'tp') {
           onUpdateSetup({ tpPrice: rounded });
+        } else if (draggingSetupLine === 'start') {
+          onUpdateSetup({ startTime: mouse.time });
+        } else if (draggingSetupLine === 'end') {
+          onUpdateSetup({ endTime: mouse.time });
+        } else if (draggingSetupLine === 'body') {
+          const init = dragSetupInitialRef.current;
+          if (init) {
+            const deltaPrice = Number((mouse.price - init.mousePrice).toFixed(5));
+            const deltaTime = Math.round(mouse.time - init.mouseTime);
+            console.log('[DEBUG DRAG BODY]', {
+              mouseTime: mouse.time,
+              initMouseTime: init.mouseTime,
+              deltaTime,
+              initStartTime: init.startTime,
+              newStartTime: init.startTime + deltaTime
+            });
+            onUpdateSetup({
+              entryPrice: Number((init.entry + deltaPrice).toFixed(5)),
+              slPrice: Number((init.sl + deltaPrice).toFixed(5)),
+              tpPrice: Number((init.tp + deltaPrice).toFixed(5)),
+              startTime: Math.round(init.startTime + deltaTime),
+              endTime: Math.round(init.endTime + deltaTime),
+            });
+          }
         }
       }
       return;
@@ -922,6 +1010,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   const handleMouseUp = (e: React.MouseEvent) => {
     if (draggingSetupLine) {
       setDraggingSetupLine(null);
+      dragSetupInitialRef.current = null;
     }
     if (draggingTradeLine) {
       setDraggingTradeLine(null);
@@ -1628,15 +1717,38 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     const tpPips = (Math.abs(activeSetup.tpPrice - activeSetup.entryPrice) / 0.0001).toFixed(1);
 
     const currentCandleTime = candles.length > 0 ? candles[candles.length - 1].time : Math.floor(Date.now() / 1000);
-    const currentX = transformer.timeToX(currentCandleTime);
-    const boxLeft = currentX !== null ? Math.max(10, currentX - 10) : 80;
-    const boxWidth = Math.max(220, Math.min(420, dimensions.width - boxLeft - 40));
-    const boxRight = boxLeft + boxWidth;
-    const cardX = Math.max(10, Math.min(boxLeft + 10, Math.max(10, dimensions.width - 450)));
+    const tfSeconds = candles.length > 1 ? Math.max(60, candles[candles.length - 1].time - candles[candles.length - 2].time) : 900;
+
+    const setupStartTime = activeSetup.startTime || currentCandleTime;
+    const setupEndTime = activeSetup.endTime || (setupStartTime + tfSeconds * 15);
+
+    const x1 = transformer.timeToX(setupStartTime);
+    const x2 = transformer.timeToX(setupEndTime);
+    
+    const defaultX1 = transformer.timeToX(currentCandleTime) ?? 100;
+    const safeX1 = x1 !== null ? x1 : defaultX1;
+    const safeX2 = x2 !== null ? x2 : (safeX1 + 220);
+
+    const boxLeft = Math.min(safeX1, safeX2);
+    const boxRight = Math.max(safeX1, safeX2);
+    const boxWidth = Math.max(40, boxRight - boxLeft);
+
+    // Deduce order type relative to current market price
+    const mktPrice = currentPrice ?? (candles.length > 0 ? candles[candles.length - 1].close : activeSetup.entryPrice);
+    const pipDiff = (activeSetup.entryPrice - mktPrice) / 0.0001;
+    let deducedType = 'MARKET';
+    if (Math.abs(pipDiff) <= 0.3) {
+      deducedType = `${activeSetup.type} MKT`;
+    } else if (activeSetup.type === 'BUY') {
+      deducedType = activeSetup.entryPrice < mktPrice ? 'BUY LIMIT' : 'BUY STOP';
+    } else {
+      deducedType = activeSetup.entryPrice > mktPrice ? 'SELL LIMIT' : 'SELL STOP';
+    }
+    const orderTypeLabel = activeSetup.order_type || deducedType;
 
     return (
       <g className="trade-setup-overlay pointer-events-auto select-none" data-testid="trade-setup-overlay">
-        {/* Shaded Profit Zone */}
+        {/* Shaded Profit Zone - Drag body to freely move trade setup in time (left/right) & price (up/down) */}
         <rect
           x={boxLeft}
           y={minRewardY}
@@ -1646,8 +1758,25 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           fillOpacity={0.2}
           stroke="#089981"
           strokeWidth={1}
+          className="cursor-move pointer-events-auto"
+          data-testid="on-chart-setup-profit-zone"
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            setDraggingSetupLine('body');
+            draggingSetupLineRef.current = 'body';
+            const mouse = getMouseCoord(e);
+            dragSetupInitialRef.current = {
+              mouseTime: mouse?.time || setupStartTime,
+              mousePrice: mouse?.price || activeSetup.entryPrice,
+              entry: activeSetup.entryPrice,
+              sl: activeSetup.slPrice,
+              tp: activeSetup.tpPrice,
+              startTime: setupStartTime,
+              endTime: setupEndTime,
+            };
+          }}
         />
-        {/* Shaded Risk Zone */}
+        {/* Shaded Risk Zone - Drag body to freely move trade setup in time (left/right) & price (up/down) */}
         <rect
           x={boxLeft}
           y={minRiskY}
@@ -1657,29 +1786,102 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           fillOpacity={0.2}
           stroke="#f23645"
           strokeWidth={1}
+          className="cursor-move pointer-events-auto"
+          data-testid="on-chart-setup-risk-zone"
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            setDraggingSetupLine('body');
+            draggingSetupLineRef.current = 'body';
+            const mouse = getMouseCoord(e);
+            dragSetupInitialRef.current = {
+              mouseTime: mouse?.time || setupStartTime,
+              mousePrice: mouse?.price || activeSetup.entryPrice,
+              entry: activeSetup.entryPrice,
+              sl: activeSetup.slPrice,
+              tp: activeSetup.tpPrice,
+              startTime: setupStartTime,
+              endTime: setupEndTime,
+            };
+          }}
         />
 
-        {/* Bounding Vertical Side Lines */}
-        <line
-          x1={boxLeft}
-          y1={Math.min(minRewardY, minRiskY)}
-          x2={boxLeft}
-          y2={Math.max(maxRewardY, maxRiskY)}
-          stroke="#787b86"
-          strokeWidth={1}
-          strokeDasharray="2,2"
-          opacity={0.6}
-        />
-        <line
-          x1={boxRight}
-          y1={Math.min(minRewardY, minRiskY)}
-          x2={boxRight}
-          y2={Math.max(maxRewardY, maxRiskY)}
-          stroke="#787b86"
-          strokeWidth={1}
-          strokeDasharray="2,2"
-          opacity={0.6}
-        />
+        {/* Bounding Vertical Left Side Line (Drag Start Time Left/Right) */}
+        <g
+          className="cursor-ew-resize pointer-events-auto"
+          data-testid="on-chart-setup-start-handle"
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            setDraggingSetupLine('start');
+            draggingSetupLineRef.current = 'start';
+          }}
+        >
+          <line
+            x1={boxLeft}
+            y1={Math.min(minRewardY, minRiskY)}
+            x2={boxLeft}
+            y2={Math.max(maxRewardY, maxRiskY)}
+            stroke="transparent"
+            strokeWidth={16}
+          />
+          <line
+            x1={boxLeft}
+            y1={Math.min(minRewardY, minRiskY)}
+            x2={boxLeft}
+            y2={Math.max(maxRewardY, maxRiskY)}
+            stroke="#787b86"
+            strokeWidth={1.5}
+            strokeDasharray="3,3"
+            opacity={0.8}
+          />
+          <circle
+            cx={boxLeft}
+            cy={entryY}
+            r={5}
+            fill="#2962ff"
+            stroke="#ffffff"
+            strokeWidth={1.5}
+            className="shadow cursor-ew-resize"
+          />
+        </g>
+
+        {/* Bounding Vertical Right Side Line (Drag End Time / Width Left/Right) */}
+        <g
+          className="cursor-ew-resize pointer-events-auto"
+          data-testid="on-chart-setup-end-handle"
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            setDraggingSetupLine('end');
+            draggingSetupLineRef.current = 'end';
+          }}
+        >
+          <line
+            x1={boxRight}
+            y1={Math.min(minRewardY, minRiskY)}
+            x2={boxRight}
+            y2={Math.max(maxRewardY, maxRiskY)}
+            stroke="transparent"
+            strokeWidth={16}
+          />
+          <line
+            x1={boxRight}
+            y1={Math.min(minRewardY, minRiskY)}
+            x2={boxRight}
+            y2={Math.max(maxRewardY, maxRiskY)}
+            stroke="#787b86"
+            strokeWidth={1.5}
+            strokeDasharray="3,3"
+            opacity={0.8}
+          />
+          <circle
+            cx={boxRight}
+            cy={entryY}
+            r={5}
+            fill="#2962ff"
+            stroke="#ffffff"
+            strokeWidth={1.5}
+            className="shadow cursor-ew-resize"
+          />
+        </g>
 
         {/* 1. Take Profit Horizontal Line & Interactive Drag Hit Target */}
         <g
@@ -1688,16 +1890,17 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           onMouseDown={(e) => {
             e.stopPropagation();
             setDraggingSetupLine('tp');
+            draggingSetupLineRef.current = 'tp';
           }}
         >
-          {/* 24px wide invisible hit area */}
+          {/* 14px wide hit area */}
           <line
             x1={boxLeft}
             y1={tpY}
             x2={boxRight}
             y2={tpY}
             stroke="transparent"
-            strokeWidth={24}
+            strokeWidth={14}
           />
           <line
             x1={boxLeft}
@@ -1730,20 +1933,31 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         {/* 2. Entry Horizontal Line & Interactive Drag Hit Target */}
         <g
           data-testid="on-chart-setup-entry"
-          className="cursor-ns-resize pointer-events-auto"
+          className="cursor-move pointer-events-auto"
           onMouseDown={(e) => {
             e.stopPropagation();
             setDraggingSetupLine('entry');
+            draggingSetupLineRef.current = 'entry';
+            const mouse = getMouseCoord(e);
+            dragSetupInitialRef.current = {
+              mouseTime: mouse?.time || setupStartTime,
+              mousePrice: mouse?.price || activeSetup.entryPrice,
+              entry: activeSetup.entryPrice,
+              sl: activeSetup.slPrice,
+              tp: activeSetup.tpPrice,
+              startTime: setupStartTime,
+              endTime: setupEndTime,
+            };
           }}
         >
-          {/* 24px wide invisible hit area */}
+          {/* 12px wide hit area */}
           <line
             x1={boxLeft}
             y1={entryY}
             x2={boxRight}
             y2={entryY}
             stroke="transparent"
-            strokeWidth={24}
+            strokeWidth={12}
           />
           <line
             x1={boxLeft}
@@ -1764,10 +1978,10 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             className="shadow"
           />
           {/* Compact Entry Label on right border */}
-          <g transform={`translate(${boxRight - 65}, ${entryY - 18})`}>
-            <rect width={60} height={16} rx={3} fill="#2962ff" fillOpacity={0.9} />
-            <text x={30} y={12} fill="#ffffff" fontSize={10} fontWeight="bold" fontFamily="monospace" textAnchor="middle">
-              {activeSetup.type}
+          <g transform={`translate(${boxRight - 75}, ${entryY - 18})`}>
+            <rect width={70} height={16} rx={3} fill="#2962ff" fillOpacity={0.9} />
+            <text x={35} y={12} fill="#ffffff" fontSize={9.5} fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+              {orderTypeLabel}
             </text>
           </g>
         </g>
@@ -1779,16 +1993,17 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           onMouseDown={(e) => {
             e.stopPropagation();
             setDraggingSetupLine('sl');
+            draggingSetupLineRef.current = 'sl';
           }}
         >
-          {/* 24px wide invisible hit area */}
+          {/* 8px wide invisible hit area */}
           <line
             x1={boxLeft}
             y1={slY}
             x2={boxRight}
             y2={slY}
             stroke="transparent"
-            strokeWidth={24}
+            strokeWidth={8}
           />
           <line
             x1={boxLeft}
