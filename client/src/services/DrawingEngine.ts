@@ -219,10 +219,26 @@ export class DrawingEngine {
 
       // 9. Check Fibonacci Tools
       else if (['fib_retracement', 'fib_extension', 'fib_channel', 'fib_fan', 'fib_timezones'].includes(d.type) && screenPoints.length >= 2) {
-        const minY = Math.min(screenPoints[0].y, screenPoints[1].y);
-        const maxY = Math.max(screenPoints[0].y, screenPoints[1].y);
-        const minX = Math.min(screenPoints[0].x, screenPoints[1].x);
-        const maxX = Math.max(screenPoints[0].x, screenPoints[1].x) + 250;
+        let minY = Math.min(screenPoints[0].y, screenPoints[1].y);
+        let maxY = Math.max(screenPoints[0].y, screenPoints[1].y);
+        let minX = Math.min(screenPoints[0].x, screenPoints[1].x);
+        let maxX = Math.max(screenPoints[0].x, screenPoints[1].x) + 250;
+
+        if (d.properties?.extendLinesLeft) minX = 0;
+        if (d.properties?.extendLinesRight) maxX = 99999;
+
+        if (d.properties?.fibLevels && d.properties.fibLevels.length > 0) {
+          const visibleLvls = d.properties.fibLevels.filter(l => l.visible !== false);
+          const p1 = d.points[0].price;
+          const p2 = d.points[1].price;
+          const prices = visibleLvls.map(l => p1 + l.level * (p2 - p1));
+          prices.push(p1, p2);
+          const ys = prices.map(p => transformer.priceToY(p)).filter((y): y is number => y !== null && !isNaN(y));
+          if (ys.length > 0) {
+            minY = Math.min(...ys);
+            maxY = Math.max(...ys);
+          }
+        }
 
         if (
           mouse.y >= minY - hitTolerance && mouse.y <= maxY + hitTolerance &&

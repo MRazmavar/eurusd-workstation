@@ -196,6 +196,7 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
           return (
             <div key={group.id} className="relative flex justify-center items-center">
               <button
+                data-testid={`tool-group-${group.id}`}
                 onClick={() => {
                   const tool = lastSelectedTools[group.id] || group.defaultTool;
                   onSelectTool(tool);

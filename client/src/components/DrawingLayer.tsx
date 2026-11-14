@@ -12,12 +12,14 @@ import {
   MagnetMode,
   Trade,
   IndicatorConfig,
+  FibLevel,
 } from '../types';
 import { DrawingEngine, CoordinateTransformer, ScreenPoint } from '../services/DrawingEngine';
 import { DrawingToolbarPopup } from './DrawingToolbarPopup';
 import { Check, X as CloseIcon } from 'lucide-react';
 import { computeSessionBlocks } from '../utils/sessions';
 import { formatTimeInTimezone, formatBadgeTimeInTimezone } from '../utils/timezone';
+import { DEFAULT_FIB_LEVELS, getDefaultFibLevels, formatFibLevel } from '../utils/fibonacci';
 
 export interface MagnetSnapInfo {
   isSnapped: boolean;
@@ -810,6 +812,14 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         lineStyle: 'solid',
         fontSize: 12,
         text: activeTool === 'text' ? 'EUR/USD Setup' : '',
+        ...(activeTool === 'fib_retracement' ? {
+          fibLevels: getDefaultFibLevels(),
+          extendLinesLeft: false,
+          extendLinesRight: false,
+          fillBackground: true,
+          showPrices: true,
+          showLevels: true,
+        } : {}),
       },
       locked: false,
       hidden: false,
@@ -2092,49 +2102,117 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         })()}
 
         {/* Fibonacci Retracement */}
-        {d.type === 'fib_retracement' && screenPts.length >= 2 && (
-          <g>
-            {[
-              { ratio: 0.0, col: '#787b86' },
-              { ratio: 0.236, col: '#f23645' },
-              { ratio: 0.382, col: '#ff9800' },
-              { ratio: 0.5, col: '#089981' },
-              { ratio: 0.618, col: '#2962ff' },
-              { ratio: 0.786, col: '#9c27b0' },
-              { ratio: 1.0, col: '#787b86' },
-            ].map((fib) => {
-              const p1 = d.points[0].price;
-              const p2 = d.points[1].price;
-              const levelPrice = p1 + fib.ratio * (p2 - p1);
-              const y = transformer.priceToY(levelPrice) ?? -9999;
-              const minX = Math.min(screenPts[0].x, screenPts[1].x);
-              const maxX = Math.max(screenPts[0].x, screenPts[1].x) + 160;
+        {d.type === 'fib_retracement' && screenPts.length >= 2 && (() => {
+          const p1 = d.points[0].price;
+          const p2 = d.points[1].price;
+          const levels: FibLevel[] = (d.properties?.fibLevels && d.properties.fibLevels.length > 0)
+            ? d.properties.fibLevels
+            : DEFAULT_FIB_LEVELS;
 
-              return (
-                <g key={fib.ratio}>
-                  <line
-                    x1={minX}
-                    y1={y}
-                    x2={maxX}
-                    y2={y}
-                    stroke={fib.col}
-                    strokeWidth={1}
-                    strokeDasharray={fib.ratio === 0.5 ? undefined : '3,3'}
+          const visibleLevels = levels.filter(lvl => lvl.visible !== false);
+          const extendLeft = !!d.properties?.extendLinesLeft;
+          const extendRight = !!d.properties?.extendLinesRight;
+          const fillBg = d.properties?.fillBackground !== false;
+          const showPrices = d.properties?.showPrices !== false;
+          const showLevels = d.properties?.showLevels !== false;
+
+          const anchorMinX = Math.min(screenPts[0].x, screenPts[1].x);
+          const anchorMaxX = Math.max(screenPts[0].x, screenPts[1].x);
+          const minX = extendLeft ? 0 : anchorMinX;
+          const maxX = extendRight ? dimensions.width : anchorMaxX + 160;
+
+          // For background fill between consecutive sorted levels
+          const sortedLevels = [...visibleLevels].sort((a, b) => a.level - b.level);
+
+          return (
+            <g key={`fib-ret-${d.id}`}>
+              {/* Trendline connecting Anchor 1 and Anchor 2 */}
+              <line
+                x1={screenPts[0].x}
+                y1={screenPts[0].y}
+                x2={screenPts[1].x}
+                y2={screenPts[1].y}
+                stroke={d.properties?.color || '#2962ff'}
+                strokeWidth={1}
+                strokeDasharray="3,3"
+                opacity={0.65}
+              />
+
+              {/* Background Bands */}
+              {fillBg && sortedLevels.map((lvlA, idx) => {
+                if (idx === sortedLevels.length - 1) return null;
+                const lvlB = sortedLevels[idx + 1];
+                const priceA = p1 + lvlA.level * (p2 - p1);
+                const priceB = p1 + lvlB.level * (p2 - p1);
+                const yA = transformer.priceToY(priceA);
+                const yB = transformer.priceToY(priceB);
+                if (yA === null || yB === null || isNaN(yA) || isNaN(yB)) return null;
+                const topY = Math.min(yA, yB);
+                const height = Math.abs(yB - yA);
+                if (height <= 0) return null;
+
+                return (
+                  <rect
+                    key={`fib-band-${idx}`}
+                    x={minX}
+                    y={topY}
+                    width={Math.max(10, maxX - minX)}
+                    height={height}
+                    fill={lvlA.color}
+                    opacity={0.08}
                   />
-                  <text
-                    x={maxX + 5}
-                    y={y + 3}
-                    fill={fib.col}
-                    fontSize={10}
-                    fontFamily="monospace"
-                  >
-                    {fib.ratio.toFixed(3)} ({levelPrice.toFixed(5)})
-                  </text>
-                </g>
-              );
-            })}
-          </g>
-        )}
+                );
+              })}
+
+              {/* Individual Level Lines & Text Labels */}
+              {visibleLevels.map((fib, idx) => {
+                const levelPrice = p1 + fib.level * (p2 - p1);
+                const y = transformer.priceToY(levelPrice);
+                if (y === null || isNaN(y)) return null;
+
+                const labelParts: string[] = [];
+                if (showLevels) labelParts.push(formatFibLevel(fib.level));
+                if (showPrices) labelParts.push(`(${levelPrice.toFixed(5)})`);
+                const labelText = labelParts.join(' ');
+
+                // Label positioning
+                const labelX = extendRight
+                  ? Math.min(dimensions.width - 120, anchorMaxX + 10)
+                  : maxX + 5;
+
+                const isMajor = fib.level === 0.0 || fib.level === 0.5 || fib.level === 1.0;
+
+                return (
+                  <g key={`fib-lvl-${idx}-${fib.level}`}>
+                    <line
+                      x1={minX}
+                      y1={y}
+                      x2={maxX}
+                      y2={y}
+                      stroke={fib.color}
+                      strokeWidth={d.properties?.strokeWidth || 1}
+                      strokeDasharray={isMajor ? undefined : '3,3'}
+                      opacity={0.9}
+                    />
+                    {labelText && (
+                      <text
+                        x={labelX}
+                        y={y - 3}
+                        fill={fib.color}
+                        fontSize={10}
+                        fontWeight={isMajor ? 'bold' : 'normal'}
+                        fontFamily="monospace"
+                        className="select-none pointer-events-none drop-shadow-sm"
+                      >
+                        {labelText}
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
+            </g>
+          );
+        })()}
 
         {/* Rectangle */}
         {d.type === 'rectangle' && screenPts.length >= 2 && (

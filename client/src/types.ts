@@ -59,6 +59,12 @@ export interface Point {
   price: number;
 }
 
+export interface FibLevel {
+  level: number;
+  color: string;
+  visible: boolean;
+}
+
 export interface DrawingProperties {
   color?: string;
   fillColor?: string;
@@ -73,6 +79,13 @@ export interface DrawingProperties {
   tpPrice?: number;
   riskReward?: number;
   lotSize?: number;
+  // For Fibonacci tools
+  fibLevels?: FibLevel[];
+  extendLinesLeft?: boolean;
+  extendLinesRight?: boolean;
+  showPrices?: boolean;
+  showLevels?: boolean;
+  fillBackground?: boolean;
 }
 
 export interface DrawingObject {

@@ -17,8 +17,18 @@ import {
   Type,
   Layers,
   MapPin,
+  Percent,
+  Plus,
+  Trash2,
+  Sparkles,
 } from 'lucide-react';
-import { DrawingObject, Point, DrawingProperties } from '../types';
+import { DrawingObject, Point, DrawingProperties, FibLevel } from '../types';
+import {
+  getDefaultFibLevels,
+  FIB_PRESETS,
+  calculateFibPrice,
+  formatFibLevel,
+} from '../utils/fibonacci';
 
 interface DrawingPropertiesModalProps {
   isOpen: boolean;
@@ -38,11 +48,21 @@ export const DrawingPropertiesModal: React.FC<DrawingPropertiesModalProps> = ({
   onClose,
   onSave,
 }) => {
-  const [activeTab, setActiveTab] = useState<'style' | 'coordinates' | 'visibility'>('style');
+  const isFib = drawing ? (drawing.type.startsWith('fib_') || drawing.type === 'fib_retracement') : false;
+
+  const [activeTab, setActiveTab] = useState<'levels' | 'style' | 'coordinates' | 'visibility'>('style');
   const [properties, setProperties] = useState<DrawingProperties>({});
   const [points, setPoints] = useState<Point[]>([]);
   const [locked, setLocked] = useState<boolean>(false);
   const [hidden, setHidden] = useState<boolean>(false);
+
+  // Fibonacci-specific state
+  const [fibLevels, setFibLevels] = useState<FibLevel[]>([]);
+  const [extendLinesLeft, setExtendLinesLeft] = useState<boolean>(false);
+  const [extendLinesRight, setExtendLinesRight] = useState<boolean>(false);
+  const [fillBackground, setFillBackground] = useState<boolean>(true);
+  const [showPrices, setShowPrices] = useState<boolean>(true);
+  const [showLevels, setShowLevels] = useState<boolean>(true);
 
   useEffect(() => {
     if (drawing) {
@@ -50,6 +70,21 @@ export const DrawingPropertiesModal: React.FC<DrawingPropertiesModalProps> = ({
       setPoints(drawing.points.map(p => ({ ...p })));
       setLocked(drawing.locked);
       setHidden(drawing.hidden);
+
+      if (drawing.type.startsWith('fib_') || drawing.type === 'fib_retracement') {
+        const initialLevels = drawing.properties?.fibLevels && drawing.properties.fibLevels.length > 0
+          ? drawing.properties.fibLevels.map(lvl => ({ ...lvl }))
+          : getDefaultFibLevels();
+        setFibLevels(initialLevels);
+        setExtendLinesLeft(!!drawing.properties?.extendLinesLeft);
+        setExtendLinesRight(drawing.properties?.extendLinesRight ?? false);
+        setFillBackground(drawing.properties?.fillBackground ?? true);
+        setShowPrices(drawing.properties?.showPrices ?? true);
+        setShowLevels(drawing.properties?.showLevels ?? true);
+        setActiveTab('levels'); // Open directly into Levels tab for Fib drawings
+      } else {
+        setActiveTab('style');
+      }
     }
   }, [drawing, isOpen]);
 
@@ -83,9 +118,21 @@ export const DrawingPropertiesModal: React.FC<DrawingPropertiesModalProps> = ({
 
   const handleApply = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    const updatedProps: DrawingProperties = {
+      ...properties,
+      ...(isFib ? {
+        fibLevels: fibLevels.map(l => ({ ...l })),
+        extendLinesLeft,
+        extendLinesRight,
+        fillBackground,
+        showPrices,
+        showLevels,
+      } : {}),
+    };
+
     const updated: DrawingObject = {
       ...drawing,
-      properties: { ...properties },
+      properties: updatedProps,
       points: points.map(p => ({ ...p })),
       locked,
       hidden,
@@ -96,16 +143,87 @@ export const DrawingPropertiesModal: React.FC<DrawingPropertiesModalProps> = ({
   };
 
   const handleReset = () => {
-    setProperties({
-      color: '#2962ff',
-      fillColor: '#2962ff',
-      fillOpacity: 0.15,
-      strokeWidth: 2,
-      lineStyle: 'solid',
-      fontSize: 12,
-      text: drawing.type === 'text' ? 'EUR/USD Setup' : '',
+    if (isFib) {
+      setFibLevels(getDefaultFibLevels());
+      setExtendLinesLeft(false);
+      setExtendLinesRight(false);
+      setFillBackground(true);
+      setShowPrices(true);
+      setShowLevels(true);
+      setProperties(prev => ({
+        ...prev,
+        color: '#2962ff',
+        strokeWidth: 1,
+        lineStyle: 'dashed',
+      }));
+    } else {
+      setProperties({
+        color: '#2962ff',
+        fillColor: '#2962ff',
+        fillOpacity: 0.15,
+        strokeWidth: 2,
+        lineStyle: 'solid',
+        fontSize: 12,
+        text: drawing.type === 'text' ? 'EUR/USD Setup' : '',
+      });
+    }
+  };
+
+  // Level editing handlers
+  const handleToggleLevel = (index: number) => {
+    setFibLevels(prev => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], visible: !copy[index].visible };
+      return copy;
     });
   };
+
+  const handleUpdateLevelValue = (index: number, val: number) => {
+    setFibLevels(prev => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], level: val };
+      return copy;
+    });
+  };
+
+  const handleUpdateLevelColor = (index: number, color: string) => {
+    setFibLevels(prev => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], color };
+      return copy;
+    });
+  };
+
+  const handleDeleteLevel = (index: number) => {
+    setFibLevels(prev => prev.filter((_, idx) => idx !== index));
+  };
+
+  const handleAddLevel = () => {
+    setFibLevels(prev => {
+      // Find a reasonable new level not already present
+      const existing = prev.map(p => p.level);
+      const candidates = [0.705, 0.886, 1.272, 1.414, 1.618, 2.0, 2.618, -0.27, -0.618, 0.25, 0.75];
+      const nextRatio = candidates.find(c => !existing.includes(c)) ?? (Math.max(...existing, 0) + 0.25);
+      return [
+        ...prev,
+        {
+          level: parseFloat(nextRatio.toFixed(3)),
+          color: '#2962ff',
+          visible: true,
+        },
+      ].sort((a, b) => a.level - b.level);
+    });
+  };
+
+  const handleApplyPreset = (key: string) => {
+    const preset = FIB_PRESETS[key];
+    if (preset) {
+      setFibLevels(preset.levels.map(l => ({ ...l })));
+    }
+  };
+
+  const p1 = points[0]?.price ?? 1.08000;
+  const p2 = points[1]?.price ?? 1.09000;
 
   const toolDisplayName = drawing.type
     .split('_')
@@ -115,11 +233,11 @@ export const DrawingPropertiesModal: React.FC<DrawingPropertiesModalProps> = ({
   return (
     <div
       data-testid="drawing-properties-modal"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm select-none font-sans"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm select-none font-sans p-3"
     >
-      <div className="bg-[#1e222d] border border-[#2a2e39] rounded-lg shadow-2xl w-[480px] overflow-hidden animate-in fade-in zoom-in-95 duration-150 text-xs">
+      <div className="bg-[#1e222d] border border-[#2a2e39] rounded-lg shadow-2xl w-[520px] max-w-[95vw] max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150 text-xs">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#2a2e39] bg-[#171b26]">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[#2a2e39] bg-[#171b26] flex-shrink-0">
           <div className="flex items-center space-x-2 text-white font-bold text-sm">
             <Sliders size={15} className="text-[#2962ff]" />
             <span>{toolDisplayName} Properties</span>
@@ -134,12 +252,30 @@ export const DrawingPropertiesModal: React.FC<DrawingPropertiesModalProps> = ({
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex items-center px-4 pt-2 border-b border-[#2a2e39] bg-[#171b26] space-x-4">
+        <div className="flex items-center px-4 pt-2 border-b border-[#2a2e39] bg-[#171b26] space-x-3 overflow-x-auto flex-shrink-0">
+          {isFib && (
+            <button
+              type="button"
+              data-testid="tab-fib-levels"
+              onClick={() => setActiveTab('levels')}
+              className={`pb-2.5 font-semibold transition-colors flex items-center space-x-1.5 border-b-2 flex-shrink-0 ${
+                activeTab === 'levels'
+                  ? 'border-[#2962ff] text-[#2962ff]'
+                  : 'border-transparent text-gray-400 hover:text-white'
+              }`}
+            >
+              <Percent size={13} />
+              <span>Fib Levels</span>
+              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-[#131722] text-[10px] text-gray-300 border border-[#2a2e39]">
+                {fibLevels.filter(l => l.visible).length}
+              </span>
+            </button>
+          )}
           <button
             type="button"
             data-testid="tab-style"
             onClick={() => setActiveTab('style')}
-            className={`pb-2.5 font-semibold transition-colors flex items-center space-x-1.5 border-b-2 ${
+            className={`pb-2.5 font-semibold transition-colors flex items-center space-x-1.5 border-b-2 flex-shrink-0 ${
               activeTab === 'style'
                 ? 'border-[#2962ff] text-[#2962ff]'
                 : 'border-transparent text-gray-400 hover:text-white'
@@ -152,7 +288,7 @@ export const DrawingPropertiesModal: React.FC<DrawingPropertiesModalProps> = ({
             type="button"
             data-testid="tab-coordinates"
             onClick={() => setActiveTab('coordinates')}
-            className={`pb-2.5 font-semibold transition-colors flex items-center space-x-1.5 border-b-2 ${
+            className={`pb-2.5 font-semibold transition-colors flex items-center space-x-1.5 border-b-2 flex-shrink-0 ${
               activeTab === 'coordinates'
                 ? 'border-[#2962ff] text-[#2962ff]'
                 : 'border-transparent text-gray-400 hover:text-white'
@@ -165,7 +301,7 @@ export const DrawingPropertiesModal: React.FC<DrawingPropertiesModalProps> = ({
             type="button"
             data-testid="tab-visibility"
             onClick={() => setActiveTab('visibility')}
-            className={`pb-2.5 font-semibold transition-colors flex items-center space-x-1.5 border-b-2 ${
+            className={`pb-2.5 font-semibold transition-colors flex items-center space-x-1.5 border-b-2 flex-shrink-0 ${
               activeTab === 'visibility'
                 ? 'border-[#2962ff] text-[#2962ff]'
                 : 'border-transparent text-gray-400 hover:text-white'
@@ -176,8 +312,193 @@ export const DrawingPropertiesModal: React.FC<DrawingPropertiesModalProps> = ({
           </button>
         </div>
 
-        {/* Form Body */}
-        <form onSubmit={handleApply} className="p-5 space-y-4">
+        {/* Form Body - Scrollable */}
+        <form onSubmit={handleApply} className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-4">
+          {/* 0. FIBONACCI LEVELS TAB */}
+          {activeTab === 'levels' && isFib && (
+            <div className="space-y-4" data-testid="fib-levels-content">
+              {/* Presets & Header */}
+              <div className="bg-[#131722] p-2.5 rounded border border-[#2a2e39] space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-300 font-bold flex items-center space-x-1.5 text-xs">
+                    <Sparkles size={13} className="text-amber-400" />
+                    <span>Quick Presets</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleAddLevel}
+                    data-testid="add-fib-level-btn"
+                    className="px-2.5 py-1 rounded bg-[#2962ff]/20 hover:bg-[#2962ff]/30 text-[#2962ff] hover:text-[#5887ff] border border-[#2962ff]/40 font-semibold text-xs flex items-center space-x-1 transition-all"
+                  >
+                    <Plus size={13} />
+                    <span>Add Level</span>
+                  </button>
+                </div>
+                <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
+                  {Object.entries(FIB_PRESETS).map(([key, p]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      data-testid={`fib-preset-${key}`}
+                      onClick={() => handleApplyPreset(key)}
+                      className="px-2.5 py-1 rounded bg-[#1e222d] hover:bg-[#2a2e39] border border-[#2a2e39] text-gray-300 hover:text-white font-medium text-[11px] transition-colors"
+                    >
+                      {p.name}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    data-testid="fib-preset-reset"
+                    onClick={() => setFibLevels(getDefaultFibLevels())}
+                    className="px-2 py-1 rounded bg-[#1e222d] hover:bg-[#2a2e39] border border-[#2a2e39] text-gray-400 hover:text-white text-[11px] transition-colors flex items-center space-x-1"
+                    title="Reset to 16 default levels"
+                  >
+                    <RotateCcw size={11} />
+                    <span>All Defaults</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Fibonacci Display Options */}
+              <div className="bg-[#131722] p-2.5 rounded border border-[#2a2e39] grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+                <label className="flex items-center space-x-2 text-gray-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    data-testid="fib-extend-right-toggle"
+                    checked={extendLinesRight}
+                    onChange={(e) => setExtendLinesRight(e.target.checked)}
+                    className="accent-[#2962ff] rounded cursor-pointer"
+                  />
+                  <span>Extend Right</span>
+                </label>
+                <label className="flex items-center space-x-2 text-gray-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    data-testid="fib-extend-left-toggle"
+                    checked={extendLinesLeft}
+                    onChange={(e) => setExtendLinesLeft(e.target.checked)}
+                    className="accent-[#2962ff] rounded cursor-pointer"
+                  />
+                  <span>Extend Left</span>
+                </label>
+                <label className="flex items-center space-x-2 text-gray-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    data-testid="fib-fill-bg-toggle"
+                    checked={fillBackground}
+                    onChange={(e) => setFillBackground(e.target.checked)}
+                    className="accent-[#2962ff] rounded cursor-pointer"
+                  />
+                  <span>Fill Bands</span>
+                </label>
+                <label className="flex items-center space-x-2 text-gray-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    data-testid="fib-show-prices-toggle"
+                    checked={showPrices}
+                    onChange={(e) => setShowPrices(e.target.checked)}
+                    className="accent-[#2962ff] rounded cursor-pointer"
+                  />
+                  <span>Show Prices</span>
+                </label>
+                <label className="flex items-center space-x-2 text-gray-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    data-testid="fib-show-levels-toggle"
+                    checked={showLevels}
+                    onChange={(e) => setShowLevels(e.target.checked)}
+                    className="accent-[#2962ff] rounded cursor-pointer"
+                  />
+                  <span>Show Ratios</span>
+                </label>
+              </div>
+
+              {/* Levels Table / List */}
+              <div className="space-y-1.5 max-h-[360px] overflow-y-auto pr-1">
+                <div className="flex items-center justify-between text-gray-400 font-semibold px-2 py-1 uppercase text-[10px] tracking-wider border-b border-[#2a2e39]">
+                  <span className="w-8">Active</span>
+                  <span className="w-24 text-left">Level Ratio</span>
+                  <span className="w-14 text-center">Color</span>
+                  <span className="flex-1 text-right pr-4">Target Price</span>
+                  <span className="w-7 text-right">Del</span>
+                </div>
+
+                {fibLevels.map((lvl, index) => {
+                  const targetPrice = calculateFibPrice(p1, p2, lvl.level);
+                  return (
+                    <div
+                      key={`fib-lvl-${index}`}
+                      data-testid={`fib-level-row-${index}`}
+                      className={`flex items-center justify-between p-1.5 rounded border transition-colors ${
+                        lvl.visible
+                          ? 'bg-[#131722] border-[#2a2e39] text-white'
+                          : 'bg-[#131722]/50 border-transparent text-gray-500 opacity-60'
+                      }`}
+                    >
+                      {/* Visible Toggle */}
+                      <div className="w-8 flex items-center justify-center">
+                        <input
+                          type="checkbox"
+                          data-testid={`fib-level-visible-${index}`}
+                          checked={lvl.visible}
+                          onChange={() => handleToggleLevel(index)}
+                          className="accent-[#2962ff] rounded cursor-pointer w-3.5 h-3.5"
+                        />
+                      </div>
+
+                      {/* Level Ratio Input */}
+                      <div className="w-24">
+                        <input
+                          type="number"
+                          step="0.001"
+                          data-testid={`fib-level-input-${index}`}
+                          value={lvl.level}
+                          onChange={(e) => handleUpdateLevelValue(index, parseFloat(e.target.value) || 0)}
+                          className="w-full bg-[#1e222d] border border-[#2a2e39] rounded px-2 py-1 text-white font-mono text-xs focus:outline-none focus:border-[#2962ff]"
+                        />
+                      </div>
+
+                      {/* Color Picker Swatch */}
+                      <div className="w-14 flex items-center justify-center">
+                        <div
+                          className="relative w-6 h-6 rounded border border-[#2a2e39] cursor-pointer overflow-hidden shadow-inner flex items-center justify-center hover:scale-110 transition-transform"
+                          style={{ backgroundColor: lvl.color }}
+                          title={`Color: ${lvl.color}`}
+                        >
+                          <input
+                            type="color"
+                            data-testid={`fib-level-color-${index}`}
+                            value={lvl.color}
+                            onChange={(e) => handleUpdateLevelColor(index, e.target.value)}
+                            className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Computed Price Preview */}
+                      <div className="flex-1 text-right font-mono text-[11px] text-gray-300 pr-4">
+                        {targetPrice.toFixed(5)}
+                      </div>
+
+                      {/* Delete Level */}
+                      <div className="w-7 flex items-center justify-end">
+                        <button
+                          type="button"
+                          data-testid={`fib-level-delete-${index}`}
+                          onClick={() => handleDeleteLevel(index)}
+                          className="text-gray-500 hover:text-red-400 p-1 rounded hover:bg-red-950/30 transition-colors"
+                          title="Remove level"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* 1. STYLE TAB */}
           {activeTab === 'style' && (
             <div className="space-y-4">
@@ -428,7 +749,7 @@ export const DrawingPropertiesModal: React.FC<DrawingPropertiesModalProps> = ({
           )}
 
           {/* Action Buttons */}
-          <div className="flex items-center justify-between pt-3 border-t border-[#2a2e39]">
+          <div className="flex items-center justify-between pt-3 border-t border-[#2a2e39] flex-shrink-0">
             <button
               type="button"
               onClick={handleReset}
@@ -462,3 +783,4 @@ export const DrawingPropertiesModal: React.FC<DrawingPropertiesModalProps> = ({
     </div>
   );
 };
+

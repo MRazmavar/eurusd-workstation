@@ -191,6 +191,14 @@ export const App: React.FC = () => {
 
   // Automatic Persistence Effects
   useEffect(() => {
+    const handleOpenProperties = (e: any) => {
+      if (e.detail) setEditingDrawing(e.detail);
+    };
+    window.addEventListener('open-drawing-properties', handleOpenProperties);
+    return () => window.removeEventListener('open-drawing-properties', handleOpenProperties);
+  }, []);
+
+  useEffect(() => {
     try {
       localStorage.setItem('eurusd_saved_timeframe', timeframe);
     } catch {}
