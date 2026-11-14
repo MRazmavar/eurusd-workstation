@@ -175,8 +175,47 @@ export class BacktestingEngine {
     const balance = accountBalance || this.getAccountBalance();
     const updated = { ...this.activeSetup, ...updates };
 
-    // 1. If type flipped (BUY <-> SELL), flip the SL and TP relative to entry to preserve the bracket!
-    if (updates.type && updates.type !== this.activeSetup.type) {
+    // 1. Auto-switch trade direction if Stop Loss crosses Entry:
+    // Moving SL below entry -> auto change to BUY.
+    // Moving SL above entry -> auto change to SELL.
+    if (updates.slPrice !== undefined) {
+      const entry = updated.entryPrice;
+      const newSl = updates.slPrice;
+      const oldTp = this.activeSetup.tpPrice;
+      const prevTpDist = Math.max(0.0005, Math.abs(oldTp - entry));
+
+      if (newSl < entry - 0.00002) {
+        // SL is strictly BELOW entry -> Must be BUY
+        if (updated.type !== 'BUY') {
+          updated.type = 'BUY';
+          // Ensure TP is on the BUY side (above entry)
+          if (updated.tpPrice <= entry) {
+            updated.tpPrice = Number((entry + prevTpDist).toFixed(5));
+          }
+        }
+        updated.slPrice = newSl;
+      } else if (newSl > entry + 0.00002) {
+        // SL is strictly ABOVE entry -> Must be SELL
+        if (updated.type !== 'SELL') {
+          updated.type = 'SELL';
+          // Ensure TP is on the SELL side (below entry)
+          if (updated.tpPrice >= entry) {
+            updated.tpPrice = Number((entry - prevTpDist).toFixed(5));
+          }
+        }
+        updated.slPrice = newSl;
+      } else {
+        // Near-zero boundary on entry line: clamp to 0.5 pip on current direction's side
+        if (updated.type === 'BUY') {
+          updated.slPrice = Number((entry - 0.00005).toFixed(5));
+        } else {
+          updated.slPrice = Number((entry + 0.00005).toFixed(5));
+        }
+      }
+    }
+
+    // 2. If type was explicitly flipped without slPrice passed, flip SL and TP relative to entry
+    if (updates.type && updates.type !== this.activeSetup.type && updates.slPrice === undefined) {
       const curSlPips = Math.max(1, Math.round(Math.abs(this.activeSetup.entryPrice - this.activeSetup.slPrice) / 0.0001));
       const curTpPips = Math.max(1, Math.round(Math.abs(this.activeSetup.tpPrice - this.activeSetup.entryPrice) / 0.0001));
       const slDist = curSlPips * 0.0001;
@@ -191,7 +230,7 @@ export class BacktestingEngine {
       }
     }
 
-    // 2. If entryPrice was dragged individually (without explicit slPrice/tpPrice),
+    // 3. If entryPrice was dragged individually (without explicit slPrice/tpPrice),
     // move the entire bracket (Entry + SL + TP) together so pip distances are maintained!
     if (updates.entryPrice !== undefined && updates.slPrice === undefined && updates.tpPrice === undefined) {
       const oldEntry = this.activeSetup.entryPrice;
@@ -200,20 +239,20 @@ export class BacktestingEngine {
       updated.tpPrice = Number((this.activeSetup.tpPrice + deltaPrice).toFixed(5));
     }
 
-    // 3. Bound validation: keep SL and TP on valid sides of Entry (min 0.5 pip buffer)
+    // 4. Bound validation for Take Profit: ensure TP stays on the valid side of Entry
     if (updated.type === 'BUY') {
-      if (updates.slPrice !== undefined) {
-        updated.slPrice = Math.min(Number((updated.entryPrice - 0.00005).toFixed(5)), updated.slPrice);
-      }
       if (updates.tpPrice !== undefined) {
-        updated.tpPrice = Math.max(Number((updated.entryPrice + 0.00005).toFixed(5)), updated.tpPrice);
+        updated.tpPrice = Math.max(Number((updated.entryPrice + 0.00005).toFixed(5)), updates.tpPrice);
+      } else if (updated.tpPrice <= updated.entryPrice) {
+        const fallbackDist = Math.max(0.0005, Math.abs(updated.entryPrice - updated.slPrice));
+        updated.tpPrice = Number((updated.entryPrice + fallbackDist).toFixed(5));
       }
     } else {
-      if (updates.slPrice !== undefined) {
-        updated.slPrice = Math.max(Number((updated.entryPrice + 0.00005).toFixed(5)), updated.slPrice);
-      }
       if (updates.tpPrice !== undefined) {
-        updated.tpPrice = Math.min(Number((updated.entryPrice - 0.00005).toFixed(5)), updated.tpPrice);
+        updated.tpPrice = Math.min(Number((updated.entryPrice - 0.00005).toFixed(5)), updates.tpPrice);
+      } else if (updated.tpPrice >= updated.entryPrice) {
+        const fallbackDist = Math.max(0.0005, Math.abs(updated.slPrice - updated.entryPrice));
+        updated.tpPrice = Number((updated.entryPrice - fallbackDist).toFixed(5));
       }
     }
 

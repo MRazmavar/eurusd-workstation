@@ -502,9 +502,28 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 updatedPts[3] = { ...updatedPts[3], price: mouse.price };
               }
             } else if (pIdx === 1) {
-              // Handle 1: Stop Loss Center Handle. Moves Stop Loss price ONLY. TP frozen!
-              if (updatedPts[1]) {
-                updatedPts[1] = { ...updatedPts[1], price: mouse.price };
+              // Handle 1: Stop Loss Center Handle. Moves Stop Loss price.
+              // Auto-flips between Long Position and Short Position if SL crosses Entry!
+              if (updatedPts[1] && updatedPts[0]) {
+                const entryPrice = updatedPts[0].price;
+                const newSl = mouse.price;
+                if (target.type === 'long_position' && newSl > entryPrice + 0.00002) {
+                  target.type = 'short_position';
+                  const tpDist = updatedPts[2] ? Math.abs(updatedPts[2].price - entryPrice) : 0.00150;
+                  updatedPts[1] = { ...updatedPts[1], price: newSl };
+                  if (updatedPts[2]) {
+                    updatedPts[2] = { ...updatedPts[2], price: Number((entryPrice - tpDist).toFixed(5)) };
+                  }
+                } else if (target.type === 'short_position' && newSl < entryPrice - 0.00002) {
+                  target.type = 'long_position';
+                  const tpDist = updatedPts[2] ? Math.abs(entryPrice - updatedPts[2].price) : 0.00150;
+                  updatedPts[1] = { ...updatedPts[1], price: newSl };
+                  if (updatedPts[2]) {
+                    updatedPts[2] = { ...updatedPts[2], price: Number((entryPrice + tpDist).toFixed(5)) };
+                  }
+                } else {
+                  updatedPts[1] = { ...updatedPts[1], price: newSl };
+                }
               }
             } else if (pIdx === 2) {
               // Handle 2: Take Profit Center Handle. Moves Take Profit price ONLY. SL frozen!
@@ -522,9 +541,19 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
               // Vertically: adjusts top level to mouse.price.
               updatedPts[3] = { ...updatedPts[3], time: mouse.time };
               const isLong = target.type === 'long_position';
-              const topIdx = isLong ? 2 : 1;
-              if (updatedPts[topIdx]) {
-                updatedPts[topIdx] = { ...updatedPts[topIdx], price: mouse.price };
+              if (!isLong && mouse.price < updatedPts[0].price - 0.00002) {
+                // Short position top SL dragged below entry -> flip to Long
+                target.type = 'long_position';
+                const tpDist = updatedPts[2] ? Math.abs(updatedPts[0].price - updatedPts[2].price) : 0.00150;
+                updatedPts[1] = { ...updatedPts[1], price: mouse.price };
+                if (updatedPts[2]) {
+                  updatedPts[2] = { ...updatedPts[2], price: Number((updatedPts[0].price + tpDist).toFixed(5)) };
+                }
+              } else {
+                const topIdx = isLong ? 2 : 1;
+                if (updatedPts[topIdx]) {
+                  updatedPts[topIdx] = { ...updatedPts[topIdx], price: mouse.price };
+                }
               }
             } else if (pIdx === 5) {
               // Handle 5: Bottom-Right Corner.
@@ -532,9 +561,19 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
               // Vertically: adjusts bottom level to mouse.price.
               updatedPts[3] = { ...updatedPts[3], time: mouse.time };
               const isLong = target.type === 'long_position';
-              const bottomIdx = isLong ? 1 : 2;
-              if (updatedPts[bottomIdx]) {
-                updatedPts[bottomIdx] = { ...updatedPts[bottomIdx], price: mouse.price };
+              if (isLong && mouse.price > updatedPts[0].price + 0.00002) {
+                // Long position bottom SL dragged above entry -> flip to Short
+                target.type = 'short_position';
+                const tpDist = updatedPts[2] ? Math.abs(updatedPts[2].price - updatedPts[0].price) : 0.00150;
+                updatedPts[1] = { ...updatedPts[1], price: mouse.price };
+                if (updatedPts[2]) {
+                  updatedPts[2] = { ...updatedPts[2], price: Number((updatedPts[0].price - tpDist).toFixed(5)) };
+                }
+              } else {
+                const bottomIdx = isLong ? 1 : 2;
+                if (updatedPts[bottomIdx]) {
+                  updatedPts[bottomIdx] = { ...updatedPts[bottomIdx], price: mouse.price };
+                }
               }
             }
 
@@ -2986,30 +3025,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         </div>
       )}
 
-      {/* On-Chart Action Buttons for Active Trade Setup */}
-      {activeSetup && activeSetup.active && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center space-x-2 bg-[#1e222d] p-1.5 rounded-lg border border-[#2a2e39] shadow-2xl z-30 font-sans text-xs pointer-events-auto">
-          <span className="text-gray-300 font-semibold px-2">
-            Confirm {activeSetup.type} Setup:
-          </span>
-          <button
-            onClick={onConfirmSetup}
-            data-testid="confirm-order-btn"
-            className="flex items-center space-x-1 px-3 py-1.5 rounded bg-[#089981] hover:bg-[#078570] text-white font-bold transition-colors shadow cursor-pointer"
-          >
-            <Check size={14} />
-            <span>Confirm Order</span>
-          </button>
-          <button
-            onClick={onCancelSetup}
-            data-testid="cancel-order-btn"
-            className="flex items-center space-x-1 px-3 py-1.5 rounded bg-[#2a2e39] hover:bg-[#363c4e] text-gray-300 hover:text-white font-medium transition-colors cursor-pointer"
-          >
-            <CloseIcon size={14} />
-            <span>Cancel</span>
-          </button>
-        </div>
-      )}
+
 
       {/* Floating Toolbar when object selected */}
       {selectedDrawing && (
