@@ -426,14 +426,17 @@ export const App: React.FC = () => {
     if (tf.endsWith('s') || tf === '1m') {
       daysBefore = 5;
       daysAfter = 5;
-    } else if (['3m', '5m', '15m', '20m', '30m', '45m'].includes(tf)) {
-      daysBefore = 20;
-      daysAfter = 20;
-    } else if (['1h', '2h', '3h', '4h'].includes(tf)) {
-      daysBefore = 90;
+    } else if (['3m', '5m', '7m', '15m', '20m', '30m', '45m'].includes(tf)) {
+      daysBefore = 30;
+      daysAfter = 30;
+    } else if (['1h', '2h', '3h'].includes(tf)) {
+      daysBefore = 180;
+      daysAfter = 90;
+    } else if (['4h', '6h', '8h', '12h'].includes(tf)) {
+      daysBefore = 730; // 2 years
       daysAfter = 90;
     } else {
-      daysBefore = 365;
+      daysBefore = 1825; // 5 years
       daysAfter = 180;
     }
 
@@ -441,6 +444,68 @@ export const App: React.FC = () => {
     const endTime = Math.min(now, anchorTime + daysAfter * 86400);
     return { startTime, endTime };
   };
+
+  const [isLoadingOlderCandles, setIsLoadingOlderCandles] = useState<boolean>(false);
+  const isLoadingOlderRef = useRef<boolean>(false);
+  const reachedHistoricalBeginningRef = useRef<Record<string, boolean>>({});
+
+  const handleLoadOlderCandles = useCallback(async () => {
+    if (isLoadingOlderRef.current) return;
+    if (reachedHistoricalBeginningRef.current[timeframe]) return;
+    if (masterCandles.length === 0) return;
+
+    const earliestCandle = masterCandles[0];
+    if (!earliestCandle) return;
+
+    isLoadingOlderRef.current = true;
+    setIsLoadingOlderCandles(true);
+
+    try {
+      let lookbackDays = 30;
+      if (['mn1', 'w1', '1W', '1M', '1mo'].includes(timeframe)) {
+        lookbackDays = 3650;
+      } else if (['1D', '1d', 'd1'].includes(timeframe)) {
+        lookbackDays = 1825;
+      } else if (['4h', '6h', '8h', '12h', 'h4'].includes(timeframe)) {
+        lookbackDays = 730;
+      } else if (['1h', '2h', '3h', 'h1'].includes(timeframe)) {
+        lookbackDays = 180;
+      } else if (['15m', '20m', '30m', '45m'].includes(timeframe)) {
+        lookbackDays = 30;
+      } else if (['3m', '5m', '7m'].includes(timeframe)) {
+        lookbackDays = 14;
+      } else {
+        lookbackDays = 5;
+      }
+
+      const endTime = earliestCandle.time;
+      const startTime = endTime - lookbackDays * 86400;
+
+      const olderData = await marketClient.fetchCandles(timeframe, undefined, startTime, endTime);
+
+      if (!olderData || olderData.length === 0) {
+        reachedHistoricalBeginningRef.current[timeframe] = true;
+      } else {
+        const uniqueOlder = olderData.filter(c => c.time < earliestCandle.time);
+        if (uniqueOlder.length === 0) {
+          reachedHistoricalBeginningRef.current[timeframe] = true;
+        } else {
+          setMasterCandles(prev => [...uniqueOlder, ...prev]);
+          if (!replayEngine.isActive()) {
+            setVisibleCandles(prev => [...uniqueOlder, ...prev]);
+          } else {
+            replayEngine.setMasterCandles([...uniqueOlder, ...masterCandles]);
+            setVisibleCandles(replayEngine.getVisibleCandles());
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to load older historical data:', err);
+    } finally {
+      setIsLoadingOlderCandles(false);
+      isLoadingOlderRef.current = false;
+    }
+  }, [timeframe, masterCandles]);
 
   // Load Historical Candles with anchor window support
   const loadCandles = useCallback(async (tf: Timeframe, anchorTime?: number | null) => {
@@ -1164,6 +1229,8 @@ export const App: React.FC = () => {
               isReplayActive={replayActive}
               timezone={settings.timezone}
               onTimezoneChange={handleTimezoneChange}
+              onLoadOlderData={handleLoadOlderCandles}
+              isLoadingOlder={isLoadingOlderCandles}
             />
 
             {/* Interactive Drawing Layer Canvas Overlay */}
@@ -1180,6 +1247,7 @@ export const App: React.FC = () => {
               magnetMode={magnetMode}
               candles={visibleCandles}
               timeframe={timeframe}
+              isLoadingCandles={isLoadingCandles}
               activeSetup={activeSetup}
               onUpdateSetup={(updates) => backtestingEngine.updateTradeSetup(updates)}
               onConfirmSetup={() => {

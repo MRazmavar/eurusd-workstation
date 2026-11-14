@@ -153,7 +153,16 @@ export const computeSessionBlocks = (
   candles: Candle[],
   currentReplayTime?: number | null
 ): ComputedSessionBlock[] => {
-  if (!candles || candles.length === 0) return [];
+  if (!candles || candles.length < 2) return [];
+
+  // Determine actual candle step/interval
+  // If the candles being passed are higher timeframe (e.g. >= 2h / 7200s),
+  // Forex sessions (1h killzones, Asia session) are fundamentally invalid for multi-hour bars!
+  const sampleCount = Math.min(candles.length - 1, 10);
+  const avgStep = (candles[candles.length - 1].time - candles[candles.length - 1 - sampleCount].time) / sampleCount;
+  if (avgStep >= 7200) {
+    return [];
+  }
 
   // Determine current active reference timestamp (latest revealed candle or current replay timestamp)
   const lastCandle = candles[candles.length - 1];

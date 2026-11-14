@@ -112,7 +112,22 @@ async function main() {
     if (from) {
       dates.from = from;
     } else {
-      const lookbackDays = ['d1', 'mn1'].includes(timeframe) ? 365 : ['h1', 'h4'].includes(timeframe) ? 60 : 7;
+      let lookbackDays = 7;
+      if (['mn1', 'w1'].includes(timeframe)) {
+        lookbackDays = 3650; // 10 years of weekly/monthly data
+      } else if (['d1'].includes(timeframe)) {
+        lookbackDays = 1825; // 5 years of daily data (~1,250 bars)
+      } else if (['h4'].includes(timeframe)) {
+        lookbackDays = 730;  // 2 years of 4-hour data (~3,100 bars)
+      } else if (['h1'].includes(timeframe)) {
+        lookbackDays = 180;  // 6 months of 1-hour data (~3,100 bars)
+      } else if (['m30', 'm15'].includes(timeframe)) {
+        lookbackDays = 30;   // 30 days of 15m/30m data (~2,000 bars)
+      } else if (['m5'].includes(timeframe)) {
+        lookbackDays = 14;   // 14 days of 5m data (~2,800 bars)
+      } else {
+        lookbackDays = 5;    // 5 days of 1m data (~5,000 bars)
+      }
       dates.from = new Date(Date.now() - lookbackDays * 24 * 3600 * 1000);
     }
 

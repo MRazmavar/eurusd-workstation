@@ -67,6 +67,7 @@ interface DrawingLayerProps {
   timezone?: string;
   sessionsActive?: boolean;
   currentReplayTimestamp?: number | null;
+  isLoadingCandles?: boolean;
 }
 
 export const DrawingLayer: React.FC<DrawingLayerProps> = ({
@@ -105,6 +106,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   timezone = 'UTC',
   sessionsActive = true,
   currentReplayTimestamp,
+  isLoadingCandles = false,
 }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null);
@@ -1064,16 +1066,25 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
 
   // Render Forex Sessions & Killzones Overlay as Bounded Price-Range Rectangles
   const renderSessions = () => {
-    // Hide sessions on timeframes of 4 hours and above (4h, 1D, 1W, 1M, or >= 240m)
+    if (isLoadingCandles) return null;
+
+    // Hide sessions on timeframes of 2 hours and above (2h, 3h, 4h, 1D, 1W, 1M, or >= 120m)
     const isHighTf = 
-      ['4h', '1D', '1W', '1M', '1d', '1w', '1mo'].includes(timeframe) ||
+      ['2h', '3h', '4h', '6h', '8h', '12h', '1D', '1W', '1M', '1d', '1w', '1mo'].includes(timeframe) ||
       timeframe.toUpperCase().includes('D') ||
       timeframe.toUpperCase().includes('W') ||
       (timeframe.endsWith('M') && !timeframe.toLowerCase().endsWith('m') && timeframe !== '1m' && timeframe !== '3m' && timeframe !== '5m' && timeframe !== '15m' && timeframe !== '30m' && timeframe !== '45m') ||
-      (timeframe.endsWith('h') && parseInt(timeframe, 10) >= 4) ||
-      (timeframe.endsWith('m') && parseInt(timeframe, 10) >= 240);
+      (timeframe.endsWith('h') && parseInt(timeframe, 10) >= 2) ||
+      (timeframe.endsWith('m') && parseInt(timeframe, 10) >= 120);
 
     if (isHighTf) return null;
+
+    // Also verify actual candles currently loaded aren't multi-hour bars (guards transition during timeframe switch)
+    if (candles.length >= 2) {
+      const sampleCount = Math.min(candles.length - 1, 10);
+      const avgStep = (candles[candles.length - 1].time - candles[candles.length - 1 - sampleCount].time) / sampleCount;
+      if (avgStep >= 7200) return null;
+    }
 
     // Check if sessions indicator is active
     if (!sessionsActive) return null;
@@ -1096,8 +1107,10 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           if (x1 !== null && x2 !== null && Math.max(x1, x2) < -50) return null;
           if (x1 !== null && x2 !== null && Math.min(x1, x2) > dimensions.width + 50) return null;
 
-          const safeX1 = x1 !== null ? x1 : (x2 !== null ? Math.max(0, x2 - 50) : 0);
-          const safeX2 = x2 !== null ? x2 : (x1 !== null ? Math.min(dimensions.width, x1 + 50) : dimensions.width);
+          const safeX1 = x1 !== null ? x1 : (x2 !== null ? x2 - 40 : null);
+          const safeX2 = x2 !== null ? x2 : (x1 !== null ? x1 + 40 : null);
+          if (safeX1 === null || safeX2 === null) return null;
+
           const boxLeft = Math.min(safeX1, safeX2);
           const boxRight = Math.max(safeX1, safeX2);
           const width = Math.max(4, boxRight - boxLeft);

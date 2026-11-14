@@ -138,20 +138,29 @@ class MarketDataService:
         base_timeframe = timeframe
         need_resample = False
 
-        # Check SQLite persistent cache first if querying a bounded historical range
+        # Check SQLite persistent cache first if querying a bounded historical range or initial load
         if start_time and end_time:
             cached = database.get_cached_candles("EUR/USD", timeframe, start_time, end_time, limit)
-            if cached and len(cached) > 50:
-                # Cache must actually cover the requested span up to near end_time (allowing for weekend gap)
-                tolerance = max(86400 * 3, tf_sec * 5)
-                if cached[-1].time >= (end_time - tolerance):
+            if cached and len(cached) > 30:
+                # Cache must actually cover both the start and end of requested span (allowing for weekend gap)
+                tolerance = max(86400 * 4, tf_sec * 5)
+                covers_start = cached[0].time <= (start_time + tolerance)
+                covers_end = cached[-1].time >= (end_time - tolerance)
+                if covers_start and covers_end:
+                    self.candle_cache[cache_key] = cached
+                    return cached
+        elif not start_time and not end_time and not range_str:
+            cached = database.get_cached_candles("EUR/USD", timeframe, limit=limit)
+            if cached and len(cached) >= 200:
+                tolerance = max(86400 * 4, tf_sec * 5)
+                if cached[-1].time >= (time.time() - tolerance):
                     self.candle_cache[cache_key] = cached
                     return cached
 
         if timeframe in ["1s", "5s", "15s", "30s"]:
             base_timeframe = "1m"
             need_resample = False
-        elif timeframe in ["1m", "5m", "15m", "30m", "1h", "1D", "1d", "1W", "1w", "1M", "1mo"]:
+        elif timeframe in ["1m", "5m", "15m", "30m", "1h", "4h", "1D", "1d", "1W", "1w", "1M", "1mo"]:
             base_timeframe = timeframe
             need_resample = False
         elif tf_sec < 60:

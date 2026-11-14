@@ -50,6 +50,8 @@ interface ChartContainerProps {
   isReplayActive?: boolean;
   timezone?: string;
   onTimezoneChange?: (tz: string) => void;
+  onLoadOlderData?: () => void;
+  isLoadingOlder?: boolean;
 }
 
 export const ChartContainer: React.FC<ChartContainerProps> = ({
@@ -68,6 +70,8 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
   isReplayActive = false,
   timezone = 'UTC',
   onTimezoneChange,
+  onLoadOlderData,
+  isLoadingOlder = false,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -81,6 +85,17 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
   const restoredTfMapRef = useRef<{ [tf: string]: boolean }>({});
   const isReplayActiveRef = useRef(isReplayActive);
   const anchorTimestampRef = useRef(anchorTimestamp);
+  const onLoadOlderDataRef = useRef(onLoadOlderData);
+  const isLoadingOlderRef = useRef(isLoadingOlder);
+  const prevFirstCandleTimeRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    onLoadOlderDataRef.current = onLoadOlderData;
+  }, [onLoadOlderData]);
+
+  useEffect(() => {
+    isLoadingOlderRef.current = isLoadingOlder;
+  }, [isLoadingOlder]);
 
   useEffect(() => {
     isReplayActiveRef.current = isReplayActive;
@@ -462,6 +477,10 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
         try {
           localStorage.setItem(`eurusd_logical_range_${timeframeRef.current}`, JSON.stringify(range));
         } catch {}
+
+        if (range.from < 25 && onLoadOlderDataRef.current && !isLoadingOlderRef.current) {
+          onLoadOlderDataRef.current();
+        }
       }
       updateTransformer();
     });
@@ -720,6 +739,11 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
   useEffect(() => {
     if (!seriesRef.current || candles.length === 0) return;
 
+    const prevFirst = prevFirstCandleTimeRef.current;
+    const isPrependingOlder = prevFirst !== null && candles[0].time < prevFirst;
+    const addedCount = isPrependingOlder ? candles.filter(c => c.time < prevFirst).length : 0;
+    const currentLogicalRange = isPrependingOlder && chartRef.current ? chartRef.current.timeScale().getVisibleLogicalRange() : null;
+
     if (chartType === 'line' || chartType === 'area' || chartType === 'baseline') {
       const lineData = candles.map(c => ({
         time: c.time as unknown as Time,
@@ -736,6 +760,17 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
       }));
       seriesRef.current.setData(barData);
     }
+
+    if (isPrependingOlder && currentLogicalRange && chartRef.current && addedCount > 0) {
+      try {
+        chartRef.current.timeScale().setVisibleLogicalRange({
+          from: currentLogicalRange.from + addedCount,
+          to: currentLogicalRange.to + addedCount,
+        });
+      } catch {}
+    }
+
+    prevFirstCandleTimeRef.current = candles[0].time;
 
     // Restore saved viewport position on initial timeframe boot
     if (!restoredTfMapRef.current[timeframe] && chartRef.current && candles.length > 0) {
@@ -964,6 +999,17 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
       </div>
 
       <div ref={containerRef} className="w-full h-full" />
+
+      {/* Loading older historical data overlay indicator */}
+      {isLoadingOlder && (
+        <div
+          data-testid="loading-older-indicator"
+          className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center space-x-2 px-3 py-1 bg-[#1e222d]/95 border border-[#2a2e39] rounded-full shadow-2xl backdrop-blur-md pointer-events-none text-xs text-[#2962ff] select-none"
+        >
+          <div className="w-3 h-3 border-2 border-[#2962ff] border-t-transparent rounded-full animate-spin" />
+          <span className="font-medium text-[11px] text-gray-200">Loading historical data...</span>
+        </div>
+      )}
 
       {/* Bottom-Right TradingView-Style Timezone Switcher */}
       <div className="absolute bottom-1 right-14 z-20" ref={tzDropdownRef}>
