@@ -241,15 +241,8 @@ export const App: React.FC = () => {
     } catch {}
     return DEFAULT_FAVORITE_TOOLS;
   });
-  const [showFavoritesToolbar, setShowFavoritesToolbar] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem('eurusd_show_fav_toolbar');
-      if (saved !== null) {
-        return JSON.parse(saved);
-      }
-    } catch {}
-    return true;
-  });
+  // Always default to visible whenever favorite tools exist
+  const [showFavoritesToolbar, setShowFavoritesToolbar] = useState<boolean>(true);
 
   useEffect(() => {
     try {
@@ -258,6 +251,11 @@ export const App: React.FC = () => {
   }, [showFavoritesToolbar]);
 
   const handleToggleFavorite = useCallback((tool: DrawingToolType) => {
+    // Star/unstarring any tool always ensures the favorites toolbar is visible and active
+    setShowFavoritesToolbar(true);
+    try {
+      localStorage.setItem('eurusd_show_fav_toolbar', 'true');
+    } catch {}
     setFavoriteTools(prev => {
       const exists = prev.includes(tool);
       const updated = exists ? prev.filter(t => t !== tool) : [...prev, tool];
@@ -1315,7 +1313,6 @@ export const App: React.FC = () => {
                 activeTool={activeTool}
                 onSelectTool={setActiveTool}
                 onToggleFavorite={handleToggleFavorite}
-                onClose={() => setShowFavoritesToolbar(false)}
               />
             )}
 

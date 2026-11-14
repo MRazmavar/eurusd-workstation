@@ -31,15 +31,42 @@ export const FavoritesToolbar: React.FC<FavoritesToolbarProps> = ({
         if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
           const winW = typeof window !== 'undefined' ? window.innerWidth : 1200;
           const winH = typeof window !== 'undefined' ? window.innerHeight : 800;
-          // Ensure toolbar is never off-screen or buried behind bottom sub-panels
-          if (parsed.x >= 10 && parsed.x <= winW - 150 && parsed.y >= 10 && parsed.y <= Math.min(winH - 100, 420)) {
-            return parsed;
-          }
+          // Ensure toolbar is never off-screen
+          const safeX = Math.max(10, Math.min(winW - 150, parsed.x));
+          const safeY = Math.max(10, Math.min(winH - 80, parsed.y));
+          return { x: safeX, y: safeY };
         }
       }
     } catch {}
     return { x: 80, y: 16 };
   });
+
+  const positionRef = useRef(position);
+  useEffect(() => {
+    positionRef.current = position;
+  }, [position]);
+
+  // Window resize failsafe: keep toolbar on screen
+  useEffect(() => {
+    const handleResize = () => {
+      const winW = window.innerWidth;
+      const winH = window.innerHeight;
+      setPosition(prev => {
+        const safeX = Math.max(10, Math.min(winW - 150, prev.x));
+        const safeY = Math.max(10, Math.min(winH - 80, prev.y));
+        if (safeX !== prev.x || safeY !== prev.y) {
+          const clamped = { x: safeX, y: safeY };
+          try {
+            localStorage.setItem('eurusd_fav_toolbar_pos', JSON.stringify(clamped));
+          } catch {}
+          return clamped;
+        }
+        return prev;
+      });
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef<{ mouseX: number; mouseY: number; startX: number; startY: number } | null>(null);
@@ -97,7 +124,7 @@ export const FavoritesToolbar: React.FC<FavoritesToolbarProps> = ({
       setIsDragging(false);
       dragStartRef.current = null;
       try {
-        localStorage.setItem('eurusd_fav_toolbar_pos', JSON.stringify(position));
+        localStorage.setItem('eurusd_fav_toolbar_pos', JSON.stringify(positionRef.current));
       } catch {}
     };
 
@@ -189,22 +216,6 @@ export const FavoritesToolbar: React.FC<FavoritesToolbarProps> = ({
           );
         })}
       </div>
-
-      {onClose && (
-        <>
-          <div className="h-5 w-[1px] bg-[#2a2e39] mx-1" />
-          {/* Close / Hide Button */}
-          <button
-            type="button"
-            data-testid="favorites-toolbar-close-btn"
-            onClick={onClose}
-            className="w-6 h-8 rounded flex items-center justify-center text-gray-500 hover:text-gray-200 hover:bg-[#2a2e39] transition-colors"
-            title="Hide favorites toolbar (click star on left toolbar to reopen)"
-          >
-            <X size={13} />
-          </button>
-        </>
-      )}
     </div>
   );
 };
