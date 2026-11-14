@@ -19,7 +19,7 @@ import {
 import { Candle, ChartType, IndicatorConfig, Quote } from '../types';
 import { CoordinateTransformer } from '../services/DrawingEngine';
 import { IndicatorEngine } from '../services/IndicatorEngine';
-import { Globe } from 'lucide-react';
+import { Globe, ChevronsRight } from 'lucide-react';
 import {
   TIMEZONE_OPTIONS,
   getTimezoneAbbr,
@@ -112,6 +112,9 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
   useEffect(() => {
     timezoneRef.current = timezone;
   }, [timezone]);
+
+  // TradingView-Style Scroll-To-Recent State
+  const [isScrolledBack, setIsScrolledBack] = useState<boolean>(false);
 
   // Close timezone dropdown on outside click
   useEffect(() => {
@@ -326,6 +329,11 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
     updateTransformer();
   }, [updateTransformer]);
 
+  const handleScrollToRecent = useCallback(() => {
+    centerOnLastCandle();
+    setIsScrolledBack(false);
+  }, [centerOnLastCandle]);
+
   const centerOnTimestamp = useCallback((targetTime: number) => {
     if (!chartRef.current || !seriesRef.current) return;
     const chart = chartRef.current;
@@ -480,6 +488,13 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
 
         if (range.from < 25 && onLoadOlderDataRef.current && !isLoadingOlderRef.current) {
           onLoadOlderDataRef.current();
+        }
+
+        const totalBars = candlesRef.current.length;
+        if (totalBars > 0) {
+          const targetIndex = totalBars - 1;
+          const isBack = range.to < targetIndex - 1;
+          setIsScrolledBack(isBack);
         }
       }
       updateTransformer();
@@ -791,6 +806,16 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
       }
     }
 
+    const totalBars = candles.length;
+    if (chartRef.current && totalBars > 0) {
+      try {
+        const range = chartRef.current.timeScale().getVisibleLogicalRange();
+        if (range) {
+          setIsScrolledBack(range.to < totalBars - 2);
+        }
+      } catch {}
+    }
+
     updateTransformer();
   }, [candles]);
 
@@ -1008,6 +1033,39 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
         >
           <div className="w-3 h-3 border-2 border-[#2962ff] border-t-transparent rounded-full animate-spin" />
           <span className="font-medium text-[11px] text-gray-200">Loading historical data...</span>
+        </div>
+      )}
+
+      {/* TradingView-Style "Scroll to the most recent bar" Quick Jump Button */}
+      {isScrolledBack && (
+        <div
+          data-testid="scroll-to-recent-container"
+          className="absolute bottom-9 right-16 z-30 group flex flex-col items-center"
+        >
+          {/* Tooltip Popup: strictly on mouse hover only, matching user requirement */}
+          <div
+            role="tooltip"
+            data-testid="scroll-to-recent-tooltip"
+            className="absolute bottom-full mb-1.5 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex flex-col items-center z-40 select-none"
+          >
+            <div className="bg-[#1e222d] border border-[#2a2e39] text-gray-200 text-[11px] font-sans px-2.5 py-1 rounded shadow-2xl whitespace-nowrap">
+              Scroll to the most recent bar
+            </div>
+            {/* Downward Caret Triangle */}
+            <div className="w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-[#2a2e39]" />
+          </div>
+
+          {/* Quick Jump Button */}
+          <button
+            type="button"
+            data-testid="scroll-to-recent-btn"
+            onClick={handleScrollToRecent}
+            className="w-7 h-7 flex items-center justify-center rounded-md bg-[#1e222d]/95 hover:bg-[#2a2e39] active:bg-[#363a45] text-gray-300 hover:text-white border border-[#2a2e39] hover:border-gray-500 shadow-xl transition-all cursor-pointer"
+            title="Scroll to the most recent bar"
+            aria-label="Scroll to the most recent bar"
+          >
+            <ChevronsRight className="w-4 h-4" />
+          </button>
         </div>
       )}
 
