@@ -15,6 +15,7 @@ export interface SessionConfig {
   id: string;
   name: string;
   shortLabel: string;
+  code: string;
   startHourUtc: number;
   startMinuteUtc: number;
   endHourUtc: number;
@@ -33,13 +34,14 @@ export const FOREX_SESSIONS: SessionConfig[] = [
     id: 'asia_full',
     name: 'Full Asia Session',
     shortLabel: 'Asia Session',
+    code: 'A',
     startHourUtc: 0,
     startMinuteUtc: 0,
     endHourUtc: 8,
     endMinuteUtc: 0,
     color: '#8b5cf6', // purple
-    borderColor: 'rgba(139, 92, 246, 0.45)',
-    fillOpacity: 0.07,
+    borderColor: 'rgba(139, 92, 246, 0.35)',
+    fillOpacity: 0.04,
     badgeYOffset: 8,
     badgeBg: '#1e1b4b',
     badgeBorder: '#8b5cf6',
@@ -48,14 +50,15 @@ export const FOREX_SESSIONS: SessionConfig[] = [
   {
     id: 'shield_area',
     name: 'Shield Area (Asia 1st Hour)',
-    shortLabel: '🛡️ Shield Area',
+    shortLabel: 'Shield Area',
+    code: 'S',
     startHourUtc: 0,
     startMinuteUtc: 0,
     endHourUtc: 1,
     endMinuteUtc: 0,
     color: '#06b6d4', // cyan / shield cyan
-    borderColor: '#06b6d4',
-    fillOpacity: 0.22,
+    borderColor: 'rgba(6, 182, 212, 0.45)',
+    fillOpacity: 0.08,
     badgeYOffset: 32, // positioned neatly below Asia badge
     badgeBg: '#083344',
     badgeBorder: '#06b6d4',
@@ -65,13 +68,14 @@ export const FOREX_SESSIONS: SessionConfig[] = [
     id: 'frankfurt_1h',
     name: 'Frankfurt Open (1h)',
     shortLabel: 'Frankfurt (1h)',
+    code: 'F',
     startHourUtc: 7,
     startMinuteUtc: 0,
     endHourUtc: 8,
     endMinuteUtc: 0,
     color: '#f59e0b', // amber
-    borderColor: '#f59e0b',
-    fillOpacity: 0.16,
+    borderColor: 'rgba(245, 158, 11, 0.45)',
+    fillOpacity: 0.06,
     badgeYOffset: 8,
     badgeBg: '#451a03',
     badgeBorder: '#f59e0b',
@@ -81,13 +85,14 @@ export const FOREX_SESSIONS: SessionConfig[] = [
     id: 'london_1h',
     name: 'London Open (1h)',
     shortLabel: 'London (1h)',
+    code: 'L',
     startHourUtc: 8,
     startMinuteUtc: 0,
     endHourUtc: 9,
     endMinuteUtc: 0,
     color: '#3b82f6', // blue
-    borderColor: '#3b82f6',
-    fillOpacity: 0.16,
+    borderColor: 'rgba(59, 130, 246, 0.45)',
+    fillOpacity: 0.06,
     badgeYOffset: 8,
     badgeBg: '#172554',
     badgeBorder: '#3b82f6',
@@ -97,13 +102,14 @@ export const FOREX_SESSIONS: SessionConfig[] = [
     id: 'ny_1h',
     name: 'New York Open (1st hour)',
     shortLabel: 'NY Open (1h)',
+    code: 'NY',
     startHourUtc: 13,
     startMinuteUtc: 0,
     endHourUtc: 14,
     endMinuteUtc: 0,
     color: '#089981', // green
-    borderColor: '#089981',
-    fillOpacity: 0.18,
+    borderColor: 'rgba(8, 153, 129, 0.45)',
+    fillOpacity: 0.07,
     badgeYOffset: 8,
     badgeBg: '#022c22',
     badgeBorder: '#089981',

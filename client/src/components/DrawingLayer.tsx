@@ -968,14 +968,9 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           // Viewport culling for vertical visibility
           if (boxBottom < -100 || boxTop > dimensions.height + 100) return null;
 
-          // Staggered badge positioning: attached directly to session rectangle
+          // Main window session parameters
           const isShield = block.session.id === 'shield_area';
           const isActive = block.status === 'ACTIVE';
-          const badgeY = boxTop > 46
-            ? (isShield ? boxTop - 46 : boxTop - 24)
-            : (isShield ? boxTop + 24 : boxTop + 4);
-
-          const badgeWidth = isActive ? 185 : (isShield ? 155 : 145);
 
           return (
             <g key={block.key} data-testid={`session-block-${block.session.id}`}>
@@ -986,9 +981,9 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 width={width}
                 height={boxHeight}
                 fill={block.session.color}
-                fillOpacity={isActive ? Math.min(0.28, block.session.fillOpacity * 1.4) : block.session.fillOpacity}
+                fillOpacity={isActive ? Math.min(0.12, block.session.fillOpacity * 1.3) : block.session.fillOpacity}
                 stroke={isActive ? '#10b981' : block.session.borderColor}
-                strokeWidth={isActive ? 2 : 1.5}
+                strokeWidth={isActive ? 1.5 : 1}
                 rx={2}
                 data-testid={`session-rect-${block.session.id}`}
               />
@@ -1138,49 +1133,46 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 </g>
               )}
 
-              {/* Session Top Badge Pill with real-time pip range and live indicator */}
-              {boxLeft > -150 && boxLeft < dimensions.width + 150 && (
+              {/* Session Tag on Main Window (No protruding upper window, low transparency, only first letters) */}
+              {boxLeft > -100 && boxLeft < dimensions.width + 100 && (
                 <g
-                  transform={`translate(${Math.max(10, boxLeft + 6)}, ${badgeY})`}
+                  transform={`translate(${isShield ? boxLeft + 24 : boxLeft + 4}, ${boxTop + 4})`}
                   data-testid={`session-badge-${block.session.id}`}
+                  className="pointer-events-none select-none"
                 >
-                  <title>{`${block.session.name} | Range: ${block.pips}p | High: ${block.high.toFixed(5)} | Low: ${block.low.toFixed(5)} | Status: ${block.status}`}</title>
+                  <title>{`${block.session.name} (${block.session.code}) | Range: ${block.pips}p | High: ${block.high.toFixed(5)} | Low: ${block.low.toFixed(5)}`}</title>
+                  {/* Subtle, low-transparency letter badge directly on the main session box */}
                   <rect
-                    width={badgeWidth}
-                    height={22}
-                    rx={4}
-                    fill={block.session.badgeBg}
-                    stroke={isActive ? '#10b981' : block.session.badgeBorder}
-                    strokeWidth={isActive ? 1.5 : (block.session.id === 'shield_area' ? 1.5 : 1)}
-                    className="shadow-md"
+                    width={block.session.code.length > 1 ? 24 : 16}
+                    height={16}
+                    rx={3}
+                    fill={block.session.color}
+                    fillOpacity={0.2}
+                    stroke={block.session.borderColor}
+                    strokeWidth={0.8}
+                    strokeOpacity={0.6}
                   />
                   <text
-                    x={8}
-                    y={15}
-                    fill={block.session.badgeText}
+                    x={block.session.code.length > 1 ? 12 : 8}
+                    y={11.5}
+                    fill={block.session.color}
                     fontSize={10}
                     fontWeight="bold"
-                    fontFamily="sans-serif"
+                    fontFamily="monospace, system-ui, sans-serif"
+                    textAnchor="middle"
+                    opacity={0.9}
                   >
-                    {block.session.shortLabel}
+                    {block.session.code}
                   </text>
                   {isActive && (
-                    <g transform={`translate(${isShield ? 104 : (block.session.id === 'asia_full' ? 88 : 84)}, 5)`}>
-                      <circle cx={4} cy={6} r={3} fill="#10b981" />
-                      <text x={10} y={9.5} fill="#10b981" fontSize={8.5} fontWeight="bold" fontFamily="sans-serif">LIVE</text>
-                    </g>
+                    <circle
+                      cx={block.session.code.length > 1 ? 20 : 13}
+                      cy={3.5}
+                      r={1.8}
+                      fill="#10b981"
+                      className="animate-pulse"
+                    />
                   )}
-                  <text
-                    x={badgeWidth - 8}
-                    y={15}
-                    fill={isActive ? '#34d399' : '#9ca3af'}
-                    fontSize={9.5}
-                    fontWeight="bold"
-                    fontFamily="monospace"
-                    textAnchor="end"
-                  >
-                    {block.pips > 0 ? `${block.pips}p` : ''}
-                  </text>
                 </g>
               )}
             </g>
