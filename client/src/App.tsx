@@ -1035,7 +1035,7 @@ export const App: React.FC = () => {
   }, [currentSessionRefTime, visibleCandles]);
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#131722] text-[#d1d4dc] overflow-hidden select-none font-sans">
+    <div className="flex flex-col h-full h-[100dvh] max-h-[100dvh] w-full w-screen bg-[#131722] text-[#d1d4dc] overflow-hidden select-none font-sans">
       {/* 1. TOP NAVIGATION BAR */}
       <TopBar
         quote={quote}
@@ -1343,7 +1343,8 @@ export const App: React.FC = () => {
           onClick={() => setMobileActiveTab('chart')}
         >
           <div
-            className="bg-[#131722] border-t border-[#2a2e39] rounded-t-2xl h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-250"
+            className="bg-[#131722] border-t border-[#2a2e39] rounded-t-2xl h-[85vh] h-[85dvh] flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-250"
+            style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 16px)' }}
             onClick={(e) => e.stopPropagation()}
           >
             <RightSidebar
@@ -1376,7 +1377,8 @@ export const App: React.FC = () => {
           onClick={() => setMobileActiveTab('chart')}
         >
           <div
-            className="bg-[#131722] border-t border-[#2a2e39] rounded-t-2xl h-[80vh] flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-250"
+            className="bg-[#131722] border-t border-[#2a2e39] rounded-t-2xl h-[80vh] h-[80dvh] flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-250"
+            style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 16px)' }}
             onClick={(e) => e.stopPropagation()}
           >
             <BottomPanel
@@ -1574,7 +1576,8 @@ export const App: React.FC = () => {
             showToast('Switched back to Mobile Mode');
           }}
           data-testid="floating-switch-to-mobile-btn"
-          className="fixed bottom-6 right-4 z-50 flex items-center space-x-1.5 px-3.5 py-2 rounded-full bg-[#2962ff] hover:bg-[#1f4cdb] text-white text-xs font-bold shadow-2xl border border-white/30 active:scale-95 transition-all animate-in fade-in slide-in-from-bottom-3 duration-200"
+          style={{ bottom: 'max(env(safe-area-inset-bottom, 0px), 20px)' }}
+          className="fixed right-4 z-50 flex items-center space-x-1.5 px-3.5 py-2 rounded-full bg-[#2962ff] hover:bg-[#1f4cdb] text-white text-xs font-bold shadow-2xl border border-white/30 active:scale-95 transition-all animate-in fade-in slide-in-from-bottom-3 duration-200"
           title="Return to Mobile Mode"
         >
           <Smartphone size={14} className="animate-pulse" />

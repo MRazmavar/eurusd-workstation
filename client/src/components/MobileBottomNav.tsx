@@ -33,7 +33,12 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   return (
     <nav
       data-testid="mobile-bottom-nav"
-      className="h-14 bg-[#131722] border-t border-[#2a2e39] flex items-center justify-around px-1 z-30 select-none text-[10px]"
+      className="bg-[#131722] border-t border-[#2a2e39] flex items-center justify-around px-1 z-30 select-none text-[10px] flex-shrink-0 shadow-[0_-4px_16px_rgba(0,0,0,0.5)]"
+      style={{
+        paddingTop: '6px',
+        paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 12px)',
+        minHeight: 'calc(3.5rem + env(safe-area-inset-bottom, 0px))',
+      }}
     >
       {/* 1. Chart Tab */}
       <button

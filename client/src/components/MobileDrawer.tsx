@@ -110,7 +110,10 @@ export const MobileDrawer: React.FC<MobileDrawerProps> = ({
         </div>
 
         {/* Scrollable Body */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div
+          className="flex-1 overflow-y-auto p-4 space-y-4"
+          style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 28px)' }}
+        >
           {/* 1. Device Mode Recognition & Switcher */}
           <div className="bg-[#1e222d] p-3 rounded-lg border border-[#2a2e39] space-y-2.5">
             <div className="flex items-center justify-between">

@@ -11,18 +11,40 @@
     --bull-green: #089981;
     --bear-red: #f23645;
     --accent-blue: #2962ff;
+    --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-area-top: env(safe-area-inset-top, 0px);
   }
 
-  body {
+  html,
+  body,
+  #root {
+    height: 100%;
+    height: 100dvh;
+    min-height: 100dvh;
+    max-height: 100dvh;
+    width: 100%;
     margin: 0;
     padding: 0;
+    overflow: hidden;
+    position: fixed;
+    inset: 0;
     background-color: #131722;
     color: #d1d4dc;
     font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif;
-    overflow: hidden;
     user-select: none;
     -webkit-font-smoothing: antialiased;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: none;
   }
+}
+
+/* Safe-area utility classes for mobile browsers */
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 12px);
+}
+
+.pt-safe {
+  padding-top: max(env(safe-area-inset-top, 0px), 8px);
 }
 
 /* Custom TradingView-style dark scrollbars */

@@ -219,7 +219,10 @@ export const MobileToolsSheet: React.FC<MobileToolsSheetProps> = ({
         </div>
 
         {/* Scrollable Categories List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div
+          className="flex-1 overflow-y-auto p-4 space-y-4"
+          style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 28px)' }}
+        >
           {categories.map((cat) => (
             <div key={cat.title} className="space-y-1.5">
               <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
