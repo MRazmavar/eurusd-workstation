@@ -1120,7 +1120,7 @@ export const App: React.FC = () => {
 
           {/* Main Candlestick Chart */}
           <div
-            className="flex-1 relative"
+            className="flex-1 min-h-0 relative"
             onMouseMove={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
               setChartMousePos({
@@ -1209,6 +1209,7 @@ export const App: React.FC = () => {
               timezone={settings.timezone}
               replayActive={replayActive}
               currentReplayTimestamp={replayEngine.getCurrentCandle()?.time || null}
+              isMobile={isMobile}
             />
 
             {/* Draggable Floating Favorite Tools Toolbar directly on Chart */}

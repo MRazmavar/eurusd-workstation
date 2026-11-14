@@ -294,6 +294,7 @@ export const MobileDrawer: React.FC<MobileDrawerProps> = ({
                 <span className="font-medium">Bar Replay Engine</span>
               </div>
               <button
+                data-testid="mobile-drawer-replay-toggle"
                 onClick={onToggleReplay}
                 className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold transition-colors ${
                   replayActive

@@ -29,6 +29,7 @@ interface NewsOverlayProps {
   timezone: string;
   replayActive?: boolean;
   currentReplayTimestamp?: number | null;
+  isMobile?: boolean;
 }
 
 interface ClusteredNewsEvents {
@@ -47,6 +48,7 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
   timezone,
   replayActive,
   currentReplayTimestamp,
+  isMobile = false,
 }) => {
   const [hoveredClusterKey, setHoveredClusterKey] = useState<string | null>(null);
   const [pinnedClusterKey, setPinnedClusterKey] = useState<string | null>(null);
@@ -142,7 +144,14 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
       </svg>
 
       {/* 2. HTML Layer for Forex Factory Event Badges along bottom axis */}
-      <div className="absolute bottom-6 left-0 right-14 h-9 pointer-events-none">
+      <div
+        data-testid="news-badges-container"
+        className={`absolute left-0 right-14 h-9 pointer-events-none transition-all duration-200 ${
+          replayActive
+            ? 'bottom-12'
+            : isMobile ? 'bottom-7' : 'bottom-6'
+        }`}
+      >
         {clusteredEvents.map((cluster) => {
           const x = transformer.timeToX(cluster.time);
           if (x === null || x < -30 || x > 2500) return null;
@@ -215,6 +224,9 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
 
         // Keep card inside bounds
         const safeX = Math.max(160, Math.min(window.innerWidth - 200, x));
+        const popoverBottom = replayActive
+          ? (isMobile ? '82px' : '88px')
+          : (isMobile ? '56px' : '50px');
 
         return (
           <div
@@ -222,10 +234,10 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
             data-testid="news-card-popover"
             style={{
               left: `${safeX}px`,
-              bottom: '50px',
+              bottom: popoverBottom,
               transform: 'translateX(-50%)',
             }}
-            className="absolute pointer-events-auto z-40 w-80 bg-[#1e222d] border border-[#2a2e39] rounded-xl shadow-2xl overflow-hidden font-sans text-xs animate-in fade-in zoom-in-95 duration-150"
+            className="absolute pointer-events-auto z-40 w-80 max-w-[calc(100vw-32px)] bg-[#1e222d] border border-[#2a2e39] rounded-xl shadow-2xl overflow-hidden font-sans text-xs animate-in fade-in zoom-in-95 duration-150"
           >
             {/* Header Banner */}
             <div
