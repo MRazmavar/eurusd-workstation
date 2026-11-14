@@ -63,33 +63,6 @@ const DEFAULT_INDICATORS: IndicatorConfig[] = [
       showHighLow: 1,
     },
   },
-  {
-    id: 'ind_sma20',
-    type: 'SMA',
-    name: 'SMA (20)',
-    color: '#2962ff',
-    visible: true,
-    isOverlay: true,
-    params: { period: 20 },
-  },
-  {
-    id: 'ind_ema50',
-    type: 'EMA',
-    name: 'EMA (50)',
-    color: '#ff9800',
-    visible: true,
-    isOverlay: true,
-    params: { period: 50 },
-  },
-  {
-    id: 'ind_rsi',
-    type: 'RSI',
-    name: 'RSI (14)',
-    color: '#ab47bc',
-    visible: true,
-    isOverlay: false,
-    params: { period: 14 },
-  },
 ];
 
 export const App: React.FC = () => {
@@ -132,12 +105,47 @@ export const App: React.FC = () => {
   const [chartMousePos, setChartMousePos] = useState<{ x: number; y: number } | null>(null);
   const [hoveredCandle, setHoveredCandle] = useState<Candle | null>(null);
 
-  // Indicators State (with Persistence)
+  // Indicators State (with Persistence: only Sessions auto-activates on open, unless turned off)
   const [indicators, setIndicators] = useState<IndicatorConfig[]>(() => {
     try {
+      const MIGRATION_KEY = 'eurusd_indicators_cleaned_v2';
+      const isCleaned = localStorage.getItem(MIGRATION_KEY);
       const saved = localStorage.getItem('eurusd_saved_indicators');
+
+      if (!isCleaned) {
+        localStorage.setItem(MIGRATION_KEY, 'true');
+        if (saved) {
+          const parsed: IndicatorConfig[] = JSON.parse(saved);
+          const sessionsItem = parsed.find(i => i.type === 'SESSIONS');
+          // Preserve user preference for sessions (defaulting to true on open)
+          const sessionsVisible = sessionsItem !== undefined ? sessionsItem.visible : true;
+
+          const cleaned: IndicatorConfig[] = [
+            {
+              ...(sessionsItem || DEFAULT_INDICATORS[0]),
+              visible: sessionsVisible,
+            },
+          ];
+
+          // Preserve any custom user-added indicators, but exclude legacy auto-activated defaults (SMA, EMA, RSI)
+          for (const ind of parsed) {
+            if (ind.type === 'SESSIONS') continue;
+            if (['ind_sma20', 'ind_ema50', 'ind_rsi'].includes(ind.id)) {
+              continue; // Legacy default: do NOT auto-activate
+            }
+            cleaned.push(ind);
+          }
+
+          localStorage.setItem('eurusd_saved_indicators', JSON.stringify(cleaned));
+          return cleaned;
+        } else {
+          localStorage.setItem('eurusd_saved_indicators', JSON.stringify(DEFAULT_INDICATORS));
+          return DEFAULT_INDICATORS;
+        }
+      }
+
       if (saved) {
-        const parsed = JSON.parse(saved);
+        const parsed: IndicatorConfig[] = JSON.parse(saved);
         if (!parsed.some((i: IndicatorConfig) => i.type === 'SESSIONS')) {
           parsed.unshift(DEFAULT_INDICATORS[0]);
         }
@@ -1035,7 +1043,7 @@ export const App: React.FC = () => {
         onOpenValidation={() => setIsValidationModalOpen(true)}
         onResetChart={() => chartHelpersRef.current?.resetScale()}
         onFitData={() => chartHelpersRef.current?.fitContent()}
-        activeIndicatorsCount={indicators.filter(i => i.visible).length}
+        activeIndicatorsCount={indicators.filter(i => i.visible && i.type !== 'SESSIONS').length}
         balance={currentBalance}
         equity={currentEquity}
         onOpenBalanceModal={() => setIsBalanceModalOpen(true)}
@@ -1440,7 +1448,7 @@ export const App: React.FC = () => {
         equity={currentEquity}
         onOpenBalanceModal={() => setIsBalanceModalOpen(true)}
         onOpenIndicators={() => setIsIndicatorsModalOpen(true)}
-        activeIndicatorsCount={indicators.filter(i => i.visible).length}
+        activeIndicatorsCount={indicators.filter(i => i.visible && i.type !== 'SESSIONS').length}
         sessionsIndicatorActive={indicators.find(i => i.type === 'SESSIONS')?.visible ?? true}
         activeSessionLabel={activeSessionSummary?.session.shortLabel}
         onToggleSessionsIndicator={handleToggleSessions}

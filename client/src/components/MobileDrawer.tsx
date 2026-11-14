@@ -241,6 +241,7 @@ export const MobileDrawer: React.FC<MobileDrawerProps> = ({
               </div>
               <div className="flex items-center space-x-1.5">
                 <button
+                  data-testid="mobile-drawer-sessions-toggle"
                   onClick={onToggleSessionsIndicator}
                   className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold transition-colors ${
                     sessionsIndicatorActive
