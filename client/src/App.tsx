@@ -45,7 +45,6 @@ import { DEFAULT_FAVORITE_TOOLS } from './utils/drawingTools';
 import { generateEconomicNewsEvents } from './utils/economicNews';
 import { getSessionStatusesForTime } from './utils/sessions';
 import { DraggableTradeSetup, ReplayMode, BacktestSession, EconomicNewsEvent } from './types';
-import { Smartphone } from 'lucide-react';
 
 const DEFAULT_INDICATORS: IndicatorConfig[] = [
   {
@@ -1568,22 +1567,7 @@ export const App: React.FC = () => {
         }}
       />
 
-      {/* Floating Return to Mobile Mode button (Always accessible when viewing Desktop mode on mobile/tablet/touch device) */}
-      {!isMobile && (viewMode === 'desktop' || screenWidth < 1024) && (
-        <button
-          onClick={() => {
-            setViewMode('mobile');
-            showToast('Switched back to Mobile Mode');
-          }}
-          data-testid="floating-switch-to-mobile-btn"
-          style={{ bottom: 'max(env(safe-area-inset-bottom, 0px), 20px)' }}
-          className="fixed right-4 z-50 flex items-center space-x-1.5 px-3.5 py-2 rounded-full bg-[#2962ff] hover:bg-[#1f4cdb] text-white text-xs font-bold shadow-2xl border border-white/30 active:scale-95 transition-all animate-in fade-in slide-in-from-bottom-3 duration-200"
-          title="Return to Mobile Mode"
-        >
-          <Smartphone size={14} className="animate-pulse" />
-          <span>Switch to Mobile</span>
-        </button>
-      )}
+
     </div>
   );
 };
