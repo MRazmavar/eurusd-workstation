@@ -303,15 +303,28 @@ export const TopBar: React.FC<TopBarProps> = ({
   }
 
   return (
-    <div className="h-11 bg-[#131722] border-b border-[#2a2e39] flex items-center justify-between px-2 text-xs select-none z-30">
+    <div className="h-11 bg-[#131722] border-b border-[#2a2e39] flex items-center justify-between px-2 text-xs select-none z-30 overflow-x-auto no-scrollbar">
       {/* Left: Symbol, Price, Timeframes, Chart Type */}
-      <div className="flex items-center space-x-1.5 h-full">
+      <div className="flex items-center space-x-1.5 h-full flex-shrink-0">
         {/* Symbol badge */}
-        <div className="flex items-center space-x-1.5 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-white font-bold cursor-pointer hover:border-[#363c4e]">
+        <div className="flex items-center space-x-1.5 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] text-white font-bold cursor-pointer hover:border-[#363c4e] flex-shrink-0">
           <span className="text-[#2962ff] text-sm">●</span>
           <span className="tracking-wide">EUR/USD</span>
-          <span className="text-[10px] text-gray-400 font-normal">Euro / US Dollar</span>
+          <span className="text-[10px] text-gray-400 font-normal hidden sm:inline">Euro / US Dollar</span>
         </div>
+
+        {/* Quick Return to Mobile Mode Button (Always visible right at the front on Desktop view) */}
+        {onToggleMode && (
+          <button
+            onClick={onToggleMode}
+            data-testid="topbar-desktop-return-mobile-btn"
+            className="flex items-center space-x-1 px-2.5 py-1 rounded-md bg-[#2962ff] hover:bg-[#1f4cdb] text-white font-bold text-[11px] shadow-sm transition-all flex-shrink-0 active:scale-95"
+            title="Switch back to Mobile Mode"
+          >
+            <Smartphone size={12} className="text-white" />
+            <span>Mobile Mode</span>
+          </button>
+        )}
 
         {/* Live Price & Spread */}
         {quote && (
@@ -709,12 +722,12 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             onClick={onToggleMode}
             data-testid="topbar-mode-toggle"
-            className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] hover:border-[#2962ff] text-gray-300 hover:text-white transition-colors"
+            className="flex items-center space-x-1 px-2 py-1 rounded bg-[#1e222d] border border-[#2a2e39] hover:border-[#2962ff] text-gray-300 hover:text-white transition-colors flex-shrink-0"
             title={`Display Mode: ${viewMode?.toUpperCase() || 'AUTO'} (Click to switch to Mobile view)`}
           >
-            <Monitor size={13} className="text-[#2962ff]" />
+            <Smartphone size={13} className="text-[#2962ff]" />
             <span className="text-[11px] font-medium hidden md:inline">
-              {viewMode === 'auto' ? 'Auto (Desktop)' : 'Desktop'}
+              Switch to Mobile
             </span>
           </button>
         )}

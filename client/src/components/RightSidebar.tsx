@@ -69,7 +69,12 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   onCloseMobile,
   initialTab = 'order',
 }) => {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth < 1024;
+    }
+    return false;
+  });
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
 
   const effectiveRefTime = currentReplayCandleTime ?? (
