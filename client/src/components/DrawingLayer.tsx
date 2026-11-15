@@ -20,6 +20,7 @@ import { Check, X as CloseIcon } from 'lucide-react';
 import { computeSessionBlocks } from '../utils/sessions';
 import { formatTimeInTimezone, formatBadgeTimeInTimezone } from '../utils/timezone';
 import { DEFAULT_FIB_LEVELS, getDefaultFibLevels, formatFibLevel } from '../utils/fibonacci';
+import { PositionToolService } from '../services/PositionToolService';
 
 export interface MagnetSnapInfo {
   isSnapped: boolean;
@@ -38,7 +39,7 @@ interface DrawingLayerProps {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onAdd: (d: DrawingObject) => void;
-  onUpdate: (d: DrawingObject, persist?: boolean) => void;
+  onUpdate: (d: DrawingObject, persist?: boolean, pushUndo?: boolean) => void;
   onDelete: (id: string) => void;
   onResetTool: () => void;
   magnetMode: MagnetMode;
@@ -119,18 +120,21 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   // Crosshair & Magnet state
   const [dimensions, setDimensions] = useState<{ width: number; height: number }>({ width: 1000, height: 600 });
   const [isCtrlPressed, setIsCtrlPressed] = useState<boolean>(false);
+  const isCtrlPressedRef = useRef<boolean>(false);
   const [activeCrosshair, setActiveCrosshair] = useState<MagnetSnapInfo | null>(null);
 
   // Drawing state
   const [inProgressDrawing, setInProgressDrawing] = useState<DrawingObject | null>(null);
   const [dragState, setDragState] = useState<{
     drawingId: string;
+    drawing?: DrawingObject;
     pointIndex?: number;
     startMouse: ScreenPoint;
     initialPoints: Point[];
     initialLogicals?: number[];
     startLogical?: number;
     startPrice?: number;
+    isClone?: boolean;
   } | null>(null);
 
   // Dragging interactive trade setup lines ('entry' | 'sl' | 'tp' | 'body' | 'start' | 'end')
@@ -185,15 +189,18 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Control' || e.key === 'Meta') {
         setIsCtrlPressed(true);
+        isCtrlPressedRef.current = true;
       }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.key === 'Control' || e.key === 'Meta') {
         setIsCtrlPressed(false);
+        isCtrlPressedRef.current = false;
       }
     };
     const handleBlur = () => {
       setIsCtrlPressed(false);
+      isCtrlPressedRef.current = false;
     };
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
@@ -212,6 +219,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   const drawingsRef = useRef<DrawingObject[]>(drawings);
   const activeSetupRef = useRef<DraggableTradeSetup | null | undefined>(activeSetup);
   const transformerRef = useRef<CoordinateTransformer>(transformer);
+  const latestDraggedDrawingRef = useRef<DrawingObject | null>(null);
 
   useEffect(() => {
     dragStateRef.current = dragState;
@@ -523,12 +531,13 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
       // 3. Dragging Drawing Anchor Handle or Entire Object
       const currentDrag = dragStateRef.current;
       if (currentDrag) {
-        const target = drawingsRef.current.find(d => d.id === currentDrag.drawingId);
+        const target = drawingsRef.current.find(d => d.id === currentDrag.drawingId) || currentDrag.drawing;
         if (!target || target.locked) return;
 
         if (currentDrag.pointIndex !== undefined) {
           // Dragging specific anchor point (rotate/resize)
           const updatedPts = [...target.points];
+          let updatedType = target.type;
           if (target.type === 'long_position' || target.type === 'short_position') {
             const pIdx = currentDrag.pointIndex;
             const initPts = currentDrag.initialPoints;
@@ -560,13 +569,14 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 updatedPts[3] = { ...updatedPts[3], price: mouse.price };
               }
             } else if (pIdx === 1) {
-              // Handle 1: Stop Loss Center Handle. Moves Stop Loss price.
+              // Handle 1: Stop Loss Handle (midX, slY). Moves Stop Loss price ONLY.
               // Auto-flips between Long Position and Short Position if SL crosses Entry!
               if (updatedPts[1] && updatedPts[0]) {
                 const entryPrice = updatedPts[0].price;
                 const newSl = mouse.price;
                 if (target.type === 'long_position' && newSl > entryPrice + 0.00002) {
                   target.type = 'short_position';
+                  updatedType = 'short_position';
                   const tpDist = updatedPts[2] ? Math.abs(updatedPts[2].price - entryPrice) : 0.00150;
                   updatedPts[1] = { ...updatedPts[1], price: newSl };
                   if (updatedPts[2]) {
@@ -574,6 +584,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                   }
                 } else if (target.type === 'short_position' && newSl < entryPrice - 0.00002) {
                   target.type = 'long_position';
+                  updatedType = 'long_position';
                   const tpDist = updatedPts[2] ? Math.abs(entryPrice - updatedPts[2].price) : 0.00150;
                   updatedPts[1] = { ...updatedPts[1], price: newSl };
                   if (updatedPts[2]) {
@@ -584,24 +595,22 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 }
               }
             } else if (pIdx === 2) {
-              // Handle 2: Take Profit Center Handle. Moves Take Profit price ONLY. SL frozen!
+              // Handle 2: Take Profit Handle (midX, tpY). Moves Take Profit price ONLY. SL frozen!
               if (updatedPts[2]) {
                 updatedPts[2] = { ...updatedPts[2], price: mouse.price };
               }
             } else if (pIdx === 3) {
-              // Handle 3: Middle-Right Duration Handle.
+              // Handle 3: Right Boundary Handle (maxX, entryY).
               // Horizontally: stretches or shrinks width to mouse.time in any direction.
               // Vertically: stays locked on the entry price line!
               updatedPts[3] = { time: mouse.time, price: target.points[0].price };
             } else if (pIdx === 4) {
               // Handle 4: Top-Right Corner.
-              // Horizontally: stretches width to mouse.time.
-              // Vertically: adjusts top level to mouse.price.
               updatedPts[3] = { ...updatedPts[3], time: mouse.time };
               const isLong = target.type === 'long_position';
               if (!isLong && mouse.price < updatedPts[0].price - 0.00002) {
-                // Short position top SL dragged below entry -> flip to Long
                 target.type = 'long_position';
+                updatedType = 'long_position';
                 const tpDist = updatedPts[2] ? Math.abs(updatedPts[0].price - updatedPts[2].price) : 0.00150;
                 updatedPts[1] = { ...updatedPts[1], price: mouse.price };
                 if (updatedPts[2]) {
@@ -615,13 +624,11 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
               }
             } else if (pIdx === 5) {
               // Handle 5: Bottom-Right Corner.
-              // Horizontally: stretches width to mouse.time.
-              // Vertically: adjusts bottom level to mouse.price.
               updatedPts[3] = { ...updatedPts[3], time: mouse.time };
               const isLong = target.type === 'long_position';
               if (isLong && mouse.price > updatedPts[0].price + 0.00002) {
-                // Long position bottom SL dragged above entry -> flip to Short
                 target.type = 'short_position';
+                updatedType = 'short_position';
                 const tpDist = updatedPts[2] ? Math.abs(updatedPts[2].price - updatedPts[0].price) : 0.00150;
                 updatedPts[1] = { ...updatedPts[1], price: mouse.price };
                 if (updatedPts[2]) {
@@ -632,6 +639,24 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 if (updatedPts[bottomIdx]) {
                   updatedPts[bottomIdx] = { ...updatedPts[bottomIdx], price: mouse.price };
                 }
+              }
+            } else if (pIdx === 6) {
+              // Handle 6: Left Boundary Handle (minX, (slY + tpY)/2).
+              // Stretches or shrinks start time to mouse.time without altering price!
+              updatedPts[0] = { time: mouse.time, price: updatedPts[0].price };
+            } else if (pIdx === 7) {
+              // Handle 7: Center Entry Handle (midX, entryY).
+              // Translates entry price vertically and shifts bracket together.
+              const deltaPrice = Number((mouse.price - initPts[0].price).toFixed(5));
+              updatedPts[0] = { ...updatedPts[0], price: mouse.price };
+              if (updatedPts[1] && initPts[1]) {
+                updatedPts[1] = { ...updatedPts[1], price: Number((initPts[1].price + deltaPrice).toFixed(5)) };
+              }
+              if (updatedPts[2] && initPts[2]) {
+                updatedPts[2] = { ...updatedPts[2], price: Number((initPts[2].price + deltaPrice).toFixed(5)) };
+              }
+              if (updatedPts[3] && initPts[3]) {
+                updatedPts[3] = { ...updatedPts[3], price: mouse.price };
               }
             }
 
@@ -644,7 +669,11 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           } else {
             updatedPts[currentDrag.pointIndex] = { time: mouse.time, price: mouse.price };
           }
-          onUpdate({ ...target, points: updatedPts, updated_at: Date.now() }, false);
+          const updatedDrawing = { ...target, type: updatedType, points: updatedPts, updated_at: Date.now() };
+          latestDraggedDrawingRef.current = updatedDrawing;
+          const dIdx = drawingsRef.current.findIndex(d => d.id === target.id);
+          if (dIdx !== -1) drawingsRef.current[dIdx] = updatedDrawing;
+          onUpdate(updatedDrawing, false);
         } else {
           // Dragging entire body: preserve exact bar distances and price differences
           const currentTransformer = transformerRef.current;
@@ -673,7 +702,11 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
               return { time: targetTime, price: targetPrice };
             });
 
-            onUpdate({ ...target, points: updatedPts, updated_at: Date.now() }, false);
+            const updatedDrawing = { ...target, points: updatedPts, updated_at: Date.now() };
+            latestDraggedDrawingRef.current = updatedDrawing;
+            const dIdx = drawingsRef.current.findIndex(d => d.id === target.id);
+            if (dIdx !== -1) drawingsRef.current[dIdx] = updatedDrawing;
+            onUpdate(updatedDrawing, false);
           } else {
             const startT = currentTransformer.xToTime(currentDrag.startMouse.x);
             const startP = currentTransformer.yToPrice(currentDrag.startMouse.y);
@@ -684,7 +717,11 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 time: pt.time + dt,
                 price: Number((pt.price + dp).toFixed(5)),
               }));
-              onUpdate({ ...target, points: updatedPts, updated_at: Date.now() }, false);
+              const updatedDrawing = { ...target, points: updatedPts, updated_at: Date.now() };
+              latestDraggedDrawingRef.current = updatedDrawing;
+              const dIdx = drawingsRef.current.findIndex(d => d.id === target.id);
+              if (dIdx !== -1) drawingsRef.current[dIdx] = updatedDrawing;
+              onUpdate(updatedDrawing, false);
             }
           }
         }
@@ -693,10 +730,12 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
 
     const handleWindowMouseUp = () => {
       if (dragStateRef.current) {
-        const target = drawingsRef.current.find(d => d.id === dragStateRef.current?.drawingId);
+        const isClone = dragStateRef.current.isClone;
+        const target = latestDraggedDrawingRef.current || drawingsRef.current.find(d => d.id === dragStateRef.current?.drawingId) || dragStateRef.current?.drawing;
         if (target) {
-          onUpdate(target, true);
+          onUpdate(target, true, !isClone);
         }
+        latestDraggedDrawingRef.current = null;
         setDragState(null);
       }
       if (draggingSetupLineRef.current) {
@@ -722,8 +761,18 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
       handleWindowMouseUp();
     };
 
+    const handleWindowPointerMove = (e: PointerEvent) => {
+      handleWindowMouseMove(e as any);
+    };
+    const handleWindowPointerUp = () => {
+      handleWindowMouseUp();
+    };
+
     window.addEventListener('mousemove', handleWindowMouseMove);
     window.addEventListener('mouseup', handleWindowMouseUp);
+    window.addEventListener('pointermove', handleWindowPointerMove);
+    window.addEventListener('pointerup', handleWindowPointerUp);
+    window.addEventListener('pointercancel', handleWindowPointerUp);
     window.addEventListener('touchmove', handleWindowTouchMove, { passive: false });
     window.addEventListener('touchend', handleWindowTouchEnd);
     window.addEventListener('touchcancel', handleWindowTouchEnd);
@@ -731,6 +780,9 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     return () => {
       window.removeEventListener('mousemove', handleWindowMouseMove);
       window.removeEventListener('mouseup', handleWindowMouseUp);
+      window.removeEventListener('pointermove', handleWindowPointerMove);
+      window.removeEventListener('pointerup', handleWindowPointerUp);
+      window.removeEventListener('pointercancel', handleWindowPointerUp);
       window.removeEventListener('touchmove', handleWindowTouchMove);
       window.removeEventListener('touchend', handleWindowTouchEnd);
       window.removeEventListener('touchcancel', handleWindowTouchEnd);
@@ -801,10 +853,26 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
 
     // 3. Selection / Object Move when cursor active
     if (!isDrawingToolActive) {
-      const hit = DrawingEngine.hitTest({ x: mouse.x, y: mouse.y }, drawings, transformer, 12, selectedId);
+      const hit = DrawingEngine.hitTest({ x: mouse.x, y: mouse.y }, drawings, transformer, isMobile ? 24 : 14, selectedId);
       if (hit) {
-        onSelect(hit.drawing.id);
         if (!hit.drawing.locked) {
+          // TradingView Ctrl + Mouse Drag to Clone:
+          // Holding Ctrl/Cmd and dragging an existing drawing body or handle creates an identical clone.
+          const isClone = (e.ctrlKey || e.metaKey || isCtrlPressed || isCtrlPressedRef.current);
+          let targetDrawing = hit.drawing;
+          if (isClone) {
+            const cloneId = `draw_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+            const clonedDrawing: DrawingObject = {
+              ...JSON.parse(JSON.stringify(hit.drawing)),
+              id: cloneId,
+              created_at: Date.now(),
+              updated_at: Date.now(),
+            };
+            onAdd(clonedDrawing);
+            targetDrawing = clonedDrawing;
+          }
+
+          onSelect(targetDrawing.id);
           const rect = svgRef.current?.getBoundingClientRect();
           const rawX = e.clientX - (rect?.left || 0);
           const rawY = e.clientY - (rect?.top || 0);
@@ -812,17 +880,21 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           const currentTransformer = transformerRef.current;
           const startLog = currentTransformer.xToLogical ? currentTransformer.xToLogical(rawX) : null;
           const startP = currentTransformer.yToPrice ? currentTransformer.yToPrice(rawY) : null;
-          const initLogs = hit.drawing.points.map(pt => currentTransformer.timeToLogical ? currentTransformer.timeToLogical(pt.time) ?? 0 : 0);
+          const initLogs = targetDrawing.points.map(pt => currentTransformer.timeToLogical ? currentTransformer.timeToLogical(pt.time) ?? 0 : 0);
 
           setDragState({
-            drawingId: hit.drawing.id,
-            pointIndex: hit.pointIndex,
+            drawingId: targetDrawing.id,
+            drawing: targetDrawing,
+            isClone: isClone ? true : false,
+            pointIndex: isClone ? undefined : hit.pointIndex,
             startMouse: { x: rawX, y: rawY },
-            initialPoints: [...hit.drawing.points],
+            initialPoints: [...targetDrawing.points],
             initialLogicals: initLogs,
             startLogical: startLog ?? 0,
             startPrice: startP ?? 0,
           });
+        } else {
+          onSelect(hit.drawing.id);
         }
       } else {
         onSelect(null);
@@ -2288,13 +2360,63 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             onOpenPropertiesModal?.(d);
           }
         }}
-        onMouseDown={(e) => {
+        style={{ touchAction: 'none' }}
+        onPointerDown={(e) => {
           if (!isDrawingToolActive && !isTemp && !d.locked) {
+            if (e.pointerType === 'mouse' && e.button !== 0) return;
             e.stopPropagation();
-            onSelect(d.id);
+            try {
+              (e.currentTarget as Element).setPointerCapture(e.pointerId);
+            } catch (_) {}
+
+            const isClone = (e.ctrlKey || e.metaKey || isCtrlPressed || isCtrlPressedRef.current);
+            let targetDrawing = d;
+            if (isClone) {
+              const cloneId = `draw_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+              const clonedDrawing: DrawingObject = {
+                ...JSON.parse(JSON.stringify(d)),
+                id: cloneId,
+                created_at: Date.now(),
+                updated_at: Date.now(),
+              };
+              onAdd(clonedDrawing);
+              targetDrawing = clonedDrawing;
+            }
+
+            onSelect(targetDrawing.id);
             const rect = svgRef.current?.getBoundingClientRect();
             const rawX = e.clientX - (rect?.left || 0);
             const rawY = e.clientY - (rect?.top || 0);
+
+            const currentTransformer = transformerRef.current;
+            const startLog = currentTransformer.xToLogical ? currentTransformer.xToLogical(rawX) : null;
+            const startP = currentTransformer.yToPrice ? currentTransformer.yToPrice(rawY) : null;
+            const initLogs = targetDrawing.points.map(pt => currentTransformer.timeToLogical ? currentTransformer.timeToLogical(pt.time) ?? 0 : 0);
+
+            setDragState({
+              drawingId: targetDrawing.id,
+              drawing: targetDrawing,
+              isClone: isClone ? true : false,
+              startMouse: { x: rawX, y: rawY },
+              initialPoints: [...targetDrawing.points],
+              initialLogicals: initLogs,
+              startLogical: startLog ?? 0,
+              startPrice: startP ?? 0,
+            });
+          }
+        }}
+        onPointerUp={(e) => {
+          try {
+            (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+          } catch (_) {}
+        }}
+        onTouchStart={(e) => {
+          if (!isDrawingToolActive && !isTemp && !d.locked && e.touches.length === 1) {
+            e.stopPropagation();
+            onSelect(d.id);
+            const rect = svgRef.current?.getBoundingClientRect();
+            const rawX = e.touches[0].clientX - (rect?.left || 0);
+            const rawY = e.touches[0].clientY - (rect?.top || 0);
 
             const currentTransformer = transformerRef.current;
             const startLog = currentTransformer.xToLogical ? currentTransformer.xToLogical(rawX) : null;
@@ -2303,8 +2425,49 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
 
             setDragState({
               drawingId: d.id,
+              drawing: d,
               startMouse: { x: rawX, y: rawY },
               initialPoints: [...d.points],
+              initialLogicals: initLogs,
+              startLogical: startLog ?? 0,
+              startPrice: startP ?? 0,
+            });
+          }
+        }}
+        onMouseDown={(e) => {
+          if (!isDrawingToolActive && !isTemp && !d.locked) {
+            e.stopPropagation();
+            if (dragStateRef.current) return;
+            const isClone = (e.ctrlKey || e.metaKey || isCtrlPressed || isCtrlPressedRef.current);
+            let targetDrawing = d;
+            if (isClone) {
+              const cloneId = `draw_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+              const clonedDrawing: DrawingObject = {
+                ...JSON.parse(JSON.stringify(d)),
+                id: cloneId,
+                created_at: Date.now(),
+                updated_at: Date.now(),
+              };
+              onAdd(clonedDrawing);
+              targetDrawing = clonedDrawing;
+            }
+
+            onSelect(targetDrawing.id);
+            const rect = svgRef.current?.getBoundingClientRect();
+            const rawX = e.clientX - (rect?.left || 0);
+            const rawY = e.clientY - (rect?.top || 0);
+
+            const currentTransformer = transformerRef.current;
+            const startLog = currentTransformer.xToLogical ? currentTransformer.xToLogical(rawX) : null;
+            const startP = currentTransformer.yToPrice ? currentTransformer.yToPrice(rawY) : null;
+            const initLogs = targetDrawing.points.map(pt => currentTransformer.timeToLogical ? currentTransformer.timeToLogical(pt.time) ?? 0 : 0);
+
+            setDragState({
+              drawingId: targetDrawing.id,
+              drawing: targetDrawing,
+              isClone: isClone ? true : false,
+              startMouse: { x: rawX, y: rawY },
+              initialPoints: [...targetDrawing.points],
               initialLogicals: initLogs,
               startLogical: startLog ?? 0,
               startPrice: startP ?? 0,
@@ -2787,14 +2950,19 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         )}
 
                 {/* Long Position Analysis Tool (TradingView-Style 1-Click & Independent Handles) */}
+        {/* Long Position Analysis Tool (TradingView Standard with Live Metrics & Replay Status) */}
         {d.type === 'long_position' && screenPts.length >= 1 && (() => {
-          const entryPrice = d.points[0].price;
-          const slPrice = d.points.length >= 2 ? d.points[1].price : Number((entryPrice - 0.00150).toFixed(5));
-          const tpPrice = d.points.length >= 3 ? d.points[2].price : Number((entryPrice + 0.00300).toFixed(5));
+          const metrics = PositionToolService.calculateMetrics(d, d.properties?.accountSize || 10000);
+          const replayStatus = PositionToolService.evaluateReplayStatus(
+            d,
+            candles,
+            Boolean(currentReplayTimestamp),
+            currentPrice || (candles.length > 0 ? candles[candles.length - 1].close : metrics.entryPrice)
+          );
 
           const entryY = screenPts[0].y;
-          const slY = transformer.priceToY(slPrice) ?? (screenPts[1]?.y ?? entryY + 40);
-          const tpY = transformer.priceToY(tpPrice) ?? (screenPts[2]?.y ?? entryY - 80);
+          const slY = transformer.priceToY(metrics.slPrice) ?? (screenPts[1]?.y ?? entryY + 40);
+          const tpY = transformer.priceToY(metrics.tpPrice) ?? (screenPts[2]?.y ?? entryY - 80);
 
           const startX = screenPts[0].x;
           const endX = screenPts.length >= 4 ? screenPts[3].x : (transformer.timeToX(d.points[0].time + 7200) ?? startX + 150);
@@ -2802,25 +2970,18 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           const maxX = Math.max(startX, endX);
           const width = Math.max(20, maxX - minX);
 
-          const slPips = Math.abs(entryPrice - slPrice) / 0.0001;
-          const tpPips = Math.abs(tpPrice - entryPrice) / 0.0001;
-          const rrVal = slPips > 0 ? (tpPips / slPips) : 0;
-          const roundedInt = Math.round(rrVal);
-          const formattedRR = Math.abs(rrVal - roundedInt) < 0.005
-            ? roundedInt.toString()
-            : (Math.abs(rrVal * 10 - Math.round(rrVal * 10)) < 0.05 ? rrVal.toFixed(1) : rrVal.toFixed(2));
-          const badgeText = `Risk/reward ratio: ${formattedRR}`;
-          const badgeWidth = Math.max(132, badgeText.length * 6.8 + 22);
-          const badgeX = minX + (width - badgeWidth) / 2;
-
           const profitTop = Math.min(entryY, tpY);
           const profitHeight = Math.max(1, Math.abs(tpY - entryY));
           const riskTop = Math.min(entryY, slY);
           const riskHeight = Math.max(1, Math.abs(slY - entryY));
+
+          const badgeText = `Risk/reward ratio: ${metrics.riskRewardRatio.toFixed(2)}`;
+          const badgeWidth = Math.max(136, badgeText.length * 6.8 + 20);
+          const badgeX = minX + (width - badgeWidth) / 2;
 
           return (
             <g data-testid={`drawing-long-position-${d.id}`} className="select-none">
-              {/* Target Area (Green) */}
+              {/* Target / Profit Area (Green) */}
               <rect
                 x={minX}
                 y={profitTop}
@@ -2831,7 +2992,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 stroke="#089981"
                 strokeWidth={1}
               />
-              {/* Stop Area (Red) */}
+              {/* Stop / Loss Area (Red) */}
               <rect
                 x={minX}
                 y={riskTop}
@@ -2854,16 +3015,54 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 opacity={0.8}
               />
 
-              {/* Central TradingView Risk/reward ratio Pill Badge */}
-              <g
-                transform={`translate(${badgeX}, ${entryY - 11})`}
-                className="pointer-events-none select-none"
-              >
+              {/* Target Tag Badge on TP Boundary */}
+              <g transform={`translate(${minX + 8}, ${tpY - (tpY < entryY ? 18 : -4)})`} className="pointer-events-none select-none">
+                <rect
+                  width={Math.min(width - 16, 260)}
+                  height={16}
+                  rx={2}
+                  fill="#089981"
+                  fillOpacity={0.9}
+                />
+                <text
+                  x={6}
+                  y={12}
+                  fill="#ffffff"
+                  fontSize={10}
+                  fontWeight={600}
+                  fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
+                >
+                  Target: {metrics.tpPrice.toFixed(5)} | {metrics.rewardPips} pips (+${metrics.potentialProfitUsd})
+                </text>
+              </g>
+
+              {/* Stop Tag Badge on SL Boundary */}
+              <g transform={`translate(${minX + 8}, ${slY - (slY > entryY ? -4 : 18)})`} className="pointer-events-none select-none">
+                <rect
+                  width={Math.min(width - 16, 260)}
+                  height={16}
+                  rx={2}
+                  fill="#f23645"
+                  fillOpacity={0.9}
+                />
+                <text
+                  x={6}
+                  y={12}
+                  fill="#ffffff"
+                  fontSize={10}
+                  fontWeight={600}
+                  fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
+                >
+                  Stop: {metrics.slPrice.toFixed(5)} | {metrics.riskPips} pips (-${metrics.potentialLossUsd})
+                </text>
+              </g>
+
+              {/* Central Risk/reward ratio Pill Badge */}
+              <g transform={`translate(${badgeX}, ${entryY - 11})`} className="pointer-events-none select-none">
                 <rect
                   width={badgeWidth}
                   height={22}
                   rx={4}
-                  ry={4}
                   fill="#089981"
                   stroke="#ffffff"
                   strokeWidth={1}
@@ -2875,25 +3074,60 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                   fill="#ffffff"
                   fontSize={11}
                   fontWeight={600}
-                  fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif'
+                  fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
                   textAnchor="middle"
                 >
                   {badgeText}
                 </text>
               </g>
+
+              {/* Bar Replay Status Indicator Badge (when replay active) */}
+              {Boolean(currentReplayTimestamp) && (
+                <g transform={`translate(${badgeX}, ${entryY + 14})`} className="pointer-events-none select-none">
+                  <rect
+                    width={badgeWidth}
+                    height={18}
+                    rx={3}
+                    fill={
+                      replayStatus.state === 'target_hit' ? '#089981' :
+                      replayStatus.state === 'stopped_out' ? '#f23645' :
+                      replayStatus.state === 'active' ? '#0284c7' : '#475569'
+                    }
+                    className="shadow-sm"
+                  />
+                  <text
+                    x={badgeWidth / 2}
+                    y={13}
+                    fill="#ffffff"
+                    fontSize={10}
+                    fontWeight={600}
+                    fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
+                    textAnchor="middle"
+                  >
+                    {replayStatus.state === 'target_hit' ? `TARGET HIT (+${metrics.potentialProfitUsd})` :
+                     replayStatus.state === 'stopped_out' ? `STOPPED OUT (-${metrics.potentialLossUsd})` :
+                     replayStatus.state === 'active' ? `ACTIVE: ${replayStatus.openPips >= 0 ? '+' : ''}${replayStatus.openPips} pips (${replayStatus.openPnlUsd >= 0 ? '+' : ''}$${replayStatus.openPnlUsd})` :
+                     'PLANNED (Waiting Entry)'}
+                  </text>
+                </g>
+              )}
             </g>
           );
         })()}
 
-        {/* Short Position Analysis Tool (TradingView-Style 1-Click & Independent Handles) */}
+        {/* Short Position Analysis Tool (TradingView Standard with Live Metrics & Replay Status) */}
         {d.type === 'short_position' && screenPts.length >= 1 && (() => {
-          const entryPrice = d.points[0].price;
-          const slPrice = d.points.length >= 2 ? d.points[1].price : Number((entryPrice + 0.00150).toFixed(5));
-          const tpPrice = d.points.length >= 3 ? d.points[2].price : Number((entryPrice - 0.00150).toFixed(5));
+          const metrics = PositionToolService.calculateMetrics(d, d.properties?.accountSize || 10000);
+          const replayStatus = PositionToolService.evaluateReplayStatus(
+            d,
+            candles,
+            Boolean(currentReplayTimestamp),
+            currentPrice || (candles.length > 0 ? candles[candles.length - 1].close : metrics.entryPrice)
+          );
 
           const entryY = screenPts[0].y;
-          const slY = transformer.priceToY(slPrice) ?? (screenPts[1]?.y ?? entryY - 40);
-          const tpY = transformer.priceToY(tpPrice) ?? (screenPts[2]?.y ?? entryY + 40);
+          const slY = transformer.priceToY(metrics.slPrice) ?? (screenPts[1]?.y ?? entryY - 40);
+          const tpY = transformer.priceToY(metrics.tpPrice) ?? (screenPts[2]?.y ?? entryY + 40);
 
           const startX = screenPts[0].x;
           const endX = screenPts.length >= 4 ? screenPts[3].x : (transformer.timeToX(d.points[0].time + 7200) ?? startX + 150);
@@ -2901,25 +3135,18 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           const maxX = Math.max(startX, endX);
           const width = Math.max(20, maxX - minX);
 
-          const slPips = Math.abs(slPrice - entryPrice) / 0.0001;
-          const tpPips = Math.abs(entryPrice - tpPrice) / 0.0001;
-          const rrVal = slPips > 0 ? (tpPips / slPips) : 0;
-          const roundedInt = Math.round(rrVal);
-          const formattedRR = Math.abs(rrVal - roundedInt) < 0.005
-            ? roundedInt.toString()
-            : (Math.abs(rrVal * 10 - Math.round(rrVal * 10)) < 0.05 ? rrVal.toFixed(1) : rrVal.toFixed(2));
-          const badgeText = `Risk/reward ratio: ${formattedRR}`;
-          const badgeWidth = Math.max(132, badgeText.length * 6.8 + 22);
-          const badgeX = minX + (width - badgeWidth) / 2;
-
           const profitTop = Math.min(entryY, tpY);
           const profitHeight = Math.max(1, Math.abs(tpY - entryY));
           const riskTop = Math.min(entryY, slY);
           const riskHeight = Math.max(1, Math.abs(slY - entryY));
 
+          const badgeText = `Risk/reward ratio: ${metrics.riskRewardRatio.toFixed(2)}`;
+          const badgeWidth = Math.max(136, badgeText.length * 6.8 + 20);
+          const badgeX = minX + (width - badgeWidth) / 2;
+
           return (
             <g data-testid={`drawing-short-position-${d.id}`} className="select-none">
-              {/* Target Area (Green) */}
+              {/* Target / Profit Area (Green) */}
               <rect
                 x={minX}
                 y={profitTop}
@@ -2930,7 +3157,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 stroke="#089981"
                 strokeWidth={1}
               />
-              {/* Stop Area (Red) */}
+              {/* Stop / Loss Area (Red) */}
               <rect
                 x={minX}
                 y={riskTop}
@@ -2953,16 +3180,54 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 opacity={0.8}
               />
 
-              {/* Central TradingView Risk/reward ratio Pill Badge */}
-              <g
-                transform={`translate(${badgeX}, ${entryY - 11})`}
-                className="pointer-events-none select-none"
-              >
+              {/* Target Tag Badge on TP Boundary */}
+              <g transform={`translate(${minX + 8}, ${tpY - (tpY > entryY ? -4 : 18)})`} className="pointer-events-none select-none">
+                <rect
+                  width={Math.min(width - 16, 260)}
+                  height={16}
+                  rx={2}
+                  fill="#089981"
+                  fillOpacity={0.9}
+                />
+                <text
+                  x={6}
+                  y={12}
+                  fill="#ffffff"
+                  fontSize={10}
+                  fontWeight={600}
+                  fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
+                >
+                  Target: {metrics.tpPrice.toFixed(5)} | {metrics.rewardPips} pips (+${metrics.potentialProfitUsd})
+                </text>
+              </g>
+
+              {/* Stop Tag Badge on SL Boundary */}
+              <g transform={`translate(${minX + 8}, ${slY - (slY < entryY ? 18 : -4)})`} className="pointer-events-none select-none">
+                <rect
+                  width={Math.min(width - 16, 260)}
+                  height={16}
+                  rx={2}
+                  fill="#f23645"
+                  fillOpacity={0.9}
+                />
+                <text
+                  x={6}
+                  y={12}
+                  fill="#ffffff"
+                  fontSize={10}
+                  fontWeight={600}
+                  fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
+                >
+                  Stop: {metrics.slPrice.toFixed(5)} | {metrics.riskPips} pips (-${metrics.potentialLossUsd})
+                </text>
+              </g>
+
+              {/* Central Risk/reward ratio Pill Badge */}
+              <g transform={`translate(${badgeX}, ${entryY - 11})`} className="pointer-events-none select-none">
                 <rect
                   width={badgeWidth}
                   height={22}
                   rx={4}
-                  ry={4}
                   fill="#089981"
                   stroke="#ffffff"
                   strokeWidth={1}
@@ -2974,17 +3239,48 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                   fill="#ffffff"
                   fontSize={11}
                   fontWeight={600}
-                  fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif'
+                  fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
                   textAnchor="middle"
                 >
                   {badgeText}
                 </text>
               </g>
+
+              {/* Bar Replay Status Indicator Badge (when replay active) */}
+              {Boolean(currentReplayTimestamp) && (
+                <g transform={`translate(${badgeX}, ${entryY + 14})`} className="pointer-events-none select-none">
+                  <rect
+                    width={badgeWidth}
+                    height={18}
+                    rx={3}
+                    fill={
+                      replayStatus.state === 'target_hit' ? '#089981' :
+                      replayStatus.state === 'stopped_out' ? '#f23645' :
+                      replayStatus.state === 'active' ? '#0284c7' : '#475569'
+                    }
+                    className="shadow-sm"
+                  />
+                  <text
+                    x={badgeWidth / 2}
+                    y={13}
+                    fill="#ffffff"
+                    fontSize={10}
+                    fontWeight={600}
+                    fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
+                    textAnchor="middle"
+                  >
+                    {replayStatus.state === 'target_hit' ? `TARGET HIT (+${metrics.potentialProfitUsd})` :
+                     replayStatus.state === 'stopped_out' ? `STOPPED OUT (-${metrics.potentialLossUsd})` :
+                     replayStatus.state === 'active' ? `ACTIVE: ${replayStatus.openPips >= 0 ? '+' : ''}${replayStatus.openPips} pips (${replayStatus.openPnlUsd >= 0 ? '+' : ''}$${replayStatus.openPnlUsd})` :
+                     'PLANNED (Waiting Entry)'}
+                  </text>
+                </g>
+              )}
             </g>
           );
         })()}
 
-        {/* Measurement / Price Range Tool */}
+                {/* Measurement / Price Range Tool */}
         {['measure', 'price_range', 'date_range', 'date_price_range'].includes(d.type) && screenPts.length >= 2 && (() => {
           const minX = Math.min(screenPts[0].x, screenPts[1].x);
           const maxX = Math.max(screenPts[0].x, screenPts[1].x);
@@ -3089,6 +3385,9 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             if (isPosition) {
               const startX = screenPts[0].x;
               const endX = screenPts.length >= 4 ? screenPts[3].x : (transformer.timeToX(d.points[0].time + 7200) ?? startX + 150);
+              const minX = Math.min(startX, endX);
+              const maxX = Math.max(startX, endX);
+              const midX = minX + (maxX - minX) / 2;
 
               const entryPrice = d.points[0].price;
               const slPrice = d.points.length >= 2 ? d.points[1].price : (d.type === 'long_position' ? entryPrice - 0.00150 : entryPrice + 0.00150);
@@ -3104,19 +3403,24 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
               const topPointIndex = isLong ? 2 : 1;
               const bottomPointIndex = isLong ? 1 : 2;
 
-              // TradingView Signature 4 Handles:
-              // 1. Top-Left: (startX, topY) -> controls top level (TP for Long, SL for Short)
-              // 2. Middle-Left: (startX, entryY) -> controls entry & moves entire bracket
-              // 3. Bottom-Left: (startX, bottomY) -> controls bottom level (SL for Long, TP for Short)
-              // 4. Middle-Right: (endX, entryY) -> controls width / duration
+              // TradingView Complete 8 Anchor Handles:
+              // 1. Top Center: (midX, topY) -> controls top level (TP for Long, SL for Short)
+              // 2. Bottom Center: (midX, bottomY) -> controls bottom level (SL for Long, TP for Short)
+              // 3. Left Middle: (minX, entryY) -> controls entry & shifts bracket
+              // 4. Center Entry: (midX, entryY) -> controls entry price vertically
+              // 5. Right Middle: (maxX, entryY) -> controls horizontal duration
+              // 6. Left Middle Duration: (minX, (topY + bottomY) / 2) -> controls start time
+              // 7. Right Top Corner: (maxX, topY)
+              // 8. Right Bottom Corner: (maxX, bottomY)
               ptsToRender = [
-                { x: startX, y: topY, cursor: 'cursor-ns-resize', pointIndex: topPointIndex, isVisible: true },
-                { x: startX, y: entryY, cursor: 'cursor-move', pointIndex: 0, isVisible: true },
-                { x: startX, y: bottomY, cursor: 'cursor-ns-resize', pointIndex: bottomPointIndex, isVisible: true },
-                { x: endX, y: entryY, cursor: 'cursor-ew-resize', pointIndex: 3, isVisible: true },
-                // Corner hit targets on right edge:
-                { x: endX, y: topY, cursor: 'cursor-ns-resize', pointIndex: 4, isVisible: false },
-                { x: endX, y: bottomY, cursor: 'cursor-ns-resize', pointIndex: 5, isVisible: false },
+                { x: midX, y: topY, cursor: 'cursor-ns-resize', pointIndex: topPointIndex, isVisible: true },
+                { x: midX, y: bottomY, cursor: 'cursor-ns-resize', pointIndex: bottomPointIndex, isVisible: true },
+                { x: minX, y: entryY, cursor: 'cursor-move', pointIndex: 0, isVisible: true },
+                { x: midX, y: entryY, cursor: 'cursor-ns-resize', pointIndex: 7, isVisible: true },
+                { x: maxX, y: entryY, cursor: 'cursor-ew-resize', pointIndex: 3, isVisible: true },
+                { x: minX, y: (topY + bottomY) / 2, cursor: 'cursor-ew-resize', pointIndex: 6, isVisible: false },
+                { x: maxX, y: topY, cursor: 'cursor-ns-resize', pointIndex: 4, isVisible: false },
+                { x: maxX, y: bottomY, cursor: 'cursor-ns-resize', pointIndex: 5, isVisible: false },
               ];
             } else {
               ptsToRender = screenPts.map((pt, idx) => ({
@@ -3130,30 +3434,108 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
 
             return ptsToRender.map((pt) => (
               <g key={pt.pointIndex}>
-                {/* Large 28px diameter hit target for easy mouse grabbing */}
+                {/* Large 32px diameter / 64px touch target on mobile for effortless grabbing */}
                 <circle
                   data-testid={`anchor-handle-${d.id}-${pt.pointIndex}`}
                   cx={pt.x}
                   cy={pt.y}
-                  r={14}
+                  r={isMobile ? 32 : 16}
                   fill="transparent"
+                  style={{ touchAction: 'none' }}
                   className={`pointer-events-auto ${pt.cursor}`}
-                  onMouseDown={(e) => {
+                  onPointerDown={(e) => {
+                    if (e.pointerType === 'mouse' && e.button !== 0) return;
                     e.stopPropagation();
                     e.preventDefault();
+                    try {
+                      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+                    } catch (_) {}
+
+                    const isClone = (e.ctrlKey || e.metaKey || isCtrlPressed || isCtrlPressedRef.current);
+                    let targetDrawing = d;
+                    if (isClone) {
+                      const cloneId = `draw_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+                      const clonedDrawing: DrawingObject = {
+                        ...JSON.parse(JSON.stringify(d)),
+                        id: cloneId,
+                        created_at: Date.now(),
+                        updated_at: Date.now(),
+                      };
+                      onAdd(clonedDrawing);
+                      targetDrawing = clonedDrawing;
+                    }
+
+                    onSelect(targetDrawing.id);
                     const rect = svgRef.current?.getBoundingClientRect();
                     const rawX = e.clientX - (rect?.left || 0);
                     const rawY = e.clientY - (rect?.top || 0);
+
+                    const currentTransformer = transformerRef.current;
+                    const startLog = currentTransformer.xToLogical ? currentTransformer.xToLogical(rawX) : null;
+                    const startP = currentTransformer.yToPrice ? currentTransformer.yToPrice(rawY) : null;
+                    const initLogs = targetDrawing.points.map(p => currentTransformer.timeToLogical ? currentTransformer.timeToLogical(p.time) ?? 0 : 0);
+
                     setDragState({
-                      drawingId: d.id,
-                      pointIndex: pt.pointIndex,
+                      drawingId: targetDrawing.id,
+                      drawing: targetDrawing,
+                      isClone: isClone ? true : false,
+                      pointIndex: isClone ? undefined : pt.pointIndex,
                       startMouse: { x: rawX, y: rawY },
-                      initialPoints: [...d.points],
+                      initialPoints: [...targetDrawing.points],
+                      initialLogicals: initLogs,
+                      startLogical: startLog ?? 0,
+                      startPrice: startP ?? 0,
+                    });
+                  }}
+                  onPointerUp={(e) => {
+                    try {
+                      (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+                    } catch (_) {}
+                  }}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    if (dragStateRef.current) return;
+                    const isClone = (e.ctrlKey || e.metaKey || isCtrlPressed || isCtrlPressedRef.current);
+                    let targetDrawing = d;
+                    if (isClone) {
+                      const cloneId = `draw_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+                      const clonedDrawing: DrawingObject = {
+                        ...JSON.parse(JSON.stringify(d)),
+                        id: cloneId,
+                        created_at: Date.now(),
+                        updated_at: Date.now(),
+                      };
+                      onAdd(clonedDrawing);
+                      targetDrawing = clonedDrawing;
+                    }
+
+                    onSelect(targetDrawing.id);
+                    const rect = svgRef.current?.getBoundingClientRect();
+                    const rawX = e.clientX - (rect?.left || 0);
+                    const rawY = e.clientY - (rect?.top || 0);
+
+                    const currentTransformer = transformerRef.current;
+                    const startLog = currentTransformer.xToLogical ? currentTransformer.xToLogical(rawX) : null;
+                    const startP = currentTransformer.yToPrice ? currentTransformer.yToPrice(rawY) : null;
+                    const initLogs = targetDrawing.points.map(p => currentTransformer.timeToLogical ? currentTransformer.timeToLogical(p.time) ?? 0 : 0);
+
+                    setDragState({
+                      drawingId: targetDrawing.id,
+                      drawing: targetDrawing,
+                      isClone: isClone ? true : false,
+                      pointIndex: isClone ? undefined : pt.pointIndex,
+                      startMouse: { x: rawX, y: rawY },
+                      initialPoints: [...targetDrawing.points],
+                      initialLogicals: initLogs,
+                      startLogical: startLog ?? 0,
+                      startPrice: startP ?? 0,
                     });
                   }}
                   onTouchStart={(e) => {
                     if (e.touches.length === 1) {
                       e.stopPropagation();
+                      e.preventDefault();
                       const rect = svgRef.current?.getBoundingClientRect();
                       const rawX = e.touches[0].clientX - (rect?.left || 0);
                       const rawY = e.touches[0].clientY - (rect?.top || 0);

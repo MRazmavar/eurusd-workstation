@@ -97,25 +97,30 @@ export class DrawingEngine {
         if (d.type === 'long_position' || d.type === 'short_position') {
           const startX = transformer.timeToX(d.points[0].time) ?? screenPoints[0].x;
           const endX = d.points.length >= 4 ? (transformer.timeToX(d.points[3].time) ?? startX + 150) : startX + 150;
+          const minX = Math.min(startX, endX);
+          const maxX = Math.max(startX, endX);
+          const midX = minX + (maxX - minX) / 2;
           const entryY = transformer.priceToY(d.points[0].price) ?? screenPoints[0].y;
           const slY = d.points.length >= 2 ? (transformer.priceToY(d.points[1].price) ?? entryY + 40) : entryY + 40;
           const tpY = d.points.length >= 3 ? (transformer.priceToY(d.points[2].price) ?? entryY - 80) : entryY - 80;
 
           const handles = [
-            { pt: { x: startX, y: entryY }, pIdx: 0 },
-            { pt: { x: startX, y: slY }, pIdx: 1 },
-            { pt: { x: startX, y: tpY }, pIdx: 2 },
-            { pt: { x: endX, y: entryY }, pIdx: 3 },
+            { pt: { x: minX, y: entryY }, pIdx: 0 },
+            { pt: { x: midX, y: slY }, pIdx: 1 },
+            { pt: { x: midX, y: tpY }, pIdx: 2 },
+            { pt: { x: maxX, y: entryY }, pIdx: 3 },
+            { pt: { x: minX, y: (slY + tpY) / 2 }, pIdx: 6 },
+            { pt: { x: midX, y: entryY }, pIdx: 7 },
           ];
           for (const h of handles) {
-            if (this.dist(mouse, h.pt) <= 16) {
+            if (this.dist(mouse, h.pt) <= Math.max(20, hitTolerance)) {
               return { drawing: d, pointIndex: h.pIdx };
             }
           }
         } else {
           for (let pIdx = 0; pIdx < screenPoints.length; pIdx++) {
             const dHandle = this.dist(mouse, screenPoints[pIdx]);
-            if (dHandle <= 16) {
+            if (dHandle <= Math.max(20, hitTolerance)) {
               return { drawing: d, pointIndex: pIdx };
             }
           }

@@ -926,8 +926,8 @@ export const App: React.FC = () => {
     marketClient.saveDrawing(newD);
   };
 
-  const handleUpdateDrawing = (updated: DrawingObject, persist: boolean = true) => {
-    if (persist) {
+  const handleUpdateDrawing = (updated: DrawingObject, persist: boolean = true, pushUndo: boolean = true) => {
+    if (persist && pushUndo) {
       pushUndoSnapshot(drawings);
     }
     setDrawings(prev => prev.map(d => d.id === updated.id ? updated : d));

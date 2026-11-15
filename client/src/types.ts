@@ -79,6 +79,9 @@ export interface DrawingProperties {
   tpPrice?: number;
   riskReward?: number;
   lotSize?: number;
+  accountSize?: number;
+  riskPercent?: number;
+  showStats?: boolean;
   // For Fibonacci tools
   fibLevels?: FibLevel[];
   extendLinesLeft?: boolean;
