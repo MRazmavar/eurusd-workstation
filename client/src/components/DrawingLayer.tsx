@@ -1639,9 +1639,9 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                     }}
                   />
                 )}
-                {/* Compact TP Label on right border */}
+                {/* Compact TP Label inside profit zone with low transparency */}
                 <g
-                  transform={`translate(${boxRight - 55}, ${tpY - 18})`}
+                  transform={`translate(${boxRight - 55}, ${isBuy ? tpY + 4 : tpY - 20})`}
                   className={!isClosed ? "cursor-ns-resize pointer-events-auto" : "pointer-events-none"}
                   onMouseDown={!isClosed ? (e) => {
                     e.stopPropagation();
@@ -1661,13 +1661,15 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                     height={16}
                     rx={3}
                     fill="#089981"
-                    fillOpacity={0.9}
-                    className="shadow-sm"
+                    fillOpacity={0.25}
+                    stroke="#089981"
+                    strokeWidth={0.8}
+                    strokeOpacity={0.6}
                   />
                   <text
                     x={25}
                     y={12}
-                    fill="#ffffff"
+                    fill="#34d399"
                     fontSize={10}
                     fontWeight="bold"
                     fontFamily="monospace"
@@ -1746,9 +1748,9 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                     }}
                   />
                 )}
-                {/* Compact SL Label on right border */}
+                {/* Compact SL Label inside risk zone with low transparency */}
                 <g
-                  transform={`translate(${boxRight - 55}, ${slY - 18})`}
+                  transform={`translate(${boxRight - 55}, ${isBuy ? slY - 20 : slY + 4})`}
                   className={!isClosed ? "cursor-ns-resize pointer-events-auto" : "pointer-events-none"}
                   onMouseDown={!isClosed ? (e) => {
                     e.stopPropagation();
@@ -1768,13 +1770,15 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                     height={16}
                     rx={3}
                     fill="#f23645"
-                    fillOpacity={0.9}
-                    className="shadow-sm"
+                    fillOpacity={0.25}
+                    stroke="#f23645"
+                    strokeWidth={0.8}
+                    strokeOpacity={0.6}
                   />
                   <text
                     x={25}
                     y={12}
-                    fill="#ffffff"
+                    fill="#f87171"
                     fontSize={10}
                     fontWeight="bold"
                     fontFamily="monospace"
@@ -1830,9 +1834,9 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 } : undefined}
               />
 
-              {/* Compact Entry Tag at right border */}
+              {/* Compact Entry Tag inside box with low transparency */}
               <g
-                transform={`translate(${boxRight - 65}, ${entryY - 18})`}
+                transform={`translate(${boxRight - 65}, ${entryY + 4})`}
                 className="pointer-events-none select-none"
                 data-testid={`on-chart-entry-badge-${trade.id}`}
               >
@@ -1841,13 +1845,15 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                   height={16}
                   rx={3}
                   fill="#1e222d"
+                  fillOpacity={0.4}
                   stroke={isPending ? '#ff9800' : (isBuy ? '#089981' : '#f23645')}
-                  strokeWidth={1}
+                  strokeWidth={0.8}
+                  strokeOpacity={0.6}
                 />
                 <text
                   x={30}
                   y={12}
-                  fill={isBuy ? '#089981' : '#f23645'}
+                  fill={isBuy ? '#34d399' : '#f87171'}
                   fontSize={10}
                   fontWeight="bold"
                   fontFamily="monospace"
@@ -2168,10 +2174,10 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             strokeWidth={1.5}
             className="shadow"
           />
-          {/* Compact TP Label on right border */}
-          <g transform={`translate(${boxRight - 55}, ${tpY - 18})`}>
-            <rect width={50} height={16} rx={3} fill="#089981" fillOpacity={0.9} />
-            <text x={25} y={12} fill="#ffffff" fontSize={10} fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+          {/* Compact TP Label inside profit zone with low transparency */}
+          <g transform={`translate(${boxRight - 55}, ${activeSetup.type === 'BUY' ? tpY + 4 : tpY - 20})`}>
+            <rect width={50} height={16} rx={3} fill="#089981" fillOpacity={0.25} stroke="#089981" strokeWidth={0.8} strokeOpacity={0.6} />
+            <text x={25} y={12} fill="#34d399" fontSize={10} fontWeight="bold" fontFamily="monospace" textAnchor="middle">
               TP
             </text>
           </g>
@@ -2250,10 +2256,10 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             strokeWidth={1.5}
             className="shadow"
           />
-          {/* Compact Entry Label on right border */}
-          <g transform={`translate(${boxRight - 75}, ${entryY - 18})`}>
-            <rect width={70} height={16} rx={3} fill="#2962ff" fillOpacity={0.9} />
-            <text x={35} y={12} fill="#ffffff" fontSize={9.5} fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+          {/* Compact Entry Label inside box with low transparency */}
+          <g transform={`translate(${boxRight - 75}, ${entryY + 4})`}>
+            <rect width={70} height={16} rx={3} fill="#2962ff" fillOpacity={0.25} stroke="#2962ff" strokeWidth={0.8} strokeOpacity={0.6} />
+            <text x={35} y={12} fill="#93c5fd" fontSize={9.5} fontWeight="bold" fontFamily="monospace" textAnchor="middle">
               {orderTypeLabel}
             </text>
           </g>
@@ -2313,10 +2319,10 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             strokeWidth={1.5}
             className="shadow"
           />
-          {/* Compact SL Label on right border */}
-          <g transform={`translate(${boxRight - 55}, ${slY - 18})`}>
-            <rect width={50} height={16} rx={3} fill="#f23645" fillOpacity={0.9} />
-            <text x={25} y={12} fill="#ffffff" fontSize={10} fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+          {/* Compact SL Label inside risk zone with low transparency */}
+          <g transform={`translate(${boxRight - 55}, ${activeSetup.type === 'BUY' ? slY - 20 : slY + 4})`}>
+            <rect width={50} height={16} rx={3} fill="#f23645" fillOpacity={0.25} stroke="#f23645" strokeWidth={0.8} strokeOpacity={0.6} />
+            <text x={25} y={12} fill="#f87171" fontSize={10} fontWeight="bold" fontFamily="monospace" textAnchor="middle">
               SL
             </text>
           </g>
@@ -2975,12 +2981,42 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           const riskTop = Math.min(entryY, slY);
           const riskHeight = Math.max(1, Math.abs(slY - entryY));
 
-          const badgeText = `Risk/reward ratio: ${metrics.riskRewardRatio.toFixed(2)}`;
-          const badgeWidth = Math.max(136, badgeText.length * 6.8 + 20);
-          const badgeX = minX + (width - badgeWidth) / 2;
+          const contentWidth = Math.max(20, width - 12);
+
+          const targetText = contentWidth >= 210
+            ? `Target: ${metrics.tpPrice.toFixed(5)} | ${metrics.rewardPips} pips (+${metrics.potentialProfitUsd})`
+            : contentWidth >= 135
+            ? `Target: ${metrics.tpPrice.toFixed(5)} (+${metrics.rewardPips}p)`
+            : `Target: ${metrics.tpPrice.toFixed(5)}`;
+
+          const stopText = contentWidth >= 210
+            ? `Stop: ${metrics.slPrice.toFixed(5)} | ${metrics.riskPips} pips (-${metrics.potentialLossUsd})`
+            : contentWidth >= 135
+            ? `Stop: ${metrics.slPrice.toFixed(5)} (-${metrics.riskPips}p)`
+            : `Stop: ${metrics.slPrice.toFixed(5)}`;
+
+          const rrText = contentWidth >= 135
+            ? `Risk/reward ratio: ${metrics.riskRewardRatio.toFixed(2)}`
+            : `R:R: ${metrics.riskRewardRatio.toFixed(2)}`;
+
+          const targetTagWidth = Math.min(contentWidth, Math.max(60, targetText.length * 5.8 + 14));
+          const stopTagWidth = Math.min(contentWidth, Math.max(60, stopText.length * 5.8 + 14));
+          const rrTagWidth = Math.min(contentWidth, Math.max(50, rrText.length * 5.8 + 14));
 
           return (
             <g data-testid={`drawing-long-position-${d.id}`} className="select-none">
+              <defs>
+                <clipPath id={`clip-tag-${d.id}-tp`}>
+                  <rect width={targetTagWidth} height={16} rx={3} />
+                </clipPath>
+                <clipPath id={`clip-tag-${d.id}-sl`}>
+                  <rect width={stopTagWidth} height={16} rx={3} />
+                </clipPath>
+                <clipPath id={`clip-tag-${d.id}-rr`}>
+                  <rect width={rrTagWidth} height={16} rx={3} />
+                </clipPath>
+              </defs>
+
               {/* Target / Profit Area (Green) */}
               <rect
                 x={minX}
@@ -3015,99 +3051,169 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 opacity={0.8}
               />
 
-              {/* Target Tag Badge on TP Boundary */}
-              <g transform={`translate(${minX + 8}, ${tpY - (tpY < entryY ? 18 : -4)})`} className="pointer-events-none select-none">
-                <rect
-                  width={Math.min(width - 16, 260)}
-                  height={16}
-                  rx={2}
-                  fill="#089981"
-                  fillOpacity={0.9}
-                />
-                <text
-                  x={6}
-                  y={12}
-                  fill="#ffffff"
-                  fontSize={10}
-                  fontWeight={600}
-                  fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
-                >
-                  Target: {metrics.tpPrice.toFixed(5)} | {metrics.rewardPips} pips (+${metrics.potentialProfitUsd})
-                </text>
-              </g>
-
-              {/* Stop Tag Badge on SL Boundary */}
-              <g transform={`translate(${minX + 8}, ${slY - (slY > entryY ? -4 : 18)})`} className="pointer-events-none select-none">
-                <rect
-                  width={Math.min(width - 16, 260)}
-                  height={16}
-                  rx={2}
-                  fill="#f23645"
-                  fillOpacity={0.9}
-                />
-                <text
-                  x={6}
-                  y={12}
-                  fill="#ffffff"
-                  fontSize={10}
-                  fontWeight={600}
-                  fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
-                >
-                  Stop: {metrics.slPrice.toFixed(5)} | {metrics.riskPips} pips (-${metrics.potentialLossUsd})
-                </text>
-              </g>
-
-              {/* Central Risk/reward ratio Pill Badge */}
-              <g transform={`translate(${badgeX}, ${entryY - 11})`} className="pointer-events-none select-none">
-                <rect
-                  width={badgeWidth}
-                  height={22}
-                  rx={4}
-                  fill="#089981"
-                  stroke="#ffffff"
-                  strokeWidth={1}
-                  className="shadow-sm"
-                />
-                <text
-                  x={badgeWidth / 2}
-                  y={15}
-                  fill="#ffffff"
-                  fontSize={11}
-                  fontWeight={600}
-                  fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
-                  textAnchor="middle"
-                >
-                  {badgeText}
-                </text>
-              </g>
-
-              {/* Bar Replay Status Indicator Badge (when replay active) */}
-              {Boolean(currentReplayTimestamp) && (
-                <g transform={`translate(${badgeX}, ${entryY + 14})`} className="pointer-events-none select-none">
+              {/* Information placed cleanly INSIDE the respective parts with low transparency (matching sessions) */}
+              {/* 1. Target & Risk/Reward inside Green Profit Zone */}
+              {profitHeight >= 36 ? (
+                <g className="pointer-events-none select-none">
+                  {/* Target Info Badge inside Profit Zone */}
+                  <g transform={`translate(${minX + 6}, ${profitTop + 4})`}>
+                    <rect
+                      width={targetTagWidth}
+                      height={16}
+                      rx={3}
+                      fill="#089981"
+                      fillOpacity={0.25}
+                      stroke="#089981"
+                      strokeWidth={0.8}
+                      strokeOpacity={0.6}
+                    />
+                    <text
+                      x={6}
+                      y={11.5}
+                      fill="#34d399"
+                      fontSize={9.5}
+                      fontWeight={600}
+                      fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
+                      clipPath={`url(#clip-tag-${d.id}-tp)`}
+                    >
+                      {targetText}
+                    </text>
+                  </g>
+                  {/* Risk/Reward Ratio Badge inside Profit Zone */}
+                  <g transform={`translate(${minX + 6}, ${profitHeight >= 46 ? entryY - 20 : profitTop + 22})`}>
+                    <rect
+                      width={rrTagWidth}
+                      height={16}
+                      rx={3}
+                      fill="#089981"
+                      fillOpacity={0.25}
+                      stroke="#089981"
+                      strokeWidth={0.8}
+                      strokeOpacity={0.6}
+                    />
+                    <text
+                      x={6}
+                      y={11.5}
+                      fill="#34d399"
+                      fontSize={9.5}
+                      fontWeight={600}
+                      fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
+                      clipPath={`url(#clip-tag-${d.id}-rr)`}
+                    >
+                      {rrText}
+                    </text>
+                  </g>
+                </g>
+              ) : profitHeight >= 18 ? (
+                <g transform={`translate(${minX + 6}, ${profitTop + (profitHeight - 16) / 2})`} className="pointer-events-none select-none">
                   <rect
-                    width={badgeWidth}
-                    height={18}
+                    width={targetTagWidth}
+                    height={16}
+                    rx={3}
+                    fill="#089981"
+                    fillOpacity={0.25}
+                    stroke="#089981"
+                    strokeWidth={0.8}
+                    strokeOpacity={0.6}
+                  />
+                  <text
+                    x={6}
+                    y={11.5}
+                    fill="#34d399"
+                    fontSize={9.5}
+                    fontWeight={600}
+                    fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
+                    clipPath={`url(#clip-tag-${d.id}-tp)`}
+                  >
+                    {targetText} | {rrText}
+                  </text>
+                </g>
+              ) : (
+                <text
+                  x={minX + 6}
+                  y={profitTop + profitHeight / 2 + 3}
+                  fill="#34d399"
+                  fontSize={9}
+                  fontWeight={600}
+                  fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
+                  className="pointer-events-none select-none"
+                >
+                  {targetText} | {rrText}
+                </text>
+              )}
+
+              {/* 2. Stop Info inside Red Loss Zone */}
+              {riskHeight >= 18 ? (
+                <g transform={`translate(${minX + 6}, ${riskHeight >= 28 ? slY - 20 : riskTop + (riskHeight - 16) / 2})`} className="pointer-events-none select-none">
+                  <rect
+                    width={stopTagWidth}
+                    height={16}
+                    rx={3}
+                    fill="#f23645"
+                    fillOpacity={0.25}
+                    stroke="#f23645"
+                    strokeWidth={0.8}
+                    strokeOpacity={0.6}
+                  />
+                  <text
+                    x={6}
+                    y={11.5}
+                    fill="#f87171"
+                    fontSize={9.5}
+                    fontWeight={600}
+                    fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
+                    clipPath={`url(#clip-tag-${d.id}-sl)`}
+                  >
+                    {stopText}
+                  </text>
+                </g>
+              ) : (
+                <text
+                  x={minX + 6}
+                  y={riskTop + riskHeight / 2 + 3}
+                  fill="#f87171"
+                  fontSize={9}
+                  fontWeight={600}
+                  fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
+                  className="pointer-events-none select-none"
+                >
+                  {stopText}
+                </text>
+              )}
+
+              {/* 3. Bar Replay Status Indicator Badge (when replay active) */}
+              {Boolean(currentReplayTimestamp) && (
+                <g transform={`translate(${minX + 6}, ${profitHeight >= 64 ? entryY - 38 : profitTop + 4})`} className="pointer-events-none select-none">
+                  <rect
+                    width={Math.min(Math.max(20, width - 12), 190)}
+                    height={16}
                     rx={3}
                     fill={
                       replayStatus.state === 'target_hit' ? '#089981' :
                       replayStatus.state === 'stopped_out' ? '#f23645' :
                       replayStatus.state === 'active' ? '#0284c7' : '#475569'
                     }
-                    className="shadow-sm"
+                    fillOpacity={0.25}
+                    stroke={
+                      replayStatus.state === 'target_hit' ? '#089981' :
+                      replayStatus.state === 'stopped_out' ? '#f23645' :
+                      replayStatus.state === 'active' ? '#0284c7' : '#475569'
+                    }
+                    strokeWidth={0.8}
+                    strokeOpacity={0.6}
                   />
                   <text
-                    x={badgeWidth / 2}
-                    y={13}
+                    x={6}
+                    y={11.5}
                     fill="#ffffff"
-                    fontSize={10}
+                    fontSize={9.5}
                     fontWeight={600}
                     fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
-                    textAnchor="middle"
                   >
                     {replayStatus.state === 'target_hit' ? `TARGET HIT (+${metrics.potentialProfitUsd})` :
                      replayStatus.state === 'stopped_out' ? `STOPPED OUT (-${metrics.potentialLossUsd})` :
-                     replayStatus.state === 'active' ? `ACTIVE: ${replayStatus.openPips >= 0 ? '+' : ''}${replayStatus.openPips} pips (${replayStatus.openPnlUsd >= 0 ? '+' : ''}$${replayStatus.openPnlUsd})` :
-                     'PLANNED (Waiting Entry)'}
+                     replayStatus.state === 'active' ? `ACTIVE: ${replayStatus.openPips >= 0 ? '+' : ''}${replayStatus.openPips}p ($${replayStatus.openPnlUsd})` :
+                     'PLANNED'}
                   </text>
                 </g>
               )}
@@ -3140,12 +3246,42 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           const riskTop = Math.min(entryY, slY);
           const riskHeight = Math.max(1, Math.abs(slY - entryY));
 
-          const badgeText = `Risk/reward ratio: ${metrics.riskRewardRatio.toFixed(2)}`;
-          const badgeWidth = Math.max(136, badgeText.length * 6.8 + 20);
-          const badgeX = minX + (width - badgeWidth) / 2;
+          const contentWidth = Math.max(20, width - 12);
+
+          const targetText = contentWidth >= 210
+            ? `Target: ${metrics.tpPrice.toFixed(5)} | ${metrics.rewardPips} pips (+${metrics.potentialProfitUsd})`
+            : contentWidth >= 135
+            ? `Target: ${metrics.tpPrice.toFixed(5)} (+${metrics.rewardPips}p)`
+            : `Target: ${metrics.tpPrice.toFixed(5)}`;
+
+          const stopText = contentWidth >= 210
+            ? `Stop: ${metrics.slPrice.toFixed(5)} | ${metrics.riskPips} pips (-${metrics.potentialLossUsd})`
+            : contentWidth >= 135
+            ? `Stop: ${metrics.slPrice.toFixed(5)} (-${metrics.riskPips}p)`
+            : `Stop: ${metrics.slPrice.toFixed(5)}`;
+
+          const rrText = contentWidth >= 135
+            ? `Risk/reward ratio: ${metrics.riskRewardRatio.toFixed(2)}`
+            : `R:R: ${metrics.riskRewardRatio.toFixed(2)}`;
+
+          const targetTagWidth = Math.min(contentWidth, Math.max(60, targetText.length * 5.8 + 14));
+          const stopTagWidth = Math.min(contentWidth, Math.max(60, stopText.length * 5.8 + 14));
+          const rrTagWidth = Math.min(contentWidth, Math.max(50, rrText.length * 5.8 + 14));
 
           return (
             <g data-testid={`drawing-short-position-${d.id}`} className="select-none">
+              <defs>
+                <clipPath id={`clip-tag-${d.id}-tp`}>
+                  <rect width={targetTagWidth} height={16} rx={3} />
+                </clipPath>
+                <clipPath id={`clip-tag-${d.id}-sl`}>
+                  <rect width={stopTagWidth} height={16} rx={3} />
+                </clipPath>
+                <clipPath id={`clip-tag-${d.id}-rr`}>
+                  <rect width={rrTagWidth} height={16} rx={3} />
+                </clipPath>
+              </defs>
+
               {/* Target / Profit Area (Green) */}
               <rect
                 x={minX}
@@ -3180,99 +3316,169 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 opacity={0.8}
               />
 
-              {/* Target Tag Badge on TP Boundary */}
-              <g transform={`translate(${minX + 8}, ${tpY - (tpY > entryY ? -4 : 18)})`} className="pointer-events-none select-none">
-                <rect
-                  width={Math.min(width - 16, 260)}
-                  height={16}
-                  rx={2}
-                  fill="#089981"
-                  fillOpacity={0.9}
-                />
-                <text
-                  x={6}
-                  y={12}
-                  fill="#ffffff"
-                  fontSize={10}
-                  fontWeight={600}
-                  fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
-                >
-                  Target: {metrics.tpPrice.toFixed(5)} | {metrics.rewardPips} pips (+${metrics.potentialProfitUsd})
-                </text>
-              </g>
-
-              {/* Stop Tag Badge on SL Boundary */}
-              <g transform={`translate(${minX + 8}, ${slY - (slY < entryY ? 18 : -4)})`} className="pointer-events-none select-none">
-                <rect
-                  width={Math.min(width - 16, 260)}
-                  height={16}
-                  rx={2}
-                  fill="#f23645"
-                  fillOpacity={0.9}
-                />
-                <text
-                  x={6}
-                  y={12}
-                  fill="#ffffff"
-                  fontSize={10}
-                  fontWeight={600}
-                  fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
-                >
-                  Stop: {metrics.slPrice.toFixed(5)} | {metrics.riskPips} pips (-${metrics.potentialLossUsd})
-                </text>
-              </g>
-
-              {/* Central Risk/reward ratio Pill Badge */}
-              <g transform={`translate(${badgeX}, ${entryY - 11})`} className="pointer-events-none select-none">
-                <rect
-                  width={badgeWidth}
-                  height={22}
-                  rx={4}
-                  fill="#089981"
-                  stroke="#ffffff"
-                  strokeWidth={1}
-                  className="shadow-sm"
-                />
-                <text
-                  x={badgeWidth / 2}
-                  y={15}
-                  fill="#ffffff"
-                  fontSize={11}
-                  fontWeight={600}
-                  fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
-                  textAnchor="middle"
-                >
-                  {badgeText}
-                </text>
-              </g>
-
-              {/* Bar Replay Status Indicator Badge (when replay active) */}
-              {Boolean(currentReplayTimestamp) && (
-                <g transform={`translate(${badgeX}, ${entryY + 14})`} className="pointer-events-none select-none">
+              {/* Information placed cleanly INSIDE the respective parts with low transparency (matching sessions) */}
+              {/* 1. Stop Info inside Red Loss Zone (Top part for Short) */}
+              {riskHeight >= 18 ? (
+                <g transform={`translate(${minX + 6}, ${riskHeight >= 28 ? riskTop + 4 : riskTop + (riskHeight - 16) / 2})`} className="pointer-events-none select-none">
                   <rect
-                    width={badgeWidth}
-                    height={18}
+                    width={stopTagWidth}
+                    height={16}
+                    rx={3}
+                    fill="#f23645"
+                    fillOpacity={0.25}
+                    stroke="#f23645"
+                    strokeWidth={0.8}
+                    strokeOpacity={0.6}
+                  />
+                  <text
+                    x={6}
+                    y={11.5}
+                    fill="#f87171"
+                    fontSize={9.5}
+                    fontWeight={600}
+                    fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
+                    clipPath={`url(#clip-tag-${d.id}-sl)`}
+                  >
+                    {stopText}
+                  </text>
+                </g>
+              ) : (
+                <text
+                  x={minX + 6}
+                  y={riskTop + riskHeight / 2 + 3}
+                  fill="#f87171"
+                  fontSize={9}
+                  fontWeight={600}
+                  fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
+                  className="pointer-events-none select-none"
+                >
+                  {stopText}
+                </text>
+              )}
+
+              {/* 2. Target & Risk/Reward inside Green Profit Zone (Bottom part for Short) */}
+              {profitHeight >= 36 ? (
+                <g className="pointer-events-none select-none">
+                  {/* Risk/Reward Ratio Badge near entry line */}
+                  <g transform={`translate(${minX + 6}, ${profitTop + 4})`}>
+                    <rect
+                      width={rrTagWidth}
+                      height={16}
+                      rx={3}
+                      fill="#089981"
+                      fillOpacity={0.25}
+                      stroke="#089981"
+                      strokeWidth={0.8}
+                      strokeOpacity={0.6}
+                    />
+                    <text
+                      x={6}
+                      y={11.5}
+                      fill="#34d399"
+                      fontSize={9.5}
+                      fontWeight={600}
+                      fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
+                      clipPath={`url(#clip-tag-${d.id}-rr)`}
+                    >
+                      {rrText}
+                    </text>
+                  </g>
+                  {/* Target Info Badge near TP bottom boundary */}
+                  <g transform={`translate(${minX + 6}, ${profitHeight >= 46 ? tpY - 20 : profitTop + 22})`}>
+                    <rect
+                      width={targetTagWidth}
+                      height={16}
+                      rx={3}
+                      fill="#089981"
+                      fillOpacity={0.25}
+                      stroke="#089981"
+                      strokeWidth={0.8}
+                      strokeOpacity={0.6}
+                    />
+                    <text
+                      x={6}
+                      y={11.5}
+                      fill="#34d399"
+                      fontSize={9.5}
+                      fontWeight={600}
+                      fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
+                      clipPath={`url(#clip-tag-${d.id}-tp)`}
+                    >
+                      {targetText}
+                    </text>
+                  </g>
+                </g>
+              ) : profitHeight >= 18 ? (
+                <g transform={`translate(${minX + 6}, ${profitTop + (profitHeight - 16) / 2})`} className="pointer-events-none select-none">
+                  <rect
+                    width={targetTagWidth}
+                    height={16}
+                    rx={3}
+                    fill="#089981"
+                    fillOpacity={0.25}
+                    stroke="#089981"
+                    strokeWidth={0.8}
+                    strokeOpacity={0.6}
+                  />
+                  <text
+                    x={6}
+                    y={11.5}
+                    fill="#34d399"
+                    fontSize={9.5}
+                    fontWeight={600}
+                    fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
+                    clipPath={`url(#clip-tag-${d.id}-tp)`}
+                  >
+                    {targetText} | {rrText}
+                  </text>
+                </g>
+              ) : (
+                <text
+                  x={minX + 6}
+                  y={profitTop + profitHeight / 2 + 3}
+                  fill="#34d399"
+                  fontSize={9}
+                  fontWeight={600}
+                  fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
+                  className="pointer-events-none select-none"
+                >
+                  {targetText} | {rrText}
+                </text>
+              )}
+
+              {/* 3. Bar Replay Status Indicator Badge (when replay active) */}
+              {Boolean(currentReplayTimestamp) && (
+                <g transform={`translate(${minX + 6}, ${profitHeight >= 64 ? entryY + 22 : profitTop + 4})`} className="pointer-events-none select-none">
+                  <rect
+                    width={Math.min(Math.max(20, width - 12), 190)}
+                    height={16}
                     rx={3}
                     fill={
                       replayStatus.state === 'target_hit' ? '#089981' :
                       replayStatus.state === 'stopped_out' ? '#f23645' :
                       replayStatus.state === 'active' ? '#0284c7' : '#475569'
                     }
-                    className="shadow-sm"
+                    fillOpacity={0.25}
+                    stroke={
+                      replayStatus.state === 'target_hit' ? '#089981' :
+                      replayStatus.state === 'stopped_out' ? '#f23645' :
+                      replayStatus.state === 'active' ? '#0284c7' : '#475569'
+                    }
+                    strokeWidth={0.8}
+                    strokeOpacity={0.6}
                   />
                   <text
-                    x={badgeWidth / 2}
-                    y={13}
+                    x={6}
+                    y={11.5}
                     fill="#ffffff"
-                    fontSize={10}
+                    fontSize={9.5}
                     fontWeight={600}
                     fontFamily='-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'
-                    textAnchor="middle"
                   >
                     {replayStatus.state === 'target_hit' ? `TARGET HIT (+${metrics.potentialProfitUsd})` :
                      replayStatus.state === 'stopped_out' ? `STOPPED OUT (-${metrics.potentialLossUsd})` :
-                     replayStatus.state === 'active' ? `ACTIVE: ${replayStatus.openPips >= 0 ? '+' : ''}${replayStatus.openPips} pips (${replayStatus.openPnlUsd >= 0 ? '+' : ''}$${replayStatus.openPnlUsd})` :
-                     'PLANNED (Waiting Entry)'}
+                     replayStatus.state === 'active' ? `ACTIVE: ${replayStatus.openPips >= 0 ? '+' : ''}${replayStatus.openPips}p ($${replayStatus.openPnlUsd})` :
+                     'PLANNED'}
                   </text>
                 </g>
               )}
