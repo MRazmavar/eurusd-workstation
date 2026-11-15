@@ -32,6 +32,8 @@ interface NewsOverlayProps {
   isMobile?: boolean;
   /** Visible candles array — used to restrict news markers to the current viewport */
   visibleCandles?: { time: number }[];
+  /** Mouse position relative to the chart container */
+  mousePos?: { x: number; y: number } | null;
 }
 
 interface ClusteredNewsEvents {
@@ -52,9 +54,11 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
   currentReplayTimestamp,
   isMobile = false,
   visibleCandles = [],
+  mousePos = null,
 }) => {
   const [hoveredClusterKey, setHoveredClusterKey] = useState<string | null>(null);
   const [pinnedClusterKey, setPinnedClusterKey] = useState<string | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
 
   // Close pinned card on click outside
@@ -69,17 +73,21 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
     return () => window.removeEventListener('mousedown', handleOutsideClick);
   }, [pinnedClusterKey]);
 
-  // Filter events according to user preference, replay cut-off, and visible viewport
+  // Filter events: if it is in the screen and in the chart the user is seeing, the news is included
   const filteredEvents = useMemo(() => {
     if (!visible) return [];
 
     const visRange = transformer.getVisibleRange ? transformer.getVisibleRange() : null;
-    const isBack = transformer.isScrolledBack ? transformer.isScrolledBack() : false;
 
-    // Latest candle time in current data
-    const latestCandleTime = visibleCandles.length > 0
-      ? visibleCandles[visibleCandles.length - 1].time
-      : Math.floor(Date.now() / 1000);
+    let viewStart = -Infinity;
+    let viewEnd = Infinity;
+    if (visRange) {
+      viewStart = visRange.from - 1800;
+      viewEnd = visRange.to + 1800;
+    } else if (visibleCandles.length >= 2) {
+      viewStart = visibleCandles[0].time - 3600;
+      viewEnd = visibleCandles[visibleCandles.length - 1].time + 3600;
+    }
 
     return events.filter((ev) => {
       if (filter === 'HIGH_ONLY' && ev.impact !== 'HIGH') {
@@ -93,21 +101,9 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
         }
       }
 
-      // On live chart (not in replay, and not scrolled back in history):
-      // Hide past news events so they do not clutter the live trading view.
-      // News is only shown when the user explicitly scrolls back to that time period or in Bar Replay.
-      if (!replayActive && !isBack) {
-        // Hide past news older than 2 hours from current latest bar
-        if (ev.time < latestCandleTime - 7200) {
-          return false;
-        }
-      }
-
-      // If visible time range is available, only show events within the visible viewport (+/- 1 hour buffer)
-      if (visRange) {
-        if (ev.time < visRange.from - 3600 || ev.time > visRange.to + 3600) {
-          return false;
-        }
+      // If the event timestamp is within the screen/chart being viewed, it MUST be there
+      if (ev.time < viewStart || ev.time > viewEnd) {
+        return false;
       }
 
       return true;
@@ -138,6 +134,41 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
     return clusters;
   }, [filteredEvents]);
 
+  // Proximity-based hover: show news when hovering around the news area
+  // (user does not need their mouse to precisely pass over the small badge)
+  useEffect(() => {
+    if (!mousePos) {
+      if (!pinnedClusterKey) setHoveredClusterKey(null);
+      return;
+    }
+
+    const containerHeight = overlayRef.current?.clientHeight || 600;
+    // The news area is the bottom axis zone where badges sit (bottom ~85px)
+    const isNearBottomNewsZone = mousePos.y >= containerHeight - 85;
+
+    let closestKey: string | null = null;
+    let minDistance = Infinity;
+
+    for (const cluster of clusteredEvents) {
+      const x = transformer.timeToX(cluster.time);
+      if (x === null) continue;
+      const distX = Math.abs(mousePos.x - x);
+
+      // Trigger if hovering in bottom news zone within +/- 38px horizontally
+      // OR within +/- 16px of the vertical event candle column
+      const inProximity = (isNearBottomNewsZone && distX < 38) || (distX < 16);
+
+      if (inProximity && distX < minDistance) {
+        minDistance = distX;
+        closestKey = cluster.key;
+      }
+    }
+
+    if (!pinnedClusterKey) {
+      setHoveredClusterKey(closestKey);
+    }
+  }, [mousePos, clusteredEvents, transformer, pinnedClusterKey]);
+
   if (!visible || clusteredEvents.length === 0) {
     return null;
   }
@@ -146,28 +177,34 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
   const activeCluster = clusteredEvents.find(c => c.key === activeClusterKey);
 
   return (
-    <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden select-none font-sans">
-      {/* 1. SVG Layer for Vertical Event Guide Lines */}
+    <div
+      ref={overlayRef}
+      className="absolute inset-0 pointer-events-none z-20 overflow-hidden select-none font-sans"
+    >
+      {/* 1. SVG Layer for Vertical Event Guide Lines (only shown when hovering around news or pinned) */}
       <svg className="w-full h-full pointer-events-none">
         {clusteredEvents.map((cluster) => {
           const x = transformer.timeToX(cluster.time);
-          if (x === null || isNaN(x) || x < 10 || x > 2500) return null;
+          if (x === null || isNaN(x) || x < 15 || x > 2500) return null;
 
           const isHigh = cluster.highestImpact === 'HIGH';
           const isHovered = cluster.key === activeClusterKey;
           const strokeColor = isHigh ? '#ef4444' : '#f59e0b';
 
+          // Guide line only appears when hovering around the news area or pinned
+          if (!isHovered) return null;
+
           return (
-            <g key={`line_${cluster.key}`} className="pointer-events-none">
+            <g key={`line_${cluster.key}`} className="pointer-events-none animate-in fade-in duration-150">
               <line
                 x1={x}
                 y1={0}
                 x2={x}
                 y2="100%"
                 stroke={strokeColor}
-                strokeWidth={isHovered ? 2 : 1}
-                strokeDasharray={isHovered ? '2,2' : '4,4'}
-                opacity={isHovered ? 0.85 : (isHigh ? 0.35 : 0.25)}
+                strokeWidth={2}
+                strokeDasharray="2,2"
+                opacity={0.85}
               />
             </g>
           );
@@ -211,14 +248,16 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
                 transform: 'translateX(-50%)',
               }}
               data-testid={`news-badge-${cluster.events[0].id}`}
-              className={`absolute bottom-0 pointer-events-auto ${isSelected ? 'z-30' : isHigh ? 'z-20' : 'z-10'} hover:z-40`}
+              className={`absolute bottom-0 pointer-events-auto ${isSelected ? 'z-30' : isHigh ? 'z-20' : 'z-10'} hover:z-40 py-1.5 px-2`}
+              onMouseEnter={() => setHoveredClusterKey(cluster.key)}
+              onMouseLeave={() => {
+                if (!mousePos) setHoveredClusterKey(null);
+              }}
             >
               <button
                 type="button"
                 onClick={() => setPinnedClusterKey(prev => (prev === cluster.key ? null : cluster.key))}
-                onMouseEnter={() => setHoveredClusterKey(cluster.key)}
-                onMouseLeave={() => setHoveredClusterKey(null)}
-                className={`flex items-center space-x-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold shadow-lg transition-transform hover:scale-110 active:scale-95 border ${
+                className={`flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-lg transition-transform hover:scale-110 active:scale-95 border ${
                   isHigh
                     ? isSelected
                       ? 'bg-[#dc2626] text-white border-white ring-2 ring-red-400'

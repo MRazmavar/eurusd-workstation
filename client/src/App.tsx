@@ -1315,6 +1315,7 @@ export const App: React.FC = () => {
               currentReplayTimestamp={replayEngine.getCurrentCandle()?.time || null}
               isMobile={isMobile}
               visibleCandles={visibleCandles}
+              mousePos={chartMousePos}
             />
 
             {/* Draggable Floating Favorite Tools Toolbar directly on Chart */}
