@@ -158,11 +158,8 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
             const len = list.length;
             if (len === 1) return chart.timeScale().logicalToCoordinate(0 as any);
 
-            // Timeframe step determination
-            let tfSec = 60;
-            if (len > 1) {
-              tfSec = Math.max(1, list[len - 1].time - list[len - 2].time);
-            }
+            // Timeframe step determination: always use real timeframe duration
+            const tfSec = getTimeframeSeconds(timeframeRef.current);
 
             if (t <= list[0].time) {
               const logIdx = (t - list[0].time) / tfSec;
@@ -170,7 +167,7 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
             } else if (t >= list[len - 1].time) {
               const logIdx = len - 1 + (t - list[len - 1].time) / tfSec;
               const coordAhead = chart.timeScale().logicalToCoordinate(logIdx as any);
-              if (coordAhead !== null && !isNaN(coordAhead) && coordAhead > 0) {
+              if (coordAhead !== null && !isNaN(coordAhead)) {
                 return coordAhead;
               }
               // Pixel-based extrapolation fallback so future/close boundaries never return 0 or null
@@ -220,14 +217,14 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
           if (logical !== null && list && list.length > 0) {
             const len = list.length;
             if (len === 1) return list[0].time;
-            const step = (list[len - 1].time - list[0].time) / Math.max(1, len - 1);
+            const tfSec = getTimeframeSeconds(timeframeRef.current);
             if (logical >= 0 && logical < len) {
               const idx = Math.min(len - 1, Math.max(0, Math.round(logical)));
               return list[idx].time;
             } else if (logical >= len) {
-              return Math.round(list[len - 1].time + (logical - (len - 1)) * step);
+              return Math.round(list[len - 1].time + (logical - (len - 1)) * tfSec);
             } else {
-              return Math.round(list[0].time + logical * step);
+              return Math.round(list[0].time + logical * tfSec);
             }
           }
           return null;
@@ -259,6 +256,13 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
         if (!list || list.length === 0) return null;
         const len = list.length;
         if (len === 1) return 0;
+        const tfSec = getTimeframeSeconds(timeframeRef.current);
+        if (t >= list[len - 1].time) {
+          return len - 1 + (t - list[len - 1].time) / tfSec;
+        }
+        if (t <= list[0].time) {
+          return (t - list[0].time) / tfSec;
+        }
         let low = 0, high = len - 1;
         while (low <= high) {
           const mid = Math.floor((low + high) / 2);
@@ -277,14 +281,14 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
         if (!list || list.length === 0) return null;
         const len = list.length;
         if (len === 1) return list[0].time;
-        const step = (list[len - 1].time - list[0].time) / Math.max(1, len - 1);
+        const tfSec = getTimeframeSeconds(timeframeRef.current);
         if (logical >= 0 && logical < len) {
           const idx = Math.min(len - 1, Math.max(0, Math.round(logical)));
           return list[idx].time;
         } else if (logical >= len) {
-          return Math.round(list[len - 1].time + (logical - (len - 1)) * step);
+          return Math.round(list[len - 1].time + (logical - (len - 1)) * tfSec);
         } else {
-          return Math.round(list[0].time + logical * step);
+          return Math.round(list[0].time + logical * tfSec);
         }
       },
       xToLogical: (x: number) => {

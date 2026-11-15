@@ -18,7 +18,7 @@ import { DrawingEngine, CoordinateTransformer, ScreenPoint } from '../services/D
 import { DrawingToolbarPopup } from './DrawingToolbarPopup';
 import { Check, X as CloseIcon } from 'lucide-react';
 import { computeSessionBlocks } from '../utils/sessions';
-import { formatTimeInTimezone, formatBadgeTimeInTimezone } from '../utils/timezone';
+import { formatTimeInTimezone, formatBadgeTimeInTimezone, getTimeframeSeconds } from '../utils/timezone';
 import { DEFAULT_FIB_LEVELS, getDefaultFibLevels, formatFibLevel } from '../utils/fibonacci';
 import { PositionToolService } from '../services/PositionToolService';
 
@@ -273,14 +273,23 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     trans: CoordinateTransformer
   ): MagnetSnapInfo => {
     let rawTime = trans.xToTime(screenX);
-    if (rawTime === null && cList.length >= 2) {
-      const step = Math.max(60, (cList[cList.length - 1].time - cList[0].time) / (cList.length - 1));
-      const lastX = trans.timeToX(cList[cList.length - 1].time);
-      if (lastX !== null) {
-        const firstX = trans.timeToX(cList[0].time) ?? 0;
-        const pxPerBar = Math.max(2, (lastX - firstX) / (cList.length - 1));
-        const barsDelta = (screenX - lastX) / pxPerBar;
-        rawTime = Math.round(cList[cList.length - 1].time + barsDelta * step);
+    if (rawTime === null && cList.length >= 1) {
+      if (trans.xToLogical && trans.logicalToTime) {
+        const log = trans.xToLogical(screenX);
+        if (log !== null) {
+          rawTime = trans.logicalToTime(log);
+        }
+      }
+      if (rawTime === null) {
+        const tfSec = getTimeframeSeconds(timeframe);
+        const lastCandle = cList[cList.length - 1];
+        const lastX = trans.timeToX(lastCandle.time);
+        if (lastX !== null) {
+          const prevX = cList.length >= 2 ? trans.timeToX(cList[cList.length - 2].time) : null;
+          const barPx = (prevX !== null && lastX > prevX) ? (lastX - prevX) : 12;
+          const barsDelta = (screenX - lastX) / Math.max(2, barPx);
+          rawTime = Math.round(lastCandle.time + barsDelta * tfSec);
+        }
       }
     }
     const rawPrice = trans.yToPrice(screenY);
@@ -913,11 +922,8 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         const slPrice = Number((isLong ? entryPrice - 0.00150 : entryPrice + 0.00150).toFixed(5));
         const tpPrice = Number((isLong ? entryPrice + 0.00150 : entryPrice - 0.00150).toFixed(5));
 
-        // Default width: 25 candles into the future
-        let candleStep = 300;
-        if (candles.length >= 2) {
-          candleStep = Math.max(60, Math.round((candles[candles.length - 1].time - candles[0].time) / (candles.length - 1)));
-        }
+        // Default width: 25 candles into the future matching TradingView standard
+        const candleStep = getTimeframeSeconds(timeframe);
         const endTime = entryTime + candleStep * 25;
         const midTime = entryTime + Math.round((endTime - entryTime) / 2);
 
@@ -3741,15 +3747,25 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                   onTouchStart={(e) => {
                     if (e.touches.length === 1) {
                       e.stopPropagation();
-                      e.preventDefault();
+                      if (dragStateRef.current) return;
                       const rect = svgRef.current?.getBoundingClientRect();
                       const rawX = e.touches[0].clientX - (rect?.left || 0);
                       const rawY = e.touches[0].clientY - (rect?.top || 0);
+
+                      const currentTransformer = transformerRef.current;
+                      const startLog = currentTransformer.xToLogical ? currentTransformer.xToLogical(rawX) : null;
+                      const startP = currentTransformer.yToPrice ? currentTransformer.yToPrice(rawY) : null;
+                      const initLogs = d.points.map(p => currentTransformer.timeToLogical ? currentTransformer.timeToLogical(p.time) ?? 0 : 0);
+
                       setDragState({
                         drawingId: d.id,
+                        drawing: d,
                         pointIndex: pt.pointIndex,
                         startMouse: { x: rawX, y: rawY },
                         initialPoints: [...d.points],
+                        initialLogicals: initLogs,
+                        startLogical: startLog ?? 0,
+                        startPrice: startP ?? 0,
                       });
                     }
                   }}
@@ -3782,6 +3798,9 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
       <svg
         ref={svgRef}
         data-testid="drawing-svg"
+        style={{
+          touchAction: dragState !== null || draggingSetupLine !== null || draggingTradeLine !== null || isDrawingToolActive ? 'none' : 'auto',
+        }}
         className={`w-full h-full select-none ${
           isSelectingReplayCut || isDrawingToolActive || inProgressDrawing || dragState !== null || draggingSetupLine !== null || draggingTradeLine !== null
             ? 'pointer-events-auto cursor-crosshair'
