@@ -1,7 +1,7 @@
 /**
  * TradingView-Style Bottom Dock: Replay Controller, Open Positions, Trade History, Strategy Tester & Analytics.
  */
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Play,
   Pause,
@@ -18,6 +18,8 @@ import {
   Clock,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   Scissors,
   Calendar,
   Dices,
@@ -80,6 +82,78 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
 }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<BottomTab>(initialTab);
+
+  // Horizontal Touch and Mouse Scrolling & Physical Slider State for Dock Header
+  const headerScrollRef = useRef<HTMLDivElement | null>(null);
+  const [headerScrollPos, setHeaderScrollPos] = useState<number>(0);
+  const [headerMaxScroll, setHeaderMaxScroll] = useState<number>(0);
+  const [headerCanScroll, setHeaderCanScroll] = useState<boolean>(false);
+
+  const checkHeaderScroll = () => {
+    if (!headerScrollRef.current) return;
+    const { scrollLeft, scrollWidth, clientWidth } = headerScrollRef.current;
+    const max = Math.max(0, scrollWidth - clientWidth);
+    setHeaderMaxScroll(max);
+    setHeaderScrollPos(scrollLeft);
+    setHeaderCanScroll(max > 4);
+  };
+
+  useEffect(() => {
+    checkHeaderScroll();
+    const handleResize = () => checkHeaderScroll();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [trades.length, activeTab, collapsed]);
+
+  useEffect(() => {
+    const t = setTimeout(checkHeaderScroll, 60);
+    return () => clearTimeout(t);
+  }, []);
+
+  // Mouse Drag-to-Scroll handlers
+  const isMouseDownRef = useRef(false);
+  const mouseStartXRef = useRef(0);
+  const mouseScrollLeftRef = useRef(0);
+  const hasDraggedRef = useRef(false);
+
+  const handleHeaderMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    isMouseDownRef.current = true;
+    mouseStartXRef.current = e.clientX;
+    mouseScrollLeftRef.current = headerScrollRef.current?.scrollLeft || 0;
+    hasDraggedRef.current = false;
+  };
+
+  const handleHeaderMouseMove = (e: React.MouseEvent) => {
+    if (!isMouseDownRef.current || !headerScrollRef.current) return;
+    const dx = e.clientX - mouseStartXRef.current;
+    if (Math.abs(dx) > 3) {
+      hasDraggedRef.current = true;
+    }
+    headerScrollRef.current.scrollLeft = mouseScrollLeftRef.current - dx;
+  };
+
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      isMouseDownRef.current = false;
+    };
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
+  }, []);
+
+  const handleHeaderSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = Number(e.target.value);
+    setHeaderScrollPos(val);
+    if (headerScrollRef.current) {
+      headerScrollRef.current.scrollLeft = val;
+    }
+  };
+
+  const scrollHeaderByAmount = (amount: number) => {
+    if (headerScrollRef.current) {
+      headerScrollRef.current.scrollBy({ left: amount, behavior: 'smooth' });
+    }
+  };
 
   const openTrades = trades.filter(t => t.status === 'OPEN');
   const pendingTrades = trades.filter(t => t.status === 'PENDING');
@@ -306,94 +380,179 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         </div>
       )}
 
-      {/* 2. DOCK HEADER (TABS & COLLAPSE) */}
-      <div className="h-9 bg-[#131722] px-3 flex items-center justify-between border-b border-[#2a2e39] text-xs">
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={() => { setActiveTab('analytics'); setCollapsed(false); }}
-            data-testid="dock-tab-analytics"
-            className={`px-2.5 py-1 rounded font-medium flex items-center space-x-1.5 ${
-              activeTab === 'analytics' && !collapsed
-                ? 'bg-[#1e222d] text-[#2962ff] border border-[#2a2e39]'
-                : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            <BarChart2 size={13} />
-            <span>Strategy Tester & Analytics</span>
-          </button>
+      {/* 2. DOCK HEADER (TABS & COLLAPSE) WITH TOUCH & MOUSE SCROLLING & PHYSICAL SLIDER */}
+      <div className="bg-[#131722] border-b border-[#2a2e39] text-xs flex flex-col">
+        {/* Scrollable Tabs & Actions Row */}
+        <div
+          ref={headerScrollRef}
+          data-testid="bottom-panel-header-scroll"
+          onScroll={checkHeaderScroll}
+          onMouseDown={handleHeaderMouseDown}
+          onMouseMove={handleHeaderMouseMove}
+          className={`h-9 px-3 flex items-center justify-between overflow-x-auto no-scrollbar scroll-smooth space-x-4 select-none ${
+            headerCanScroll ? 'cursor-grab active:cursor-grabbing' : ''
+          }`}
+          style={{
+            touchAction: 'pan-x',
+            WebkitOverflowScrolling: 'touch',
+          }}
+        >
+          {/* Left side: Tabs */}
+          <div className="flex items-center space-x-2 flex-shrink-0">
+            <button
+              onClick={(e) => {
+                if (hasDraggedRef.current) {
+                  e.preventDefault();
+                  return;
+                }
+                setActiveTab('analytics');
+                setCollapsed(false);
+              }}
+              data-testid="dock-tab-analytics"
+              className={`px-2.5 py-1 rounded font-medium flex items-center space-x-1.5 flex-shrink-0 whitespace-nowrap transition-colors ${
+                activeTab === 'analytics' && !collapsed
+                  ? 'bg-[#1e222d] text-[#2962ff] border border-[#2a2e39]'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <BarChart2 size={13} />
+              <span>Strategy Tester & Analytics</span>
+            </button>
 
-          <button
-            onClick={() => { setActiveTab('positions'); setCollapsed(false); }}
-            data-testid="dock-tab-positions"
-            className={`px-2.5 py-1 rounded font-medium flex items-center space-x-1.5 ${
-              activeTab === 'positions' && !collapsed
-                ? 'bg-[#1e222d] text-[#2962ff] border border-[#2a2e39]'
-                : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            <span>Positions & Orders</span>
-            {(openTrades.length > 0 || pendingTrades.length > 0) && (
-              <span className="bg-[#2962ff] text-white text-[10px] px-1.5 rounded-full font-bold">
-                {openTrades.length} {pendingTrades.length > 0 ? `+ ${pendingTrades.length}p` : ''}
+            <button
+              onClick={(e) => {
+                if (hasDraggedRef.current) {
+                  e.preventDefault();
+                  return;
+                }
+                setActiveTab('positions');
+                setCollapsed(false);
+              }}
+              data-testid="dock-tab-positions"
+              className={`px-2.5 py-1 rounded font-medium flex items-center space-x-1.5 flex-shrink-0 whitespace-nowrap transition-colors ${
+                activeTab === 'positions' && !collapsed
+                  ? 'bg-[#1e222d] text-[#2962ff] border border-[#2a2e39]'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <span>Positions & Orders</span>
+              {(openTrades.length > 0 || pendingTrades.length > 0) && (
+                <span className="bg-[#2962ff] text-white text-[10px] px-1.5 rounded-full font-bold">
+                  {openTrades.length} {pendingTrades.length > 0 ? `+ ${pendingTrades.length}p` : ''}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={(e) => {
+                if (hasDraggedRef.current) {
+                  e.preventDefault();
+                  return;
+                }
+                setActiveTab('history');
+                setCollapsed(false);
+              }}
+              data-testid="dock-tab-history"
+              className={`px-2.5 py-1 rounded font-medium flex items-center space-x-1.5 flex-shrink-0 whitespace-nowrap transition-colors ${
+                activeTab === 'history' && !collapsed
+                  ? 'bg-[#1e222d] text-[#2962ff] border border-[#2a2e39]'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <Clock size={13} />
+              <span>Trade History ({closedTrades.length})</span>
+            </button>
+          </div>
+
+          {/* Right side: Balance and collapse toggle */}
+          <div className="flex items-center space-x-3 flex-shrink-0">
+            <div className="flex items-center space-x-1.5 text-[11px] font-mono text-gray-300 bg-[#1e222d] px-2 py-0.5 rounded border border-[#2a2e39] flex-shrink-0 whitespace-nowrap">
+              <span className="text-gray-400">Balance:</span>
+              <span className="text-white font-bold">${(settings.initial_balance + stats.netProfit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <button
+                onClick={onOpenBalanceModal}
+                className="p-0.5 rounded text-gray-400 hover:text-white transition-colors ml-0.5"
+                title="Change Default / Initial Balance"
+                data-testid="bottom-panel-balance-edit-btn"
+              >
+                <Edit3 size={11} />
+              </button>
+            </div>
+
+            <div className="text-[11px] font-mono text-gray-300 flex-shrink-0 whitespace-nowrap">
+              <span>Net PnL: </span>
+              <span className={stats.netProfit >= 0 ? 'text-[#089981] font-bold' : 'text-[#f23645] font-bold'}>
+                {stats.netProfit >= 0 ? '+' : ''}${stats.netProfit.toFixed(2)} ({stats.netProfitPips >= 0 ? '+' : ''}{stats.netProfitPips.toFixed(1)}p)
               </span>
+            </div>
+
+            {isMobile ? (
+              <button
+                onClick={onCloseMobile}
+                data-testid="mobile-dock-close-btn"
+                className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#1e222d] flex-shrink-0"
+                title="Close"
+              >
+                <X size={16} />
+              </button>
+            ) : (
+              <button
+                onClick={() => setCollapsed(!collapsed)}
+                className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#1e222d] flex-shrink-0"
+                title={collapsed ? 'Expand Dock' : 'Collapse Dock'}
+              >
+                {collapsed ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+              </button>
             )}
-          </button>
+          </div>
+        </div>
 
-          <button
-            onClick={() => { setActiveTab('history'); setCollapsed(false); }}
-            data-testid="dock-tab-history"
-            className={`px-2.5 py-1 rounded font-medium flex items-center space-x-1.5 ${
-              activeTab === 'history' && !collapsed
-                ? 'bg-[#1e222d] text-[#2962ff] border border-[#2a2e39]'
-                : 'text-gray-400 hover:text-white'
-            }`}
+        {/* Physical Slider Bar (Visible when header content overflows or on mobile) */}
+        {headerCanScroll && (
+          <div
+            data-testid="bottom-panel-slider-bar"
+            className="flex items-center space-x-1.5 px-3 py-1 bg-[#0d1017] border-t border-[#2a2e39]/60"
+            onClick={(e) => e.stopPropagation()}
           >
-            <Clock size={13} />
-            <span>Trade History ({closedTrades.length})</span>
-          </button>
-        </div>
-
-        {/* Right side: Balance and collapse toggle */}
-        <div className="flex items-center space-x-3">
-          <div className="flex items-center space-x-1.5 text-[11px] font-mono text-gray-300 bg-[#1e222d] px-2 py-0.5 rounded border border-[#2a2e39]">
-            <span className="text-gray-400">Balance:</span>
-            <span className="text-white font-bold">${(settings.initial_balance + stats.netProfit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             <button
-              onClick={onOpenBalanceModal}
-              className="p-0.5 rounded text-gray-400 hover:text-white transition-colors ml-0.5"
-              title="Change Default / Initial Balance"
-              data-testid="bottom-panel-balance-edit-btn"
+              type="button"
+              data-testid="bottom-panel-scroll-left"
+              onClick={() => scrollHeaderByAmount(-120)}
+              disabled={headerScrollPos <= 2}
+              className="p-0.5 rounded text-gray-400 hover:text-white hover:bg-[#1e222d] disabled:opacity-30 disabled:pointer-events-none transition-colors"
+              title="Scroll dock header left"
             >
-              <Edit3 size={11} />
+              <ChevronLeft size={13} />
+            </button>
+
+            {/* Physical interactive slider track */}
+            <div className="relative flex-1 flex items-center h-4">
+              <input
+                type="range"
+                min={0}
+                max={headerMaxScroll}
+                value={headerScrollPos}
+                onChange={handleHeaderSliderChange}
+                data-testid="bottom-panel-physical-slider"
+                className="w-full h-1.5 bg-[#2a2e39] rounded-lg appearance-none cursor-pointer accent-[#2962ff] focus:outline-none"
+                style={{ touchAction: 'none' }}
+                title="Slide to reveal all tabs and balance controls"
+                aria-label="Bottom panel tabs slider"
+              />
+            </div>
+
+            <button
+              type="button"
+              data-testid="bottom-panel-scroll-right"
+              onClick={() => scrollHeaderByAmount(120)}
+              disabled={headerScrollPos >= headerMaxScroll - 2}
+              className="p-0.5 rounded text-gray-400 hover:text-white hover:bg-[#1e222d] disabled:opacity-30 disabled:pointer-events-none transition-colors"
+              title="Scroll dock header right"
+            >
+              <ChevronRight size={13} />
             </button>
           </div>
-
-          <div className="text-[11px] font-mono text-gray-300">
-            <span>Net PnL: </span>
-            <span className={stats.netProfit >= 0 ? 'text-[#089981] font-bold' : 'text-[#f23645] font-bold'}>
-              {stats.netProfit >= 0 ? '+' : ''}${stats.netProfit.toFixed(2)} ({stats.netProfitPips >= 0 ? '+' : ''}{stats.netProfitPips.toFixed(1)}p)
-            </span>
-          </div>
-
-          {isMobile ? (
-            <button
-              onClick={onCloseMobile}
-              data-testid="mobile-dock-close-btn"
-              className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#1e222d]"
-              title="Close"
-            >
-              <X size={16} />
-            </button>
-          ) : (
-            <button
-              onClick={() => setCollapsed(!collapsed)}
-              className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#1e222d]"
-              title={collapsed ? 'Expand Dock' : 'Collapse Dock'}
-            >
-              {collapsed ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-            </button>
-          )}
-        </div>
+        )}
       </div>
 
       {/* 3. DOCK BODY */}
