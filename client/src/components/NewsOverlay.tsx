@@ -30,6 +30,8 @@ interface NewsOverlayProps {
   replayActive?: boolean;
   currentReplayTimestamp?: number | null;
   isMobile?: boolean;
+  /** Visible candles array — used to restrict news markers to the current viewport */
+  visibleCandles?: { time: number }[];
 }
 
 interface ClusteredNewsEvents {
@@ -49,6 +51,7 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
   replayActive,
   currentReplayTimestamp,
   isMobile = false,
+  visibleCandles = [],
 }) => {
   const [hoveredClusterKey, setHoveredClusterKey] = useState<string | null>(null);
   const [pinnedClusterKey, setPinnedClusterKey] = useState<string | null>(null);
@@ -66,9 +69,22 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
     return () => window.removeEventListener('mousedown', handleOutsideClick);
   }, [pinnedClusterKey]);
 
-  // Filter events according to user preference and replay cut-off
+  // Filter events according to user preference, replay cut-off, and visible viewport
   const filteredEvents = useMemo(() => {
     if (!visible) return [];
+
+    // Compute visible time range from the candles currently rendered on screen
+    let viewStart = -Infinity;
+    let viewEnd = Infinity;
+    if (visibleCandles.length >= 2) {
+      viewStart = visibleCandles[0].time;
+      viewEnd = visibleCandles[visibleCandles.length - 1].time;
+      // Add a small buffer (one candle interval on each side) so edge events aren't clipped
+      const avgInterval = (viewEnd - viewStart) / (visibleCandles.length - 1);
+      viewStart -= avgInterval * 2;
+      viewEnd += avgInterval * 2;
+    }
+
     return events.filter((ev) => {
       if (filter === 'HIGH_ONLY' && ev.impact !== 'HIGH') {
         return false;
@@ -79,9 +95,13 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
           return false;
         }
       }
+      // Only show events within the currently visible viewport time range
+      if (ev.time < viewStart || ev.time > viewEnd) {
+        return false;
+      }
       return true;
     });
-  }, [events, visible, filter, replayActive, currentReplayTimestamp]);
+  }, [events, visible, filter, replayActive, currentReplayTimestamp, visibleCandles]);
 
   // Cluster events that happen at the exact same timestamp (e.g. NFP + Unemployment Rate)
   const clusteredEvents = useMemo(() => {
