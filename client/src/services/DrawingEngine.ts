@@ -19,6 +19,8 @@ export interface CoordinateTransformer {
   logicalToTime?: (logical: number) => number | null;
   xToLogical?: (x: number) => number | null;
   logicalToX?: (logical: number) => number | null;
+  getVisibleRange?: () => { from: number; to: number } | null;
+  isScrolledBack?: () => boolean;
 }
 
 export class DrawingEngine {

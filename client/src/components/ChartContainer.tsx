@@ -145,6 +145,29 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
     const chart = chartRef.current;
     const series = seriesRef.current;
 
+    // Helper to safely interpolate logical to coordinate (lightweight-charts returns 0 for non-integer logicals)
+    const getLogicalCoord = (logical: number): number | null => {
+      if (logical === undefined || logical === null || isNaN(logical)) return null;
+      try {
+        const lFloor = Math.floor(logical);
+        const lCeil = Math.ceil(logical);
+        if (lFloor === lCeil) {
+          const c = chart.timeScale().logicalToCoordinate(lFloor as any);
+          return (c !== null && !isNaN(c)) ? c : null;
+        }
+        const c1 = chart.timeScale().logicalToCoordinate(lFloor as any);
+        const c2 = chart.timeScale().logicalToCoordinate(lCeil as any);
+        if (c1 !== null && c2 !== null && !isNaN(c1) && !isNaN(c2)) {
+          return c1 + (c2 - c1) * (logical - lFloor);
+        }
+        if (c1 !== null && !isNaN(c1)) return c1;
+        if (c2 !== null && !isNaN(c2)) return c2;
+        return null;
+      } catch {
+        return null;
+      }
+    };
+
     const transformer: CoordinateTransformer = {
       timeToX: (t: number) => {
         if (t === undefined || t === null || isNaN(t)) return null;
@@ -156,17 +179,17 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
           const list = candlesRef.current;
           if (list && list.length > 0) {
             const len = list.length;
-            if (len === 1) return chart.timeScale().logicalToCoordinate(0 as any);
+            if (len === 1) return getLogicalCoord(0);
 
             // Timeframe step determination: always use real timeframe duration
             const tfSec = getTimeframeSeconds(timeframeRef.current);
 
             if (t <= list[0].time) {
               const logIdx = (t - list[0].time) / tfSec;
-              return chart.timeScale().logicalToCoordinate(logIdx as any);
+              return getLogicalCoord(logIdx);
             } else if (t >= list[len - 1].time) {
               const logIdx = len - 1 + (t - list[len - 1].time) / tfSec;
-              const coordAhead = chart.timeScale().logicalToCoordinate(logIdx as any);
+              const coordAhead = getLogicalCoord(logIdx);
               if (coordAhead !== null && !isNaN(coordAhead)) {
                 return coordAhead;
               }
@@ -189,7 +212,7 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
               const i = Math.max(0, Math.min(len - 2, high));
               const barDiff = Math.max(1, list[i + 1].time - list[i].time);
               const frac = (t - list[i].time) / barDiff;
-              return chart.timeScale().logicalToCoordinate((i + frac) as any);
+              return getLogicalCoord(i + frac);
             }
           }
           return null;
@@ -300,12 +323,30 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
         }
       },
       logicalToX: (logical: number) => {
-        if (logical === undefined || logical === null || isNaN(logical)) return null;
+        return getLogicalCoord(logical);
+      },
+      getVisibleRange: () => {
+        if (!chartRef.current) return null;
         try {
-          return chart.timeScale().logicalToCoordinate(logical as any);
+          const r = chartRef.current.timeScale().getVisibleRange();
+          if (!r || !r.from || !r.to) return null;
+          const from = typeof r.from === 'number' ? r.from : (r.from as any)?.timestamp;
+          const to = typeof r.to === 'number' ? r.to : (r.to as any)?.timestamp;
+          return (from && to) ? { from, to } : null;
         } catch {
           return null;
         }
+      },
+      isScrolledBack: () => {
+        if (!chartRef.current) return false;
+        try {
+          const lr = chartRef.current.timeScale().getVisibleLogicalRange();
+          const list = candlesRef.current;
+          if (lr && list && list.length > 0) {
+            return lr.to < (list.length - 1) - 2;
+          }
+        } catch {}
+        return false;
       },
     };
 

@@ -73,35 +73,46 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
   const filteredEvents = useMemo(() => {
     if (!visible) return [];
 
-    // Compute visible time range from the candles currently rendered on screen
-    let viewStart = -Infinity;
-    let viewEnd = Infinity;
-    if (visibleCandles.length >= 2) {
-      viewStart = visibleCandles[0].time;
-      viewEnd = visibleCandles[visibleCandles.length - 1].time;
-      // Add a small buffer (one candle interval on each side) so edge events aren't clipped
-      const avgInterval = (viewEnd - viewStart) / (visibleCandles.length - 1);
-      viewStart -= avgInterval * 2;
-      viewEnd += avgInterval * 2;
-    }
+    const visRange = transformer.getVisibleRange ? transformer.getVisibleRange() : null;
+    const isBack = transformer.isScrolledBack ? transformer.isScrolledBack() : false;
+
+    // Latest candle time in current data
+    const latestCandleTime = visibleCandles.length > 0
+      ? visibleCandles[visibleCandles.length - 1].time
+      : Math.floor(Date.now() / 1000);
 
     return events.filter((ev) => {
       if (filter === 'HIGH_ONLY' && ev.impact !== 'HIGH') {
         return false;
       }
-      // In Bar Replay, show events on visible historical candles (up to replay candle + 1 day)
+
+      // In Bar Replay, show events on visible historical candles up to replay candle + 1 day
       if (replayActive && currentReplayTimestamp) {
         if (ev.time > currentReplayTimestamp + 86400 * 2) {
           return false;
         }
       }
-      // Only show events within the currently visible viewport time range
-      if (ev.time < viewStart || ev.time > viewEnd) {
-        return false;
+
+      // On live chart (not in replay, and not scrolled back in history):
+      // Hide past news events so they do not clutter the live trading view.
+      // News is only shown when the user explicitly scrolls back to that time period or in Bar Replay.
+      if (!replayActive && !isBack) {
+        // Hide past news older than 2 hours from current latest bar
+        if (ev.time < latestCandleTime - 7200) {
+          return false;
+        }
       }
+
+      // If visible time range is available, only show events within the visible viewport (+/- 1 hour buffer)
+      if (visRange) {
+        if (ev.time < visRange.from - 3600 || ev.time > visRange.to + 3600) {
+          return false;
+        }
+      }
+
       return true;
     });
-  }, [events, visible, filter, replayActive, currentReplayTimestamp, visibleCandles]);
+  }, [events, visible, filter, replayActive, currentReplayTimestamp, visibleCandles, transformer]);
 
   // Cluster events that happen at the exact same timestamp (e.g. NFP + Unemployment Rate)
   const clusteredEvents = useMemo(() => {
@@ -140,7 +151,7 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
       <svg className="w-full h-full pointer-events-none">
         {clusteredEvents.map((cluster) => {
           const x = transformer.timeToX(cluster.time);
-          if (x === null || x < -50 || x > 2500) return null;
+          if (x === null || isNaN(x) || x < 10 || x > 2500) return null;
 
           const isHigh = cluster.highestImpact === 'HIGH';
           const isHovered = cluster.key === activeClusterKey;
@@ -174,7 +185,7 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
       >
         {clusteredEvents.map((cluster) => {
           const x = transformer.timeToX(cluster.time);
-          if (x === null || x < -30 || x > 2500) return null;
+          if (x === null || isNaN(x) || x < 25 || x > 2500) return null;
 
           const isHigh = cluster.highestImpact === 'HIGH';
           const isSelected = cluster.key === activeClusterKey;
