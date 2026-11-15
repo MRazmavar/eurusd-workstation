@@ -540,6 +540,18 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
           const targetIndex = totalBars - 1;
           const isBack = range.to < targetIndex - 1;
           setIsScrolledBack(isBack);
+
+          // In Bar Replay, prevent scrolling past the current revealed candle into future/today's bars
+          if (isReplayActiveRef.current) {
+            const maxAllowedTo = targetIndex + 18;
+            if (range.to > maxAllowedTo) {
+              const diff = range.to - maxAllowedTo;
+              chart.timeScale().setVisibleLogicalRange({
+                from: range.from - diff,
+                to: maxAllowedTo,
+              });
+            }
+          }
         }
       }
       updateTransformer();

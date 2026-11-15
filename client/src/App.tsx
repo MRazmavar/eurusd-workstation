@@ -1284,10 +1284,13 @@ export const App: React.FC = () => {
               trades={trades}
               currentPrice={visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : (quote?.bid || (masterCandles.length > 0 ? masterCandles[masterCandles.length - 1].close : 1.11380))}
               onCloseTrade={(tradeId) => {
-                const curP = visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : (quote?.bid || (masterCandles.length > 0 ? masterCandles[masterCandles.length - 1].close : 1.11380));
-                const time = replayEngine.getCurrentCandle()?.time || Math.floor(Date.now() / 1000);
+                const curCandle = (replayActive && replayEngine.isActive())
+                  ? (replayEngine.getCurrentCandle() || (visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1] : null))
+                  : (visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1] : null);
+                const curP = curCandle ? curCandle.close : (quote?.bid || 1.11380);
+                const time = curCandle ? curCandle.time : Math.floor(Date.now() / 1000);
                 backtestingEngine.closeTrade(tradeId, curP, time, 'MANUAL');
-                showToast('Closed Position from Chart');
+                showToast('Closed Position');
               }}
               onModifyTrade={(tradeId, updates) => {
                 backtestingEngine.modifyTrade(tradeId, updates);
@@ -1349,8 +1352,11 @@ export const App: React.FC = () => {
               }}
               onCancelSetup={() => backtestingEngine.cancelTradeSetup()}
               onCloseTrade={(tradeId) => {
-                const curP = visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : (quote?.bid || (masterCandles.length > 0 ? masterCandles[masterCandles.length - 1].close : 1.11380));
-                const time = replayEngine.getCurrentCandle()?.time || Math.floor(Date.now() / 1000);
+                const curCandle = (replayActive && replayEngine.isActive())
+                  ? (replayEngine.getCurrentCandle() || (visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1] : null))
+                  : (visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1] : null);
+                const curP = curCandle ? curCandle.close : (quote?.bid || 1.11380);
+                const time = curCandle ? curCandle.time : Math.floor(Date.now() / 1000);
                 backtestingEngine.closeTrade(tradeId, curP, time, 'MANUAL');
                 showToast('Closed Position');
               }}
@@ -1406,7 +1412,7 @@ export const App: React.FC = () => {
           replayMode={replayMode}
           intrabarPhase={intrabarPhase}
           trades={trades}
-          currentPrice={quote ? quote.bid : 1.1143}
+          currentPrice={visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : (quote ? quote.bid : 1.1143)}
           settings={settings}
           onExitReplay={handleToggleReplay}
           onStartSelectCut={() => setIsSelectingReplayCut(true)}
@@ -1415,6 +1421,15 @@ export const App: React.FC = () => {
           onRandomDateReplay={handleRandomDateReplay}
           replayTickIntervalSec={replayTickIntervalSec}
           onOpenBalanceModal={() => setIsBalanceModalOpen(true)}
+          onCloseTrade={(tradeId) => {
+            const curCandle = (replayActive && replayEngine.isActive())
+              ? (replayEngine.getCurrentCandle() || (visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1] : null))
+              : (visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1] : null);
+            const curP = curCandle ? curCandle.close : (quote?.bid || 1.11380);
+            const time = curCandle ? curCandle.time : Math.floor(Date.now() / 1000);
+            backtestingEngine.closeTrade(tradeId, curP, time, 'MANUAL');
+            showToast('Closed Position');
+          }}
         />
       )}
 
@@ -1491,7 +1506,7 @@ export const App: React.FC = () => {
               replayMode={replayMode}
               intrabarPhase={intrabarPhase}
               trades={trades}
-              currentPrice={quote ? quote.bid : 1.1143}
+              currentPrice={visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1].close : (quote ? quote.bid : 1.1143)}
               settings={settings}
               onExitReplay={handleToggleReplay}
               onStartSelectCut={() => setIsSelectingReplayCut(true)}
@@ -1504,6 +1519,15 @@ export const App: React.FC = () => {
               initialTab={mobileActiveTab === 'positions' ? 'positions' : 'analytics'}
               hideReplayBar={true}
               onCloseMobile={() => setMobileActiveTab('chart')}
+              onCloseTrade={(tradeId) => {
+                const curCandle = (replayActive && replayEngine.isActive())
+                  ? (replayEngine.getCurrentCandle() || (visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1] : null))
+                  : (visibleCandles.length > 0 ? visibleCandles[visibleCandles.length - 1] : null);
+                const curP = curCandle ? curCandle.close : (quote?.bid || 1.11380);
+                const time = curCandle ? curCandle.time : Math.floor(Date.now() / 1000);
+                backtestingEngine.closeTrade(tradeId, curP, time, 'MANUAL');
+                showToast('Closed Position');
+              }}
             />
           </div>
         </div>

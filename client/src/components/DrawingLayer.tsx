@@ -1448,32 +1448,23 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   };
 
   // Render Confirmed On-Chart Trades (TradingView Long / Short Position Boxes)
+  // Only active (OPEN / PENDING) trades are rendered as on-chart position boxes.
+  // When a trade is closed, the position box is dismissed from the screen.
   const renderOpenTrades = () => {
     if (!trades || trades.length === 0) return null;
 
     const activeTrades = trades.filter(t => t.status === 'OPEN' || t.status === 'PENDING');
-    const closedTrades = trades.filter(t => t.status === 'CLOSED');
-
-    // Only render closed trades that are near or within visible range to optimize SVG performance
-    const visibleStart = candles.length > 0 ? candles[0].time - 86400 * 2 : 0;
-    const visibleEnd = candles.length > 0 ? candles[candles.length - 1].time + 86400 * 2 : Infinity;
-    const visibleClosedTrades = closedTrades.filter(t => {
-      const exitT = t.exit_time || t.entry_time;
-      return exitT >= visibleStart && t.entry_time <= visibleEnd;
-    });
-
-    const displayTrades = [...activeTrades, ...visibleClosedTrades];
-    if (displayTrades.length === 0) return null;
+    if (activeTrades.length === 0) return null;
 
     const effectiveMarketPrice = currentPrice || (candles.length > 0 ? candles[candles.length - 1].close : 1.11380);
 
     return (
       <g className="open-trades-layer select-none pointer-events-auto" data-testid="open-trades-layer">
-        {displayTrades.map((trade) => {
+        {activeTrades.map((trade) => {
           const isBuy = trade.type === 'BUY';
           const isOpen = trade.status === 'OPEN';
           const isPending = trade.status === 'PENDING';
-          const isClosed = trade.status === 'CLOSED';
+          const isClosed = false;
 
           const entryPrice = trade.entry_price;
           const slPrice = trade.sl !== null && trade.sl !== undefined
@@ -1491,18 +1482,10 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
 
           // Time coordinates (Horizontal boundaries)
           const x1 = transformer.timeToX(trade.entry_time);
-          let x2: number | null = null;
-
-          if (isOpen || isPending) {
-            // Extends dynamically with incoming live/backtest candles
-            const lastCandleTime = candles.length > 0 ? candles[candles.length - 1].time : trade.entry_time;
-            const currentCandleX = transformer.timeToX(lastCandleTime);
-            x2 = currentCandleX !== null ? currentCandleX + 45 : null;
-          } else if (isClosed) {
-            // Stops extending when the trade is closed
-            const exitTime = trade.exit_time || (trade.entry_time + 3600);
-            x2 = transformer.timeToX(exitTime);
-          }
+          // Extends dynamically with incoming live/backtest candles
+          const lastCandleTime = candles.length > 0 ? candles[candles.length - 1].time : trade.entry_time;
+          const currentCandleX = transformer.timeToX(lastCandleTime);
+          const x2 = currentCandleX !== null ? currentCandleX + 45 : null;
 
           const safeX1 = x1 !== null ? x1 : (x2 !== null ? x2 - 180 : 80);
           const safeX2 = x2 !== null ? x2 : (safeX1 + 180);
@@ -1526,7 +1509,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
 
           const grossPnl = pipDiff * 10 * trade.lot_size;
           const commission = trade.commission || 0;
-          const liveNetPnl = isClosed ? (trade.pnl ?? 0) : (grossPnl - commission);
+          const liveNetPnl = grossPnl - commission;
           const isProfit = liveNetPnl >= 0;
 
           const slDiffPips = Math.abs(entryPrice - slPrice) / 0.0001;
@@ -1539,7 +1522,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             <g
               key={trade.id}
               data-testid={`on-chart-trade-${trade.id}`}
-              className={isClosed ? "opacity-85" : "opacity-100"}
+              className="opacity-100"
             >
               {/* Green Profit Zone Box */}
               <rect
@@ -1548,7 +1531,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 width={boxWidth}
                 height={profitZoneHeight}
                 fill="#089981"
-                fillOpacity={isClosed ? 0.12 : 0.20}
+                fillOpacity={0.20}
                 stroke="#089981"
                 strokeWidth={1}
                 className="pointer-events-none"
@@ -1562,7 +1545,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 width={boxWidth}
                 height={riskZoneHeight}
                 fill="#f23645"
-                fillOpacity={isClosed ? 0.12 : 0.20}
+                fillOpacity={0.20}
                 stroke="#f23645"
                 strokeWidth={1}
                 className="pointer-events-none"

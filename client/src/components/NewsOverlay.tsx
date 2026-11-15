@@ -154,9 +154,9 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
       if (x === null) continue;
       const distX = Math.abs(mousePos.x - x);
 
-      // Trigger if hovering in bottom news zone within +/- 38px horizontally
-      // OR within +/- 16px of the vertical event candle column
-      const inProximity = (isNearBottomNewsZone && distX < 38) || (distX < 16);
+      // Trigger only when hovering in the bottom news zone within +/- 38px horizontally
+      // (prevents intrusive vertical dashed lines from cutting through candles while inspecting charts)
+      const inProximity = isNearBottomNewsZone && distX < 38;
 
       if (inProximity && distX < minDistance) {
         minDistance = distX;

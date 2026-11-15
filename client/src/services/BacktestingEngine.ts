@@ -5,6 +5,7 @@
  */
 import { Trade, Candle, UserSettings, DraggableTradeSetup } from '../types';
 import { marketClient } from './MarketDataClient';
+import { replayEngine } from './ReplayEngine';
 
 export interface TradeOrderParams {
   type: 'BUY' | 'SELL';
@@ -43,19 +44,29 @@ export class BacktestingEngine {
     this.loadInitialData();
   }
 
+  private sanitizeTrades(tradesList: Trade[]): Trade[] {
+    return tradesList.map((t) => {
+      // Auto-heal any historical trades whose exit_time was corrupted with a future Date.now() timestamp
+      if (t.status === 'CLOSED' && t.exit_time && t.entry_time && t.exit_time > t.entry_time + 86400 * 30) {
+        return { ...t, exit_time: t.entry_time + 3600 };
+      }
+      return t;
+    });
+  }
+
   private async loadInitialData() {
     try {
       const [loadedTrades, loadedSettings] = await Promise.all([
         marketClient.fetchTrades(),
         marketClient.fetchSettings(),
       ]);
-      this.trades = loadedTrades;
+      this.trades = this.sanitizeTrades(loadedTrades);
       this.settings = loadedSettings;
       this.notify();
     } catch {
       const local = localStorage.getItem('eurusd_trades');
       if (local) {
-        this.trades = JSON.parse(local);
+        this.trades = this.sanitizeTrades(JSON.parse(local));
         this.notify();
       }
     }
@@ -414,7 +425,10 @@ export class BacktestingEngine {
   }
 
   public async cancelTrade(tradeId: string): Promise<Trade | null> {
-    return this.closeTrade(tradeId, 0, Math.floor(Date.now() / 1000), 'CANCELLED');
+    const time = replayEngine.isActive()
+      ? (replayEngine.getCurrentTimestamp() || Math.floor(Date.now() / 1000))
+      : Math.floor(Date.now() / 1000);
+    return this.closeTrade(tradeId, 0, time, 'CANCELLED');
   }
 
   public async closeTrade(
@@ -429,11 +443,22 @@ export class BacktestingEngine {
     const t = this.trades[idx];
     if (t.status === 'CLOSED' || t.status === 'CANCELLED') return t;
 
+    // Ensure exit time never exceeds the active replay candle in Bar Replay
+    let effectiveExitTime = exitTime;
+    if (replayEngine.isActive()) {
+      const cur = replayEngine.getCurrentCandle();
+      if (cur) {
+        effectiveExitTime = cur.time;
+      } else if (t.entry_time) {
+        effectiveExitTime = t.entry_time;
+      }
+    }
+
     if (reason === 'CANCELLED') {
       const cancelled: Trade = {
         ...t,
         status: 'CANCELLED',
-        exit_time: exitTime,
+        exit_time: effectiveExitTime,
         exit_reason: 'CANCELLED',
       };
       this.trades = [
@@ -463,7 +488,7 @@ export class BacktestingEngine {
 
     const closed: Trade = {
       ...t,
-      exit_time: exitTime,
+      exit_time: effectiveExitTime,
       exit_price: Number(effectiveExitPrice.toFixed(5)),
       pnl: Number(netPnl.toFixed(2)),
       pnl_pips: Number(pipDiff.toFixed(1)),

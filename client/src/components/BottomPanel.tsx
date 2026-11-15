@@ -53,6 +53,7 @@ interface BottomPanelProps {
   onCloseMobile?: () => void;
   initialTab?: BottomTab;
   hideReplayBar?: boolean;
+  onCloseTrade?: (tradeId: string) => void;
 }
 
 type BottomTab = 'analytics' | 'history' | 'positions';
@@ -79,6 +80,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   onCloseMobile,
   initialTab = 'analytics',
   hideReplayBar = false,
+  onCloseTrade,
 }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<BottomTab>(initialTab);
@@ -199,7 +201,14 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   };
 
   const handleClosePosition = (trade: Trade) => {
-    backtestingEngine.closeTrade(trade.id, currentPrice, Math.floor(Date.now() / 1000), 'MANUAL');
+    if (onCloseTrade) {
+      onCloseTrade(trade.id);
+    } else {
+      const exitTime = replayActive
+        ? (trade.entry_time ? trade.entry_time + 60 : Math.floor(Date.now() / 1000))
+        : Math.floor(Date.now() / 1000);
+      backtestingEngine.closeTrade(trade.id, currentPrice, exitTime, 'MANUAL');
+    }
   };
 
   return (

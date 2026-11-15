@@ -679,6 +679,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             {/* Submit Button */}
             <button
               onClick={handleExecuteTrade}
+              data-testid="place-order-btn"
               className={`w-full py-2.5 rounded font-bold text-white text-sm transition-colors shadow-lg ${
                 orderType === 'BUY'
                   ? 'bg-[#089981] hover:bg-[#078570]'
