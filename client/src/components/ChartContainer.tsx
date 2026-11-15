@@ -19,9 +19,10 @@ import {
 import { Candle, ChartType, IndicatorConfig, Quote } from '../types';
 import { CoordinateTransformer } from '../services/DrawingEngine';
 import { IndicatorEngine } from '../services/IndicatorEngine';
-import { Globe, ChevronsRight } from 'lucide-react';
+import { Globe, Clock, ChevronsRight } from 'lucide-react';
 import {
   TIMEZONE_OPTIONS,
+  TIME_FORMAT_OPTIONS,
   getTimezoneAbbr,
   formatTimeInTimezone,
   formatTickMarkInTimezone,
@@ -50,6 +51,9 @@ interface ChartContainerProps {
   isReplayActive?: boolean;
   timezone?: string;
   onTimezoneChange?: (tz: string) => void;
+  timeFormat?: string;
+  showSeconds?: boolean;
+  onTimeFormatChange?: (format: string, showSeconds?: boolean) => void;
   onLoadOlderData?: () => void;
   isLoadingOlder?: boolean;
 }
@@ -70,6 +74,9 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
   isReplayActive = false,
   timezone = 'UTC',
   onTimezoneChange,
+  timeFormat = 'adaptive',
+  showSeconds = false,
+  onTimeFormatChange,
   onLoadOlderData,
   isLoadingOlder = false,
 }) => {
@@ -113,20 +120,33 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
     timezoneRef.current = timezone;
   }, [timezone]);
 
+  const [isTimeFormatDropdownOpen, setIsTimeFormatDropdownOpen] = useState(false);
+  const timeFormatDropdownRef = useRef<HTMLDivElement | null>(null);
+  const timeFormatRef = useRef(timeFormat);
+  const showSecondsRef = useRef(showSeconds);
+
+  useEffect(() => {
+    timeFormatRef.current = timeFormat;
+    showSecondsRef.current = showSeconds;
+  }, [timeFormat, showSeconds]);
+
   // TradingView-Style Scroll-To-Recent State
   const [isScrolledBack, setIsScrolledBack] = useState<boolean>(false);
 
-  // Close timezone dropdown on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
-    if (!isTzDropdownOpen) return;
+    if (!isTzDropdownOpen && !isTimeFormatDropdownOpen) return;
     const handleClickOutside = (e: MouseEvent) => {
       if (tzDropdownRef.current && !tzDropdownRef.current.contains(e.target as Node)) {
         setIsTzDropdownOpen(false);
       }
+      if (timeFormatDropdownRef.current && !timeFormatDropdownRef.current.contains(e.target as Node)) {
+        setIsTimeFormatDropdownOpen(false);
+      }
     };
     window.addEventListener('mousedown', handleClickOutside);
     return () => window.removeEventListener('mousedown', handleClickOutside);
-  }, [isTzDropdownOpen]);
+  }, [isTzDropdownOpen, isTimeFormatDropdownOpen]);
 
   useEffect(() => {
     timeframeRef.current = timeframe;
@@ -485,16 +505,24 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
       },
       localization: {
         timeFormatter: (timestamp: number) => {
-          return formatTimeInTimezone(timestamp, timezoneRef.current, ['1d', '1w', '1mo'].includes(timeframeRef.current));
+          const secVis = showSecondsRef.current || timeFormatRef.current.includes('sec');
+          return formatTimeInTimezone(
+            timestamp,
+            timezoneRef.current,
+            ['1d', '1w', '1mo'].includes(timeframeRef.current),
+            timeFormatRef.current,
+            secVis
+          );
         },
       },
       timeScale: {
         borderColor: '#2a2e39',
         timeVisible: true,
-        secondsVisible: true,
+        secondsVisible: showSecondsRef.current || timeFormatRef.current.includes('sec'),
         tickMarkFormatter: (time: any, tickMarkType: any) => {
           const tSec = typeof time === 'number' ? time : (time?.timestamp || 0);
-          return formatTickMarkInTimezone(tSec, tickMarkType, timezoneRef.current);
+          const secVis = showSecondsRef.current || timeFormatRef.current.includes('sec');
+          return formatTickMarkInTimezone(tSec, tickMarkType, timezoneRef.current, timeFormatRef.current, secVis);
         },
       },
       handleScale: {
@@ -540,18 +568,6 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
           const targetIndex = totalBars - 1;
           const isBack = range.to < targetIndex - 1;
           setIsScrolledBack(isBack);
-
-          // In Bar Replay, prevent scrolling past the current revealed candle into future/today's bars
-          if (isReplayActiveRef.current) {
-            const maxAllowedTo = targetIndex + 18;
-            if (range.to > maxAllowedTo) {
-              const diff = range.to - maxAllowedTo;
-              chart.timeScale().setVisibleLogicalRange({
-                from: range.from - diff,
-                to: maxAllowedTo,
-              });
-            }
-          }
         }
       }
       updateTransformer();
@@ -660,27 +676,36 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
     };
   }, []);
 
-  // Dynamically apply timezone localization to chart time axis and crosshair
+  // Dynamically apply timezone & time format localization to chart time axis and crosshair
   useEffect(() => {
     if (!chartRef.current) return;
     try {
+      const secVis = showSeconds || timeFormat.includes('sec');
       chartRef.current.applyOptions({
         localization: {
           timeFormatter: (timestamp: number) => {
-            return formatTimeInTimezone(timestamp, timezone, ['1d', '1w', '1mo'].includes(timeframeRef.current));
+            return formatTimeInTimezone(
+              timestamp,
+              timezone,
+              ['1d', '1w', '1mo'].includes(timeframeRef.current),
+              timeFormat,
+              secVis
+            );
           },
         },
         timeScale: {
+          timeVisible: true,
+          secondsVisible: secVis,
           tickMarkFormatter: (time: any, tickMarkType: any) => {
             const tSec = typeof time === 'number' ? time : (time?.timestamp || 0);
-            return formatTickMarkInTimezone(tSec, tickMarkType, timezone);
+            return formatTickMarkInTimezone(tSec, tickMarkType, timezone, timeFormat, secVis);
           },
         },
       });
     } catch (e) {
-      console.warn('Error applying timezone options to chart:', e);
+      console.warn('Error applying timezone/format options to chart:', e);
     }
-  }, [timezone]);
+  }, [timezone, timeFormat, showSeconds]);
 
   // Create & Update Main Series
   useEffect(() => {
@@ -1042,9 +1067,9 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
             <span
               data-testid="legend-candle-time"
               className="text-[#38bdf8] font-mono font-medium border-r border-[#2a2e39] pr-2.5"
-              title={`Candle time in ${timezone}`}
+              title={`Candle time in ${timezone} (${timeFormat})`}
             >
-              {formatTimeInTimezone(displayCandle.time, timezone, true)}
+              {formatTimeInTimezone(displayCandle.time, timezone, true, timeFormat, showSeconds)}
             </span>
             <span>
               <span className="text-gray-500 font-sans mr-0.5">O</span>
@@ -1126,49 +1151,133 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
         </div>
       )}
 
-      {/* Bottom-Right TradingView-Style Timezone Switcher */}
-      <div className="absolute bottom-1 right-14 z-20" ref={tzDropdownRef}>
-        <button
-          type="button"
-          data-testid="chart-timezone-btn"
-          onClick={() => setIsTzDropdownOpen(prev => !prev)}
-          className="flex items-center space-x-1.5 px-2 py-0.5 rounded text-[11px] font-mono bg-[#1e222d]/90 hover:bg-[#2a2e39] text-gray-300 hover:text-white border border-[#2a2e39] transition-colors shadow"
-          title={`Current chart timezone: ${timezone}. Click to change.`}
-        >
-          <Globe className="w-3 h-3 text-[#2962ff]" />
-          <span>{getTimezoneAbbr(timezone)}</span>
-        </button>
-
-        {/* Timezone Dropdown Menu */}
-        {isTzDropdownOpen && (
-          <div
-            data-testid="timezone-dropdown"
-            className="absolute bottom-full right-0 mb-1 w-64 max-h-72 overflow-y-auto bg-[#1e222d] border border-[#2a2e39] rounded shadow-xl py-1 z-30 font-sans"
+      {/* Bottom-Right TradingView-Style Timezone & Time Format Switchers */}
+      <div className="absolute bottom-1 right-14 z-20 flex items-center space-x-1.5">
+        {/* Time Format Switcher Button & Dropdown */}
+        <div className="relative" ref={timeFormatDropdownRef}>
+          <button
+            type="button"
+            data-testid="chart-timeformat-btn"
+            onClick={() => {
+              setIsTimeFormatDropdownOpen(prev => !prev);
+              setIsTzDropdownOpen(false);
+            }}
+            className="flex items-center space-x-1 px-1.5 py-0.5 rounded text-[11px] font-mono bg-[#1e222d]/90 hover:bg-[#2a2e39] text-gray-300 hover:text-white border border-[#2a2e39] transition-colors shadow"
+            title={`Current time format: ${timeFormat}. Click to customize display format.`}
           >
-            <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 border-b border-[#2a2e39]/60">
-              Select Chart Timezone
+            <Clock className="w-3 h-3 text-[#089981]" />
+            <span className="max-w-[110px] truncate">
+              {TIME_FORMAT_OPTIONS.find(f => f.id === timeFormat)?.label.split(' ')[0] || timeFormat}
+            </span>
+          </button>
+
+          {/* Time Format Dropdown Menu */}
+          {isTimeFormatDropdownOpen && (
+            <div
+              data-testid="timeformat-dropdown"
+              className="absolute bottom-full right-0 mb-1 w-72 max-h-80 overflow-y-auto bg-[#1e222d] border border-[#2a2e39] rounded-lg shadow-2xl py-1 z-30 font-sans"
+            >
+              <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400 border-b border-[#2a2e39]/60 flex items-center justify-between">
+                <span>Date & Time Format</span>
+                <span className="text-[#089981] font-mono text-[9px]">{getTimezoneAbbr(timezone)}</span>
+              </div>
+
+              {/* Show Seconds Toggle */}
+              <div className="px-3 py-2 border-b border-[#2a2e39]/40 bg-[#131722]/60">
+                <label className="flex items-center space-x-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    data-testid="timeformat-toggle-seconds"
+                    checked={showSeconds || timeFormat.includes('sec')}
+                    onChange={(e) => {
+                      onTimeFormatChange?.(timeFormat, e.target.checked);
+                    }}
+                    className="rounded border-[#2a2e39] bg-[#1e222d] text-[#089981] focus:ring-0"
+                  />
+                  <span className="text-[11px] text-gray-200 font-medium">Show Seconds (:ss)</span>
+                </label>
+              </div>
+
+              {/* Format Presets */}
+              <div className="py-1">
+                {TIME_FORMAT_OPTIONS.map((opt) => {
+                  const isSelected = opt.id === timeFormat;
+                  const sampleTimestamp = candles.length > 0 ? candles[candles.length - 1].time : Math.floor(Date.now() / 1000);
+                  const livePreview = formatTimeInTimezone(sampleTimestamp, timezone, true, opt.id, showSeconds);
+                  return (
+                    <button
+                      key={opt.id}
+                      data-testid={`timeformat-option-${opt.id}`}
+                      onClick={() => {
+                        onTimeFormatChange?.(opt.id, showSeconds);
+                        setIsTimeFormatDropdownOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-1.5 text-xs flex flex-col hover:bg-[#2a2e39] transition-colors border-l-2 ${
+                        isSelected ? 'border-[#089981] bg-[#089981]/15 text-white font-medium' : 'border-transparent text-gray-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-[11px] text-white">{opt.label}</span>
+                        <span className="font-mono text-[10px] text-[#34d399] bg-[#131722] px-1.5 py-0.5 rounded border border-[#2a2e39]">
+                          {livePreview}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-gray-400 mt-0.5">{opt.description}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            {TIMEZONE_OPTIONS.map((opt) => {
-              const isSelected = opt.value === timezone;
-              return (
-                <button
-                  key={opt.value}
-                  data-testid={`tz-option-${opt.value.replace('/', '_')}`}
-                  onClick={() => {
-                    onTimezoneChange?.(opt.value);
-                    setIsTzDropdownOpen(false);
-                  }}
-                  className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-[#2a2e39] transition-colors ${
-                    isSelected ? 'text-[#2962ff] bg-[#2962ff]/10 font-medium' : 'text-gray-300'
-                  }`}
-                >
-                  <span className="truncate">{opt.label}</span>
-                  <span className="text-[10px] text-gray-400 ml-2 font-mono flex-shrink-0">{opt.utcOffset}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
+          )}
+        </div>
+
+        {/* Timezone Switcher Button & Dropdown */}
+        <div className="relative" ref={tzDropdownRef}>
+          <button
+            type="button"
+            data-testid="chart-timezone-btn"
+            onClick={() => {
+              setIsTzDropdownOpen(prev => !prev);
+              setIsTimeFormatDropdownOpen(false);
+            }}
+            className="flex items-center space-x-1.5 px-2 py-0.5 rounded text-[11px] font-mono bg-[#1e222d]/90 hover:bg-[#2a2e39] text-gray-300 hover:text-white border border-[#2a2e39] transition-colors shadow"
+            title={`Current chart timezone: ${timezone}. Click to change.`}
+          >
+            <Globe className="w-3 h-3 text-[#2962ff]" />
+            <span>{getTimezoneAbbr(timezone)}</span>
+          </button>
+
+          {/* Timezone Dropdown Menu */}
+          {isTzDropdownOpen && (
+            <div
+              data-testid="timezone-dropdown"
+              className="absolute bottom-full right-0 mb-1 w-64 max-h-72 overflow-y-auto bg-[#1e222d] border border-[#2a2e39] rounded shadow-xl py-1 z-30 font-sans"
+            >
+              <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 border-b border-[#2a2e39]/60">
+                Select Chart Timezone
+              </div>
+              {TIMEZONE_OPTIONS.map((opt) => {
+                const isSelected = opt.value === timezone;
+                return (
+                  <button
+                    key={opt.value}
+                    data-testid={`tz-option-${opt.value.replace('/', '_')}`}
+                    onClick={() => {
+                      onTimezoneChange?.(opt.value);
+                      setIsTzDropdownOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-[#2a2e39] transition-colors ${
+                      isSelected ? 'text-[#2962ff] bg-[#2962ff]/10 font-medium' : 'text-gray-300'
+                    }`}
+                  >
+                    <span className="truncate">{opt.label}</span>
+                    <span className="text-[10px] text-gray-400 ml-2 font-mono flex-shrink-0">{opt.utcOffset}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -193,6 +193,8 @@ export class MarketDataClient {
         slippage_pips: 0.2,
         active_provider: 'dukascopy',
         timezone: 'UTC',
+        time_format: 'adaptive',
+        show_seconds: false,
         theme: 'dark',
         conservative_execution: true,
       };

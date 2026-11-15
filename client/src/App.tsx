@@ -279,6 +279,8 @@ export const App: React.FC = () => {
     slippage_pips: 0.2,
     active_provider: 'dukascopy',
     timezone: localStorage.getItem('eurusd_saved_timezone') || 'UTC',
+    time_format: localStorage.getItem('eurusd_saved_time_format') || 'adaptive',
+    show_seconds: localStorage.getItem('eurusd_saved_show_seconds') === 'true',
     theme: 'dark',
   }));
 
@@ -290,6 +292,23 @@ export const App: React.FC = () => {
       return updated;
     });
     showToast(`Timezone changed to ${newTz}`);
+  }, [showToast]);
+
+  const handleTimeFormatChange = useCallback((newFormat: string, showSeconds?: boolean) => {
+    setSettings(prev => {
+      const updated = {
+        ...prev,
+        time_format: newFormat,
+        show_seconds: showSeconds !== undefined ? showSeconds : prev.show_seconds,
+      };
+      localStorage.setItem('eurusd_saved_time_format', newFormat);
+      if (showSeconds !== undefined) {
+        localStorage.setItem('eurusd_saved_show_seconds', String(showSeconds));
+      }
+      backtestingEngine.updateSettings(updated);
+      return updated;
+    });
+    showToast(`Time format updated: ${newFormat}`);
   }, [showToast]);
 
   const handleToggleSessions = useCallback(() => {
@@ -1236,6 +1255,9 @@ export const App: React.FC = () => {
               isReplayActive={replayActive}
               timezone={settings.timezone}
               onTimezoneChange={handleTimezoneChange}
+              timeFormat={settings.time_format || 'adaptive'}
+              showSeconds={settings.show_seconds || false}
+              onTimeFormatChange={handleTimeFormatChange}
               onLoadOlderData={handleLoadOlderCandles}
               isLoadingOlder={isLoadingOlderCandles}
             />
@@ -1254,6 +1276,9 @@ export const App: React.FC = () => {
               magnetMode={magnetMode}
               candles={visibleCandles}
               timeframe={timeframe}
+              timezone={settings.timezone}
+              timeFormat={settings.time_format || 'adaptive'}
+              showSeconds={settings.show_seconds || false}
               isLoadingCandles={isLoadingCandles}
               activeSetup={activeSetup}
               onUpdateSetup={(updates) => backtestingEngine.updateTradeSetup(updates)}
@@ -1301,7 +1326,6 @@ export const App: React.FC = () => {
                 showToast('Cancelled Pending Order');
               }}
               indicators={indicators}
-              timezone={settings.timezone}
               sessionsActive={indicators.find(i => i.type === 'SESSIONS')?.visible ?? true}
               currentReplayTimestamp={replayActive ? (replayEngine.getCurrentCandle()?.time || null) : null}
               isMobile={isMobile}

@@ -157,6 +157,8 @@ export interface UserSettings {
   twelvedata_api_key?: string;
   finnhub_api_key?: string;
   timezone: string;
+  time_format?: string;
+  show_seconds?: boolean;
   theme: string;
   conservative_execution?: boolean;
 }

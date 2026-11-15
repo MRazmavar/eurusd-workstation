@@ -66,6 +66,8 @@ interface DrawingLayerProps {
   onCancelTrade?: (tradeId: string) => void;
   indicators?: IndicatorConfig[];
   timezone?: string;
+  timeFormat?: string;
+  showSeconds?: boolean;
   sessionsActive?: boolean;
   currentReplayTimestamp?: number | null;
   isLoadingCandles?: boolean;
@@ -106,6 +108,8 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   onCancelTrade,
   indicators,
   timezone = 'UTC',
+  timeFormat = 'adaptive',
+  showSeconds = false,
   sessionsActive = true,
   currentReplayTimestamp,
   isLoadingCandles = false,
@@ -3959,33 +3963,38 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             )}
 
             {/* Time Axis Badge on Bottom */}
-            {activeCrosshair.time !== null && (
-              <g
-                transform={`translate(${Math.max(10, Math.min(dimensions.width - 130, activeCrosshair.screenX - 55))}, ${dimensions.height - 24})`}
-                data-testid="crosshair-time-badge"
-              >
-                <rect
-                  width={110}
-                  height={20}
-                  rx={3}
-                  fill="#1e222d"
-                  stroke="#2a2e39"
-                  strokeWidth={1}
-                  className="shadow-lg"
-                />
-                <text
-                  x={55}
-                  y={14}
-                  fill="#d1d4dc"
-                  fontSize={10}
-                  fontWeight="medium"
-                  fontFamily="monospace"
-                  textAnchor="middle"
+            {activeCrosshair.time !== null && (() => {
+              const badgeText = formatBadgeTimeInTimezone(activeCrosshair.time, timeframe, timezone, timeFormat, showSeconds);
+              const badgeWidth = Math.max(110, badgeText.length * 7.5 + 16);
+              const badgeX = Math.max(10, Math.min(dimensions.width - badgeWidth - 20, activeCrosshair.screenX - badgeWidth / 2));
+              return (
+                <g
+                  transform={`translate(${badgeX}, ${dimensions.height - 24})`}
+                  data-testid="crosshair-time-badge"
                 >
-                  {formatBadgeTimeInTimezone(activeCrosshair.time, timeframe, timezone)}
-                </text>
-              </g>
-            )}
+                  <rect
+                    width={badgeWidth}
+                    height={20}
+                    rx={3}
+                    fill="#1e222d"
+                    stroke="#2a2e39"
+                    strokeWidth={1}
+                    className="shadow-lg"
+                  />
+                  <text
+                    x={badgeWidth / 2}
+                    y={14}
+                    fill="#d1d4dc"
+                    fontSize={10}
+                    fontWeight="medium"
+                    fontFamily="monospace"
+                    textAnchor="middle"
+                  >
+                    {badgeText}
+                  </text>
+                </g>
+              );
+            })()}
             {/* Replay Cut Bar Indicator when Selecting Cut Point with Mouse */}
             {isSelectingReplayCut && (
               <g className="replay-cut-indicator pointer-events-none select-none" data-testid="replay-cut-indicator">

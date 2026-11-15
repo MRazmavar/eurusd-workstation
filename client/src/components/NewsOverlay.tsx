@@ -134,6 +134,62 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
     return clusters;
   }, [filteredEvents]);
 
+  // Compute screen coordinates and vertical staggering levels (0, 1, 2)
+  // to cleanly separate news events that occur at the same time or within ~72px of each other
+  const positionedClusters = useMemo(() => {
+    const list: Array<ClusteredNewsEvents & { x: number; level: number }> = [];
+
+    // Filter clusters that have valid coordinates on screen
+    const visibleWithX = clusteredEvents
+      .map((cluster) => {
+        const x = transformer.timeToX(cluster.time);
+        return { cluster, x };
+      })
+      .filter((item): item is { cluster: ClusteredNewsEvents; x: number } => 
+        item.x !== null && !isNaN(item.x) && item.x >= 20 && item.x <= 2500
+      )
+      .sort((a, b) => a.x - b.x);
+
+    // Dynamic slot allocator: each slot tracks the right edge of its last assigned badge
+    const badgeWidth = 72;
+    const slotRightEdge: number[] = [-Infinity, -Infinity, -Infinity];
+
+    visibleWithX.forEach(({ cluster, x }) => {
+      let assignedLevel = 0;
+      let foundSlot = false;
+
+      for (let lvl = 0; lvl < slotRightEdge.length; lvl++) {
+        if (x - slotRightEdge[lvl] >= badgeWidth + 4) {
+          assignedLevel = lvl;
+          slotRightEdge[lvl] = x;
+          foundSlot = true;
+          break;
+        }
+      }
+
+      if (!foundSlot) {
+        let bestSlot = 0;
+        let minX = slotRightEdge[0];
+        for (let lvl = 1; lvl < slotRightEdge.length; lvl++) {
+          if (slotRightEdge[lvl] < minX) {
+            minX = slotRightEdge[lvl];
+            bestSlot = lvl;
+          }
+        }
+        assignedLevel = bestSlot;
+        slotRightEdge[bestSlot] = x;
+      }
+
+      list.push({
+        ...cluster,
+        x,
+        level: assignedLevel,
+      });
+    });
+
+    return list;
+  }, [clusteredEvents, transformer]);
+
   // Proximity-based hover: show news when hovering around the news area
   // (user does not need their mouse to precisely pass over the small badge)
   useEffect(() => {
@@ -143,16 +199,14 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
     }
 
     const containerHeight = overlayRef.current?.clientHeight || 600;
-    // The news area is the bottom axis zone where badges sit (bottom ~85px)
-    const isNearBottomNewsZone = mousePos.y >= containerHeight - 85;
+    // The news area is the bottom axis zone where badges sit (bottom ~110px for staggered rows)
+    const isNearBottomNewsZone = mousePos.y >= containerHeight - 110;
 
     let closestKey: string | null = null;
     let minDistance = Infinity;
 
-    for (const cluster of clusteredEvents) {
-      const x = transformer.timeToX(cluster.time);
-      if (x === null) continue;
-      const distX = Math.abs(mousePos.x - x);
+    for (const cluster of positionedClusters) {
+      const distX = Math.abs(mousePos.x - cluster.x);
 
       // Trigger only when hovering in the bottom news zone within +/- 38px horizontally
       // (prevents intrusive vertical dashed lines from cutting through candles while inspecting charts)
@@ -167,14 +221,14 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
     if (!pinnedClusterKey) {
       setHoveredClusterKey(closestKey);
     }
-  }, [mousePos, clusteredEvents, transformer, pinnedClusterKey]);
+  }, [mousePos, positionedClusters, pinnedClusterKey]);
 
-  if (!visible || clusteredEvents.length === 0) {
+  if (!visible || positionedClusters.length === 0) {
     return null;
   }
 
   const activeClusterKey = pinnedClusterKey || hoveredClusterKey;
-  const activeCluster = clusteredEvents.find(c => c.key === activeClusterKey);
+  const activeCluster = positionedClusters.find(c => c.key === activeClusterKey);
 
   return (
     <div
@@ -183,10 +237,7 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
     >
       {/* 1. SVG Layer for Vertical Event Guide Lines (only shown when hovering around news or pinned) */}
       <svg className="w-full h-full pointer-events-none">
-        {clusteredEvents.map((cluster) => {
-          const x = transformer.timeToX(cluster.time);
-          if (x === null || isNaN(x) || x < 15 || x > 2500) return null;
-
+        {positionedClusters.map((cluster) => {
           const isHigh = cluster.highestImpact === 'HIGH';
           const isHovered = cluster.key === activeClusterKey;
           const strokeColor = isHigh ? '#ef4444' : '#f59e0b';
@@ -197,9 +248,9 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
           return (
             <g key={`line_${cluster.key}`} className="pointer-events-none animate-in fade-in duration-150">
               <line
-                x1={x}
+                x1={cluster.x}
                 y1={0}
-                x2={x}
+                x2={cluster.x}
                 y2="100%"
                 stroke={strokeColor}
                 strokeWidth={2}
@@ -211,19 +262,16 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
         })}
       </svg>
 
-      {/* 2. HTML Layer for Forex Factory Event Badges along bottom axis */}
+      {/* 2. HTML Layer for Forex Factory Event Badges along bottom axis with vertical staggering */}
       <div
         data-testid="news-badges-container"
-        className={`absolute left-0 right-14 h-9 pointer-events-none transition-all duration-200 ${
+        className={`absolute left-0 right-14 h-28 pointer-events-none transition-all duration-200 ${
           replayActive
             ? 'bottom-12'
             : isMobile ? 'bottom-7' : 'bottom-6'
         }`}
       >
-        {clusteredEvents.map((cluster) => {
-          const x = transformer.timeToX(cluster.time);
-          if (x === null || isNaN(x) || x < 25 || x > 2500) return null;
-
+        {positionedClusters.map((cluster) => {
           const isHigh = cluster.highestImpact === 'HIGH';
           const isSelected = cluster.key === activeClusterKey;
           const eventCount = cluster.events.length;
@@ -244,11 +292,12 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
             <div
               key={cluster.key}
               style={{
-                left: `${x}px`,
+                left: `${cluster.x}px`,
+                bottom: `${cluster.level * 28}px`,
                 transform: 'translateX(-50%)',
               }}
               data-testid={`news-badge-${cluster.events[0].id}`}
-              className={`absolute bottom-0 pointer-events-auto ${isSelected ? 'z-30' : isHigh ? 'z-20' : 'z-10'} hover:z-40 py-1.5 px-2`}
+              className={`absolute pointer-events-auto ${isSelected ? 'z-30' : isHigh ? 'z-20' : 'z-10'} hover:z-40 py-1 px-1.5 transition-all duration-150`}
               onMouseEnter={() => setHoveredClusterKey(cluster.key)}
               onMouseLeave={() => {
                 if (!mousePos) setHoveredClusterKey(null);
@@ -257,7 +306,7 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
               <button
                 type="button"
                 onClick={() => setPinnedClusterKey(prev => (prev === cluster.key ? null : cluster.key))}
-                className={`flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-lg transition-transform hover:scale-110 active:scale-95 border ${
+                className={`flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-lg transition-transform hover:scale-105 active:scale-95 border ${
                   isHigh
                     ? isSelected
                       ? 'bg-[#dc2626] text-white border-white ring-2 ring-red-400'
@@ -270,12 +319,11 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
               >
                 <Folder size={11} className={isHigh ? 'fill-white text-white' : 'fill-black text-black'} />
                 <span className="font-mono text-[9px] uppercase tracking-tight">{cluster.currency}</span>
-                {eventCount > 1 ? (
-                  <span className={`text-[8px] px-1 rounded-full ${isHigh ? 'bg-black/40 text-white' : 'bg-black text-amber-300'}`}>
-                    {eventCount}
+                <span className="text-[8px] opacity-90">{shortCode}</span>
+                {eventCount > 1 && (
+                  <span className={`text-[8px] px-1 rounded-full font-mono font-bold ${isHigh ? 'bg-black/50 text-white' : 'bg-black text-amber-300'}`}>
+                    +{eventCount - 1}
                   </span>
-                ) : (
-                  <span className="text-[8px] opacity-90">{shortCode}</span>
                 )}
               </button>
             </div>

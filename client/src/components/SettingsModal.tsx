@@ -4,7 +4,7 @@
 import React, { useState } from 'react';
 import { Settings, X, Save, ShieldCheck, Database, Sliders, Globe } from 'lucide-react';
 import { UserSettings } from '../types';
-import { TIMEZONE_OPTIONS } from '../utils/timezone';
+import { TIMEZONE_OPTIONS, TIME_FORMAT_OPTIONS } from '../utils/timezone';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -232,6 +232,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </select>
               </div>
 
+              <div>
+                <label className="text-gray-300 block mb-1">Date & Time Format (Bottom Axis & Badges)</label>
+                <select
+                  data-testid="settings-timeformat-select"
+                  value={formData.time_format || 'adaptive'}
+                  onChange={(e) => setFormData({ ...formData, time_format: e.target.value })}
+                  className="w-full bg-[#131722] border border-[#2a2e39] rounded px-3 py-2 text-white focus:outline-none focus:border-[#2962ff] text-xs font-mono"
+                >
+                  {TIME_FORMAT_OPTIONS.map((fmt) => (
+                    <option key={fmt.id} value={fmt.id}>
+                      {fmt.label} — {fmt.example}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center space-x-2 pt-0.5">
+                <input
+                  type="checkbox"
+                  id="settings-show-seconds"
+                  data-testid="settings-show-seconds-toggle"
+                  checked={formData.show_seconds || false}
+                  onChange={(e) => setFormData({ ...formData, show_seconds: e.target.checked })}
+                  className="rounded border-[#2a2e39] bg-[#131722] text-[#2962ff] focus:ring-0"
+                />
+                <label htmlFor="settings-show-seconds" className="text-xs text-gray-300 cursor-pointer select-none">
+                  Show Seconds (:ss) on Bottom Time Axis & Badges
+                </label>
+              </div>
+
               <div className="p-3 bg-[#131722] rounded border border-[#2a2e39] space-y-2">
                 <span className="font-bold text-gray-200 block text-[11px]">Filtered Forex Session Windows</span>
                 <div className="space-y-1.5 text-gray-400 text-[11px]">
@@ -271,6 +301,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </button>
             <button
               type="submit"
+              data-testid="settings-save-btn"
               className="px-4 py-2 rounded bg-[#2962ff] hover:bg-[#1f4cdb] text-white font-bold flex items-center space-x-1.5 shadow"
             >
               <Save size={14} />
