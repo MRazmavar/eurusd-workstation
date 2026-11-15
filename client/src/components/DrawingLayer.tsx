@@ -17,7 +17,7 @@ import {
 import { DrawingEngine, CoordinateTransformer, ScreenPoint } from '../services/DrawingEngine';
 import { DrawingToolbarPopup } from './DrawingToolbarPopup';
 import { Check, X as CloseIcon } from 'lucide-react';
-import { computeSessionBlocks } from '../utils/sessions';
+import { computeSessionBlocks, getCandleBarInterval } from '../utils/sessions';
 import { formatTimeInTimezone, formatBadgeTimeInTimezone, getTimeframeSeconds } from '../utils/timezone';
 import { DEFAULT_FIB_LEVELS, getDefaultFibLevels, formatFibLevel } from '../utils/fibonacci';
 import { PositionToolService } from '../services/PositionToolService';
@@ -1167,6 +1167,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   };
 
   // Render Forex Sessions & Killzones Overlay as Bounded Price-Range Rectangles
+  // Render Forex Sessions & Killzones Overlay as Bounded Price-Range Rectangles
   const renderSessions = () => {
     if (isLoadingCandles) return null;
 
@@ -1181,11 +1182,10 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
 
     if (isHighTf) return null;
 
-    // Also verify actual candles currently loaded aren't multi-hour bars (guards transition during timeframe switch)
+    // Verify actual candles currently loaded aren't multi-hour bars (guards transition during timeframe switch)
     if (candles.length >= 2) {
-      const sampleCount = Math.min(candles.length - 1, 10);
-      const avgStep = (candles[candles.length - 1].time - candles[candles.length - 1 - sampleCount].time) / sampleCount;
-      if (avgStep >= 7200) return null;
+      const barInterval = getCandleBarInterval(candles);
+      if (barInterval >= 7200) return null;
     }
 
     // Check if sessions indicator is active

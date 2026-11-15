@@ -294,11 +294,16 @@ export const App: React.FC = () => {
 
   const handleToggleSessions = useCallback(() => {
     setIndicators(prev => {
+      const isHighTf = ['2h', '3h', '4h', '6h', '8h', '12h', '1D', '1W', '1M', '1d', '1w', '1mo'].includes(timeframe);
       const existing = prev.find(i => i.type === 'SESSIONS');
       if (!existing) {
         const next = [DEFAULT_INDICATORS[0], ...prev];
         localStorage.setItem('eurusd_saved_indicators', JSON.stringify(next));
-        showToast('Forex Sessions Indicator: ON');
+        if (isHighTf) {
+          showToast('Forex Sessions: ON (Intraday overlay - switch to 1h or lower to view session ranges)');
+        } else {
+          showToast('Forex Sessions Indicator: ON');
+        }
         return next;
       }
       const next = prev.map(ind =>
@@ -306,10 +311,14 @@ export const App: React.FC = () => {
       );
       localStorage.setItem('eurusd_saved_indicators', JSON.stringify(next));
       const willBeVisible = !existing.visible;
-      showToast(`Forex Sessions Indicator: ${willBeVisible ? 'ON' : 'OFF'}`);
+      if (willBeVisible && isHighTf) {
+        showToast('Forex Sessions: ON (Intraday overlay - switch to 1h or lower to view session ranges)');
+      } else {
+        showToast(`Forex Sessions Indicator: ${willBeVisible ? 'ON' : 'OFF'}`);
+      }
       return next;
     });
-  }, [showToast]);
+  }, [showToast, timeframe]);
 
   // Forex Factory Economic News State
   const [newsActive, setNewsActive] = useState<boolean>(() => {
@@ -461,19 +470,19 @@ export const App: React.FC = () => {
     try {
       let lookbackDays = 30;
       if (['mn1', 'w1', '1W', '1M', '1mo'].includes(timeframe)) {
-        lookbackDays = 3650;
+        lookbackDays = 365;
       } else if (['1D', '1d', 'd1'].includes(timeframe)) {
-        lookbackDays = 1825;
-      } else if (['4h', '6h', '8h', '12h', 'h4'].includes(timeframe)) {
-        lookbackDays = 730;
-      } else if (['1h', '2h', '3h', 'h1'].includes(timeframe)) {
         lookbackDays = 180;
+      } else if (['4h', '6h', '8h', '12h', 'h4'].includes(timeframe)) {
+        lookbackDays = 90;
+      } else if (['1h', '2h', '3h', 'h1'].includes(timeframe)) {
+        lookbackDays = 45;
       } else if (['15m', '20m', '30m', '45m'].includes(timeframe)) {
-        lookbackDays = 30;
-      } else if (['3m', '5m', '7m'].includes(timeframe)) {
         lookbackDays = 14;
+      } else if (['3m', '5m', '7m'].includes(timeframe)) {
+        lookbackDays = 7;
       } else {
-        lookbackDays = 5;
+        lookbackDays = 3;
       }
 
       const endTime = earliestCandle.time;

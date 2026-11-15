@@ -179,7 +179,7 @@ class DukascopyProvider:
             cmd.extend(["--from", dt_from, "--to", "now"])
 
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=25.0)
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=35.0)
             if res.returncode == 0 and res.stdout.strip():
                 data = json.loads(res.stdout.strip())
                 if data.get("success") and "candles" in data:

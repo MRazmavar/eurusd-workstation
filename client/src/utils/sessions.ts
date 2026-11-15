@@ -146,6 +146,39 @@ export interface SessionStatusSummary {
 }
 
 /**
+ * Safely calculates the representative bar duration (in seconds) between candles,
+ * completely immune to weekend gaps, holiday gaps, and data anomalies.
+ */
+export function getCandleBarInterval(candles: Candle[]): number {
+  if (!candles || candles.length < 2) return 60;
+  
+  const diffs: number[] = [];
+  // Sample up to 30 adjacent candle pairs from the end of the array
+  const startIdx = Math.max(0, candles.length - 30);
+  for (let i = startIdx + 1; i < candles.length; i++) {
+    const diff = candles[i].time - candles[i - 1].time;
+    // Discard negative diffs and weekend/holiday gaps (> 12 hours / 43200s)
+    if (diff > 0 && diff < 43200) {
+      diffs.push(diff);
+    }
+  }
+
+  // If all sampled diffs were weekend gaps or high timeframes (e.g. daily/weekly bars >= 12h)
+  if (diffs.length === 0) {
+    for (let i = startIdx + 1; i < candles.length; i++) {
+      const diff = candles[i].time - candles[i - 1].time;
+      if (diff > 0) diffs.push(diff);
+    }
+  }
+
+  if (diffs.length === 0) return 60;
+
+  // Take the median of diffs
+  diffs.sort((a, b) => a - b);
+  return diffs[Math.floor(diffs.length / 2)];
+}
+
+/**
  * Computes all session blocks across visible candles with real-time status and price boundaries.
  * Boundaries are strictly derived from actual OHLC candle data without look-ahead bias.
  */
@@ -158,9 +191,8 @@ export const computeSessionBlocks = (
   // Determine actual candle step/interval
   // If the candles being passed are higher timeframe (e.g. >= 2h / 7200s),
   // Forex sessions (1h killzones, Asia session) are fundamentally invalid for multi-hour bars!
-  const sampleCount = Math.min(candles.length - 1, 10);
-  const avgStep = (candles[candles.length - 1].time - candles[candles.length - 1 - sampleCount].time) / sampleCount;
-  if (avgStep >= 7200) {
+  const barInterval = getCandleBarInterval(candles);
+  if (barInterval >= 7200) {
     return [];
   }
 
@@ -213,12 +245,11 @@ export const computeSessionBlocks = (
         const firstCandle = matchingCandles[0];
         const lastMatchingCandle = matchingCandles[matchingCandles.length - 1];
 
-        // Determine candle interval dynamically from consecutive candles
-        let candleStep = 60;
+        // Determine candle interval dynamically from representative bar interval
+        let candleStep = barInterval;
         if (matchingCandles.length > 1) {
-          candleStep = matchingCandles[1].time - matchingCandles[0].time;
-        } else if (dayCandles.length > 1) {
-          candleStep = dayCandles[1].time - dayCandles[0].time;
+          const step = matchingCandles[1].time - matchingCandles[0].time;
+          if (step > 0 && step < 43200) candleStep = step;
         }
 
         // Closing time of final candle in this session
