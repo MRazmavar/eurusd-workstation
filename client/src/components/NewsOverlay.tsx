@@ -134,26 +134,26 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
     return clusters;
   }, [filteredEvents]);
 
-  // Compute screen coordinates and vertical staggering levels (0, 1, 2)
-  // to cleanly separate news events that occur at the same time or within ~72px of each other
+  // Compute screen coordinates and vertical staggering levels (0, 1, 2, 3, 4)
+  // to cleanly separate news events that occur at the same time or within ~98px of each other
   const positionedClusters = useMemo(() => {
     const list: Array<ClusteredNewsEvents & { x: number; level: number }> = [];
 
-    // Filter clusters that have valid coordinates on screen (min x >= 45 so badge center never clips into left toolbar)
+    // Filter clusters that have valid coordinates on screen (min x >= 20)
     const visibleWithX = clusteredEvents
       .map((cluster) => {
         const x = transformer.timeToX(cluster.time);
         return { cluster, x };
       })
       .filter((item): item is { cluster: ClusteredNewsEvents; x: number } => 
-        item.x !== null && !isNaN(item.x) && item.x >= 45 && item.x <= 2500
+        item.x !== null && !isNaN(item.x) && item.x >= 20 && item.x <= 2500
       )
       .sort((a, b) => a.x - b.x);
 
     // Dynamic slot allocator: each slot tracks the right edge of its last assigned badge
     // Ensures simultaneous or closely-spaced news badges cleanly stack vertically without horizontal collision
-    const badgeWidth = 78;
-    const slotRightEdge: number[] = [-Infinity, -Infinity, -Infinity, -Infinity];
+    const badgeWidth = 98;
+    const slotRightEdge: number[] = [-Infinity, -Infinity, -Infinity, -Infinity, -Infinity];
 
     visibleWithX.forEach(({ cluster, x }) => {
       let assignedLevel = 0;
@@ -212,8 +212,8 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
       const distX = Math.abs(mousePos.x - cluster.x);
 
       // Trigger only when hovering in the bottom news zone within +/- 38px horizontally
-      // (prevents intrusive vertical dashed lines from cutting through candles while inspecting charts)
-      const inProximity = isNearBottomNewsZone && distX < 38;
+      // and when the event is adequately on screen (prevents line flashing right against left border)
+      const inProximity = isNearBottomNewsZone && distX < 38 && cluster.x >= 30;
 
       if (inProximity && distX < minDistance) {
         minDistance = distX;
@@ -245,8 +245,8 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
           const isHovered = cluster.key === activeClusterKey;
           const strokeColor = isHigh ? '#ef4444' : '#f59e0b';
 
-          // Guide line only appears when hovering around the news area or pinned
-          if (!isHovered) return null;
+          // Guide line only appears when hovering around the news area or pinned, and not right on the edge
+          if (!isHovered || cluster.x < 30) return null;
 
           return (
             <g key={`line_${cluster.key}`} className="pointer-events-none animate-in fade-in duration-150">
@@ -291,11 +291,14 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
             ? 'CLAIMS'
             : cluster.currency;
 
+          // Clamped display coordinate prevents the badge from clipping into left toolbar/edge
+          const displayX = Math.max(54, cluster.x);
+
           return (
             <div
               key={cluster.key}
               style={{
-                left: `${cluster.x}px`,
+                left: `${displayX}px`,
                 bottom: `${cluster.level * 28}px`,
                 transform: 'translateX(-50%)',
               }}

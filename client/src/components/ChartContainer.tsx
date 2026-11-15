@@ -130,6 +130,39 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
     showSecondsRef.current = showSeconds;
   }, [timeFormat, showSeconds]);
 
+  // Listen for open-timeformat-dropdown custom event
+  useEffect(() => {
+    const handleOpenTimeFormat = () => {
+      setIsTimeFormatDropdownOpen(true);
+      setIsTzDropdownOpen(false);
+    };
+    window.addEventListener('open-timeformat-dropdown', handleOpenTimeFormat);
+    return () => window.removeEventListener('open-timeformat-dropdown', handleOpenTimeFormat);
+  }, []);
+
+  // Native contextmenu listener on chart container in capture phase
+  // Enables right-clicking anywhere on the bottom time axis to directly open Time Format dropdown
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const handleContextMenu = (e: MouseEvent) => {
+      const rect = el.getBoundingClientRect();
+      const clickY = e.clientY - rect.top;
+      const clickX = e.clientX - rect.left;
+      // If right-clicked on the bottom time axis (bottom 30px before price scale)
+      if (clickY >= rect.height - 30 && clickX < rect.width - 55) {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsTimeFormatDropdownOpen(true);
+        setIsTzDropdownOpen(false);
+      }
+    };
+
+    el.addEventListener('contextmenu', handleContextMenu, { capture: true });
+    return () => el.removeEventListener('contextmenu', handleContextMenu, { capture: true });
+  }, []);
+
   // TradingView-Style Scroll-To-Recent State
   const [isScrolledBack, setIsScrolledBack] = useState<boolean>(false);
 
@@ -1105,7 +1138,19 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
         )}
       </div>
 
-      <div ref={containerRef} className="w-full h-full" />
+      <div
+        ref={containerRef}
+        className="w-full h-full"
+        onContextMenu={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          // If right-clicked on the bottom time axis (bottom 26px before the price scale)
+          if (e.clientY >= rect.bottom - 26 && e.clientX < rect.right - 55) {
+            e.preventDefault();
+            setIsTimeFormatDropdownOpen(true);
+            setIsTzDropdownOpen(false);
+          }
+        }}
+      />
 
       {/* Loading older historical data overlay indicator */}
       {isLoadingOlder && (
@@ -1163,11 +1208,11 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
               setIsTzDropdownOpen(false);
             }}
             className="flex items-center space-x-1 px-1.5 py-0.5 rounded text-[11px] font-mono bg-[#1e222d]/90 hover:bg-[#2a2e39] text-gray-300 hover:text-white border border-[#2a2e39] transition-colors shadow"
-            title={`Current time format: ${timeFormat}. Click to customize display format.`}
+            title={`Current time format: ${timeFormat}. Click or right-click bottom time scale to customize display format.`}
           >
             <Clock className="w-3 h-3 text-[#089981]" />
-            <span className="max-w-[110px] truncate">
-              {TIME_FORMAT_OPTIONS.find(f => f.id === timeFormat)?.label.split(' ')[0] || timeFormat}
+            <span className="max-w-[120px] truncate">
+              {timeFormat === 'adaptive' ? 'Adaptive' : (TIME_FORMAT_OPTIONS.find(f => f.id === timeFormat)?.label || timeFormat)}
             </span>
           </button>
 

@@ -659,3 +659,6 @@ export class BacktestingEngine {
 }
 
 export const backtestingEngine = new BacktestingEngine();
+if (typeof window !== 'undefined') {
+  (window as any).__backtestingEngine = backtestingEngine;
+}

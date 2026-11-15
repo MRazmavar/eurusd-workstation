@@ -246,18 +246,23 @@ export const formatTickMarkInTimezone = (
         return new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric' }).format(d);
       }
       if (tickMarkType === 1) {
-        return new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit' }).format(d);
+        const parts = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit' }).formatToParts(d);
+        const y = parts.find(p => p.type === 'year')?.value;
+        const m = parts.find(p => p.type === 'month')?.value;
+        return `${y}-${m}`;
       }
       if (tickMarkType === 2) {
-        // Day
-        const parts = new Intl.DateTimeFormat('en-US', { timeZone, month: '2-digit', day: '2-digit' }).formatToParts(d);
+        // Day with Year
+        const parts = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(d);
+        const y = parts.find(p => p.type === 'year')?.value;
         const m = parts.find(p => p.type === 'month')?.value;
         const day = parts.find(p => p.type === 'day')?.value;
-        return `${m}-${day}`;
+        return `${y}-${m}-${day}`;
       }
-      // Time tick (3 or 4)
+      // Time tick (3 or 4) with Full Date & Time
       const parts = new Intl.DateTimeFormat('en-US', {
         timeZone,
+        year: 'numeric',
         month: '2-digit',
         day: '2-digit',
         hour: '2-digit',
@@ -265,12 +270,13 @@ export const formatTickMarkInTimezone = (
         second: hasSec ? '2-digit' : undefined,
         hour12: false,
       }).formatToParts(d);
+      const y = parts.find(p => p.type === 'year')?.value;
       const m = parts.find(p => p.type === 'month')?.value;
       const day = parts.find(p => p.type === 'day')?.value;
       const hr = parts.find(p => p.type === 'hour')?.value;
       const min = parts.find(p => p.type === 'minute')?.value;
       const sec = parts.find(p => p.type === 'second')?.value;
-      return hasSec && sec ? `${m}-${day} ${hr}:${min}:${sec}` : `${m}-${day} ${hr}:${min}`;
+      return hasSec && sec ? `${y}-${m}-${day} ${hr}:${min}:${sec}` : `${y}-${m}-${day} ${hr}:${min}`;
     }
 
     if (formatId.startsWith('datetime_eu')) {
@@ -281,13 +287,15 @@ export const formatTickMarkInTimezone = (
         return new Intl.DateTimeFormat('en-US', { timeZone, month: 'short', year: 'numeric' }).format(d);
       }
       if (tickMarkType === 2) {
-        const parts = new Intl.DateTimeFormat('en-GB', { timeZone, day: '2-digit', month: '2-digit' }).formatToParts(d);
+        const parts = new Intl.DateTimeFormat('en-GB', { timeZone, year: 'numeric', day: '2-digit', month: '2-digit' }).formatToParts(d);
+        const y = parts.find(p => p.type === 'year')?.value;
         const day = parts.find(p => p.type === 'day')?.value;
         const m = parts.find(p => p.type === 'month')?.value;
-        return `${day}/${m}`;
+        return `${day}/${m}/${y}`;
       }
       const parts = new Intl.DateTimeFormat('en-GB', {
         timeZone,
+        year: 'numeric',
         day: '2-digit',
         month: '2-digit',
         hour: '2-digit',
@@ -295,12 +303,13 @@ export const formatTickMarkInTimezone = (
         second: hasSec ? '2-digit' : undefined,
         hour12: false,
       }).formatToParts(d);
+      const y = parts.find(p => p.type === 'year')?.value;
       const day = parts.find(p => p.type === 'day')?.value;
       const m = parts.find(p => p.type === 'month')?.value;
       const hr = parts.find(p => p.type === 'hour')?.value;
       const min = parts.find(p => p.type === 'minute')?.value;
       const sec = parts.find(p => p.type === 'second')?.value;
-      return hasSec && sec ? `${day}/${m} ${hr}:${min}:${sec}` : `${day}/${m} ${hr}:${min}`;
+      return hasSec && sec ? `${day}/${m}/${y} ${hr}:${min}:${sec}` : `${day}/${m}/${y} ${hr}:${min}`;
     }
 
     if (formatId.startsWith('datetime_us')) {
@@ -311,13 +320,15 @@ export const formatTickMarkInTimezone = (
         return new Intl.DateTimeFormat('en-US', { timeZone, month: 'short', year: 'numeric' }).format(d);
       }
       if (tickMarkType === 2) {
-        const parts = new Intl.DateTimeFormat('en-US', { timeZone, month: '2-digit', day: '2-digit' }).formatToParts(d);
+        const parts = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(d);
+        const y = parts.find(p => p.type === 'year')?.value;
         const m = parts.find(p => p.type === 'month')?.value;
         const day = parts.find(p => p.type === 'day')?.value;
-        return `${m}/${day}`;
+        return `${m}/${day}/${y}`;
       }
       const parts = new Intl.DateTimeFormat('en-US', {
         timeZone,
+        year: 'numeric',
         month: '2-digit',
         day: '2-digit',
         hour: '2-digit',
@@ -325,15 +336,49 @@ export const formatTickMarkInTimezone = (
         second: hasSec ? '2-digit' : undefined,
         hour12: false,
       }).formatToParts(d);
+      const y = parts.find(p => p.type === 'year')?.value;
       const m = parts.find(p => p.type === 'month')?.value;
       const day = parts.find(p => p.type === 'day')?.value;
       const hr = parts.find(p => p.type === 'hour')?.value;
       const min = parts.find(p => p.type === 'minute')?.value;
       const sec = parts.find(p => p.type === 'second')?.value;
-      return hasSec && sec ? `${m}/${day} ${hr}:${min}:${sec}` : `${m}/${day} ${hr}:${min}`;
+      return hasSec && sec ? `${m}/${day}/${y} ${hr}:${min}:${sec}` : `${m}/${day}/${y} ${hr}:${min}`;
     }
 
-    if (formatId.startsWith('datetime_short') || formatId.startsWith('datetime_full')) {
+    if (formatId.startsWith('datetime_full')) {
+      if (tickMarkType === 0) {
+        return new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric' }).format(d);
+      }
+      if (tickMarkType === 1) {
+        return new Intl.DateTimeFormat('en-US', { timeZone, month: 'short', year: 'numeric' }).format(d);
+      }
+      if (tickMarkType === 2) {
+        const parts = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', day: 'numeric', month: 'short' }).formatToParts(d);
+        const y = parts.find(p => p.type === 'year')?.value;
+        const day = parts.find(p => p.type === 'day')?.value;
+        const m = parts.find(p => p.type === 'month')?.value;
+        return `${day} ${m} ${y}`;
+      }
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        year: 'numeric',
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: hasSec ? '2-digit' : undefined,
+        hour12: false,
+      }).formatToParts(d);
+      const y = parts.find(p => p.type === 'year')?.value;
+      const day = parts.find(p => p.type === 'day')?.value;
+      const m = parts.find(p => p.type === 'month')?.value;
+      const hr = parts.find(p => p.type === 'hour')?.value;
+      const min = parts.find(p => p.type === 'minute')?.value;
+      const sec = parts.find(p => p.type === 'second')?.value;
+      return hasSec && sec ? `${day} ${m} ${y} ${hr}:${min}:${sec}` : `${day} ${m} ${y} ${hr}:${min}`;
+    }
+
+    if (formatId.startsWith('datetime_short')) {
       if (tickMarkType === 0) {
         return new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric' }).format(d);
       }

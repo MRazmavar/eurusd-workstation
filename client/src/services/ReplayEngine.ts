@@ -235,16 +235,26 @@ export class ReplayEngine {
           if (this.currentIndex < this.masterCandles.length - 1) {
             this.currentIndex += 1;
             this.intrabarPhase = 0;
+          } else {
+            break;
           }
         }
+        this.notifyCandle();
       }
     } else {
-      // Candle-by-candle mode
-      this.currentIndex = Math.min(this.masterCandles.length - 1, this.currentIndex + count);
-      this.intrabarPhase = 3;
+      // Candle-by-candle mode: sequentially evaluate every intermediate candle
+      // Ensures pending orders are triggered and SL/TP are executed without being skipped
+      for (let i = 0; i < count; i++) {
+        if (this.currentIndex < this.masterCandles.length - 1) {
+          this.currentIndex += 1;
+          this.intrabarPhase = 3;
+          this.notifyCandle();
+        } else {
+          break;
+        }
+      }
     }
 
-    this.notifyCandle();
     this.notifyState();
   }
 

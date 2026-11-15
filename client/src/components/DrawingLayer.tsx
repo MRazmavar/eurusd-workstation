@@ -3837,6 +3837,17 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             return;
           }
           if (!isDrawingToolActive) {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const clickY = e.clientY - rect.top;
+            const clickX = e.clientX - rect.left;
+
+            // If right-clicked on the bottom time axis zone (bottom 35px before price scale)
+            if (clickY >= rect.height - 35 && clickX < rect.width - 55) {
+              e.preventDefault();
+              window.dispatchEvent(new CustomEvent('open-timeformat-dropdown'));
+              return;
+            }
+
             const mouse = getMouseCoord(e);
             if (mouse) {
               const hit = DrawingEngine.hitTest({ x: mouse.x, y: mouse.y }, drawings, transformer, 14, selectedId);
@@ -3845,6 +3856,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 e.stopPropagation();
                 onSelect(hit.drawing.id);
                 setActiveToolbarDrawingId(hit.drawing.id);
+                return;
               }
             }
           }
