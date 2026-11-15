@@ -139,29 +139,32 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
   const positionedClusters = useMemo(() => {
     const list: Array<ClusteredNewsEvents & { x: number; level: number }> = [];
 
-    // Filter clusters that have valid coordinates on screen
+    // Filter clusters that have valid coordinates on screen (min x >= 45 so badge center never clips into left toolbar)
     const visibleWithX = clusteredEvents
       .map((cluster) => {
         const x = transformer.timeToX(cluster.time);
         return { cluster, x };
       })
       .filter((item): item is { cluster: ClusteredNewsEvents; x: number } => 
-        item.x !== null && !isNaN(item.x) && item.x >= 20 && item.x <= 2500
+        item.x !== null && !isNaN(item.x) && item.x >= 45 && item.x <= 2500
       )
       .sort((a, b) => a.x - b.x);
 
     // Dynamic slot allocator: each slot tracks the right edge of its last assigned badge
-    const badgeWidth = 72;
-    const slotRightEdge: number[] = [-Infinity, -Infinity, -Infinity];
+    // Ensures simultaneous or closely-spaced news badges cleanly stack vertically without horizontal collision
+    const badgeWidth = 78;
+    const slotRightEdge: number[] = [-Infinity, -Infinity, -Infinity, -Infinity];
 
     visibleWithX.forEach(({ cluster, x }) => {
       let assignedLevel = 0;
       let foundSlot = false;
+      const currentLeft = x - badgeWidth / 2;
+      const currentRight = x + badgeWidth / 2;
 
       for (let lvl = 0; lvl < slotRightEdge.length; lvl++) {
-        if (x - slotRightEdge[lvl] >= badgeWidth + 4) {
+        if (currentLeft - slotRightEdge[lvl] >= 8) {
           assignedLevel = lvl;
-          slotRightEdge[lvl] = x;
+          slotRightEdge[lvl] = currentRight;
           foundSlot = true;
           break;
         }
@@ -169,15 +172,15 @@ export const NewsOverlay: React.FC<NewsOverlayProps> = ({
 
       if (!foundSlot) {
         let bestSlot = 0;
-        let minX = slotRightEdge[0];
+        let minRight = slotRightEdge[0];
         for (let lvl = 1; lvl < slotRightEdge.length; lvl++) {
-          if (slotRightEdge[lvl] < minX) {
-            minX = slotRightEdge[lvl];
+          if (slotRightEdge[lvl] < minRight) {
+            minRight = slotRightEdge[lvl];
             bestSlot = lvl;
           }
         }
         assignedLevel = bestSlot;
-        slotRightEdge[bestSlot] = x;
+        slotRightEdge[bestSlot] = currentRight;
       }
 
       list.push({

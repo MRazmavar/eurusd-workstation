@@ -3,7 +3,7 @@
  * Supports touch swipe and physical slider for small/mobile screens.
  */
 import React, { useRef, useState, useEffect } from 'react';
-import { Trash2, Copy, CopyPlus, Lock, Unlock, Palette, Settings, Scissors, ChevronLeft, ChevronRight, GripVertical } from 'lucide-react';
+import { Trash2, Copy, CopyPlus, Lock, Unlock, Palette, Settings, Scissors, ChevronLeft, ChevronRight, GripVertical, X } from 'lucide-react';
 import { DrawingObject } from '../types';
 
 interface DrawingToolbarPopupProps {
@@ -15,6 +15,7 @@ interface DrawingToolbarPopupProps {
   onCut?: (drawing: DrawingObject) => void;
   onDelete: (id: string) => void;
   onOpenProperties?: (drawing: DrawingObject) => void;
+  onClose?: () => void;
 }
 
 const PRESET_COLORS = ['#2962ff', '#089981', '#f23645', '#ff9800', '#ab47bc', '#ffffff', '#787b86'];
@@ -28,6 +29,7 @@ export const DrawingToolbarPopup: React.FC<DrawingToolbarPopupProps> = ({
   onCut,
   onDelete,
   onOpenProperties,
+  onClose,
 }) => {
   const currentColor = drawing.properties.color || '#2962ff';
   const currentWidth = drawing.properties.strokeWidth || 2;
@@ -296,6 +298,22 @@ export const DrawingToolbarPopup: React.FC<DrawingToolbarPopupProps> = ({
         >
           <Trash2 size={13} />
         </button>
+
+        {/* Close Toolbar */}
+        {onClose && (
+          <button
+            type="button"
+            data-testid="close-drawing-toolbar-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            className="flex-shrink-0 p-1 rounded text-gray-400 hover:text-white hover:bg-[#2a2e39] transition-colors ml-0.5"
+            title="Close Options Toolbar"
+          >
+            <X size={13} />
+          </button>
+        )}
       </div>
 
       {/* Physical Slider & Touch Scroll Controls (Shown whenever content overflows or on small screens) */}

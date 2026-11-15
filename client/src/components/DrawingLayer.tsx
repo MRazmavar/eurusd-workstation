@@ -156,6 +156,28 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   const [draggingTradeLine, setDraggingTradeLine] = useState<{ tradeId: string; lineType: 'sl' | 'tp' | 'entry' } | null>(null);
   const justCreatedTimeRef = useRef<number>(0);
 
+  // Floating options toolbar: ONLY shown when explicitly double-clicked, right-clicked, or touch-held on phone
+  const [activeToolbarDrawingId, setActiveToolbarDrawingId] = useState<string | null>(null);
+  const touchHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
+  const isTouchHoldTriggeredRef = useRef<boolean>(false);
+
+  // Automatically dismiss options toolbar when selection is cleared
+  useEffect(() => {
+    if (!selectedId) {
+      setActiveToolbarDrawingId(null);
+    }
+  }, [selectedId]);
+
+  // Clean up touch hold timer on unmount
+  useEffect(() => {
+    return () => {
+      if (touchHoldTimerRef.current) {
+        clearTimeout(touchHoldTimerRef.current);
+      }
+    };
+  }, []);
+
   const selectedDrawing = drawings.find(d => d.id === selectedId) || null;
   const isDrawingToolActive = activeTool !== 'crosshair' && activeTool !== 'arrow';
   const isSingleClickTool = [
@@ -258,6 +280,8 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         } else if (inProgressDrawing) {
           setInProgressDrawing(null);
           onResetTool();
+        } else if (activeToolbarDrawingId) {
+          setActiveToolbarDrawingId(null);
         } else if (selectedId) {
           onSelect(null);
         }
@@ -911,6 +935,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         }
       } else {
         onSelect(null);
+        setActiveToolbarDrawingId(null);
       }
       return;
     }
@@ -961,6 +986,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
       justCreatedTimeRef.current = Date.now();
       onAdd(singleDrawing);
       onSelect(singleDrawing.id);
+      setActiveToolbarDrawingId(null);
       onResetTool();
       return;
     }
@@ -989,6 +1015,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
       };
       onAdd(completed);
       onSelect(completed.id);
+      setActiveToolbarDrawingId(null);
       setInProgressDrawing(null);
       mouseDownPosRef.current = null;
       onResetTool();
@@ -1160,6 +1187,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             };
             onAdd(completed);
             onSelect(completed.id);
+            setActiveToolbarDrawingId(null);
             setInProgressDrawing(null);
             mouseDownPosRef.current = null;
             onResetTool();
@@ -2349,6 +2377,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           if (!isDrawingToolActive && !isTemp) {
             e.stopPropagation();
             onSelect(d.id);
+            // Single-click selects anchors ONLY; options toolbar is NOT shown!
           }
         }}
         onDoubleClick={(e) => {
@@ -2356,7 +2385,71 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             e.stopPropagation();
             e.preventDefault();
             onSelect(d.id);
-            onOpenPropertiesModal?.(d);
+            setActiveToolbarDrawingId(d.id);
+          }
+        }}
+        onContextMenu={(e) => {
+          if (!isDrawingToolActive && !isTemp) {
+            e.stopPropagation();
+            e.preventDefault();
+            onSelect(d.id);
+            setActiveToolbarDrawingId(d.id);
+          }
+        }}
+        onTouchStart={(e) => {
+          if (isDrawingToolActive || isTemp) return;
+          const touch = e.touches[0];
+          touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
+          isTouchHoldTriggeredRef.current = false;
+          if (touchHoldTimerRef.current) clearTimeout(touchHoldTimerRef.current);
+          touchHoldTimerRef.current = setTimeout(() => {
+            isTouchHoldTriggeredRef.current = true;
+            onSelect(d.id);
+            setActiveToolbarDrawingId(d.id);
+            if (typeof navigator !== 'undefined' && navigator.vibrate) {
+              try { navigator.vibrate(40); } catch (_) {}
+            }
+          }, 450);
+
+          if (!d.locked && e.touches.length === 1) {
+            e.stopPropagation();
+            onSelect(d.id);
+            const rect = svgRef.current?.getBoundingClientRect();
+            const rawX = e.touches[0].clientX - (rect?.left || 0);
+            const rawY = e.touches[0].clientY - (rect?.top || 0);
+
+            const currentTransformer = transformerRef.current;
+            const startLog = currentTransformer.xToLogical ? currentTransformer.xToLogical(rawX) : null;
+            const startP = currentTransformer.yToPrice ? currentTransformer.yToPrice(rawY) : null;
+            const initLogs = d.points.map(pt => currentTransformer.timeToLogical ? currentTransformer.timeToLogical(pt.time) ?? 0 : 0);
+
+            setDragState({
+              drawingId: d.id,
+              drawing: d,
+              startMouse: { x: rawX, y: rawY },
+              initialPoints: [...d.points],
+              initialLogicals: initLogs,
+              startLogical: startLog ?? 0,
+              startPrice: startP ?? 0,
+            });
+          }
+        }}
+        onTouchMove={(e) => {
+          if (touchStartPosRef.current && e.touches[0]) {
+            const dx = Math.abs(e.touches[0].clientX - touchStartPosRef.current.x);
+            const dy = Math.abs(e.touches[0].clientY - touchStartPosRef.current.y);
+            if (dx > 8 || dy > 8) {
+              if (touchHoldTimerRef.current) {
+                clearTimeout(touchHoldTimerRef.current);
+                touchHoldTimerRef.current = null;
+              }
+            }
+          }
+        }}
+        onTouchEnd={() => {
+          if (touchHoldTimerRef.current) {
+            clearTimeout(touchHoldTimerRef.current);
+            touchHoldTimerRef.current = null;
           }
         }}
         style={{ touchAction: 'none' }}
@@ -2408,30 +2501,6 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           try {
             (e.currentTarget as Element).releasePointerCapture(e.pointerId);
           } catch (_) {}
-        }}
-        onTouchStart={(e) => {
-          if (!isDrawingToolActive && !isTemp && !d.locked && e.touches.length === 1) {
-            e.stopPropagation();
-            onSelect(d.id);
-            const rect = svgRef.current?.getBoundingClientRect();
-            const rawX = e.touches[0].clientX - (rect?.left || 0);
-            const rawY = e.touches[0].clientY - (rect?.top || 0);
-
-            const currentTransformer = transformerRef.current;
-            const startLog = currentTransformer.xToLogical ? currentTransformer.xToLogical(rawX) : null;
-            const startP = currentTransformer.yToPrice ? currentTransformer.yToPrice(rawY) : null;
-            const initLogs = d.points.map(pt => currentTransformer.timeToLogical ? currentTransformer.timeToLogical(pt.time) ?? 0 : 0);
-
-            setDragState({
-              drawingId: d.id,
-              drawing: d,
-              startMouse: { x: rawX, y: rawY },
-              initialPoints: [...d.points],
-              initialLogicals: initLogs,
-              startLogical: startLog ?? 0,
-              startPrice: startP ?? 0,
-            });
-          }
         }}
         onMouseDown={(e) => {
           if (!isDrawingToolActive && !isTemp && !d.locked) {
@@ -3803,8 +3872,9 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
               const hit = DrawingEngine.hitTest({ x: mouse.x, y: mouse.y }, drawings, transformer, 14, selectedId);
               if (hit) {
                 e.stopPropagation();
+                e.preventDefault();
                 onSelect(hit.drawing.id);
-                onOpenPropertiesModal?.(hit.drawing);
+                setActiveToolbarDrawingId(hit.drawing.id);
               }
             }
           }
@@ -3821,9 +3891,11 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                   onSelect(hit.drawing.id);
                 } else {
                   onSelect(null);
+                  setActiveToolbarDrawingId(null);
                 }
               } else {
                 onSelect(null);
+                setActiveToolbarDrawingId(null);
               }
             }
           }
@@ -3833,6 +3905,59 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             e.preventDefault();
             setInProgressDrawing(null);
             onResetTool();
+            return;
+          }
+          if (!isDrawingToolActive) {
+            const mouse = getMouseCoord(e);
+            if (mouse) {
+              const hit = DrawingEngine.hitTest({ x: mouse.x, y: mouse.y }, drawings, transformer, 14, selectedId);
+              if (hit) {
+                e.preventDefault();
+                e.stopPropagation();
+                onSelect(hit.drawing.id);
+                setActiveToolbarDrawingId(hit.drawing.id);
+              }
+            }
+          }
+        }}
+        onTouchStart={(e) => {
+          if (!isDrawingToolActive && e.touches.length === 1) {
+            const touch = e.touches[0];
+            const rect = svgRef.current?.getBoundingClientRect();
+            const sx = touch.clientX - (rect?.left || 0);
+            const sy = touch.clientY - (rect?.top || 0);
+            const hit = DrawingEngine.hitTest({ x: sx, y: sy }, drawings, transformer, 18, selectedId);
+            if (hit) {
+              touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
+              isTouchHoldTriggeredRef.current = false;
+              if (touchHoldTimerRef.current) clearTimeout(touchHoldTimerRef.current);
+              touchHoldTimerRef.current = setTimeout(() => {
+                isTouchHoldTriggeredRef.current = true;
+                onSelect(hit.drawing.id);
+                setActiveToolbarDrawingId(hit.drawing.id);
+                if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                  try { navigator.vibrate(40); } catch (_) {}
+                }
+              }, 450);
+            }
+          }
+        }}
+        onTouchMove={(e) => {
+          if (touchStartPosRef.current && e.touches[0]) {
+            const dx = Math.abs(e.touches[0].clientX - touchStartPosRef.current.x);
+            const dy = Math.abs(e.touches[0].clientY - touchStartPosRef.current.y);
+            if (dx > 8 || dy > 8) {
+              if (touchHoldTimerRef.current) {
+                clearTimeout(touchHoldTimerRef.current);
+                touchHoldTimerRef.current = null;
+              }
+            }
+          }
+        }}
+        onTouchEnd={() => {
+          if (touchHoldTimerRef.current) {
+            clearTimeout(touchHoldTimerRef.current);
+            touchHoldTimerRef.current = null;
           }
         }}
       >
@@ -4058,8 +4183,8 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
 
 
 
-      {/* Floating Toolbar when object selected */}
-      {selectedDrawing && (
+      {/* Floating Options Toolbar: ONLY rendered when explicitly activated via double-click, right-click, or touch-hold */}
+      {selectedDrawing && activeToolbarDrawingId === selectedDrawing.id && (
         <DrawingToolbarPopup
           drawing={selectedDrawing}
           position={(() => {
@@ -4093,12 +4218,17 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             };
             onAdd(dupl);
             onSelect(dupl.id);
+            setActiveToolbarDrawingId(dupl.id);
             onShowToast?.(`Duplicated ${orig.type.replace('_', ' ')}`);
           })}
           onCopy={onCopyDrawing}
           onCut={onCutDrawing}
-          onDelete={onDelete}
+          onDelete={(id) => {
+            setActiveToolbarDrawingId(null);
+            onDelete(id);
+          }}
           onOpenProperties={onOpenPropertiesModal}
+          onClose={() => setActiveToolbarDrawingId(null)}
         />
       )}
     </div>

@@ -418,14 +418,14 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                 setCollapsed(false);
               }}
               data-testid="dock-tab-analytics"
-              className={`px-2.5 py-1 rounded font-medium flex items-center space-x-1.5 flex-shrink-0 whitespace-nowrap transition-colors ${
+              className={`h-7 px-2.5 rounded font-medium inline-flex items-center space-x-1.5 flex-shrink-0 whitespace-nowrap transition-colors ${
                 activeTab === 'analytics' && !collapsed
                   ? 'bg-[#1e222d] text-[#2962ff] border border-[#2a2e39]'
                   : 'text-gray-400 hover:text-white'
               }`}
             >
-              <BarChart2 size={13} />
-              <span>Strategy Tester & Analytics</span>
+              <BarChart2 size={13} className="flex-shrink-0" />
+              <span className="whitespace-nowrap select-none">Strategy Tester & Analytics</span>
             </button>
 
             <button
@@ -438,13 +438,13 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                 setCollapsed(false);
               }}
               data-testid="dock-tab-positions"
-              className={`px-2.5 py-1 rounded font-medium flex items-center space-x-1.5 flex-shrink-0 whitespace-nowrap transition-colors ${
+              className={`h-7 px-2.5 rounded font-medium inline-flex items-center space-x-1.5 flex-shrink-0 whitespace-nowrap transition-colors ${
                 activeTab === 'positions' && !collapsed
                   ? 'bg-[#1e222d] text-[#2962ff] border border-[#2a2e39]'
                   : 'text-gray-400 hover:text-white'
               }`}
             >
-              <span>Positions & Orders</span>
+              <span className="whitespace-nowrap select-none">Positions & Orders</span>
               {(openTrades.length > 0 || pendingTrades.length > 0) && (
                 <span className="bg-[#2962ff] text-white text-[10px] px-1.5 rounded-full font-bold">
                   {openTrades.length} {pendingTrades.length > 0 ? `+ ${pendingTrades.length}p` : ''}
@@ -462,14 +462,14 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                 setCollapsed(false);
               }}
               data-testid="dock-tab-history"
-              className={`px-2.5 py-1 rounded font-medium flex items-center space-x-1.5 flex-shrink-0 whitespace-nowrap transition-colors ${
+              className={`h-7 px-2.5 rounded font-medium inline-flex items-center space-x-1.5 flex-shrink-0 whitespace-nowrap transition-colors ${
                 activeTab === 'history' && !collapsed
                   ? 'bg-[#1e222d] text-[#2962ff] border border-[#2a2e39]'
                   : 'text-gray-400 hover:text-white'
               }`}
             >
-              <Clock size={13} />
-              <span>Trade History ({closedTrades.length})</span>
+              <Clock size={13} className="flex-shrink-0" />
+              <span className="whitespace-nowrap select-none">Trade History ({closedTrades.length})</span>
             </button>
           </div>
 
