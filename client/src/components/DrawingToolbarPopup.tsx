@@ -1,8 +1,10 @@
 /**
  * Floating Context Toolbar for selected drawing objects.
- * Supports touch swipe and physical slider for small/mobile screens.
+ * Supports dragging anywhere on chart (with persistent position like Favorite Tools),
+ * guaranteed on-screen viewport clamping (never goes out of sight even across timeframes),
+ * touch swipe, and physical slider for small/mobile screens.
  */
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Trash2, Copy, CopyPlus, Lock, Unlock, Palette, Settings, Scissors, ChevronLeft, ChevronRight, GripVertical, X } from 'lucide-react';
 import { DrawingObject } from '../types';
 
@@ -43,6 +45,55 @@ export const DrawingToolbarPopup: React.FC<DrawingToolbarPopupProps> = ({
   const [canScroll, setCanScroll] = useState<boolean>(false);
   const [measuredWidth, setMeasuredWidth] = useState<number>(360);
 
+  // Position management (mirroring FavoritesToolbar with drag-repositioning & persistent position)
+  const [isCustomPos, setIsCustomPos] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('eurusd_drawing_toolbar_pos');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return Boolean(parsed.isCustom);
+      }
+    } catch {}
+    return false;
+  });
+
+  const [currentPos, setCurrentPos] = useState<{ x: number; y: number }>(() => {
+    try {
+      const saved = localStorage.getItem('eurusd_drawing_toolbar_pos');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
+          const winW = typeof window !== 'undefined' ? window.innerWidth : 1200;
+          const winH = typeof window !== 'undefined' ? window.innerHeight : 800;
+          const safeX = Math.max(10, Math.min(winW - 150, parsed.x));
+          const safeY = Math.max(16, Math.min(winH - 60, parsed.y));
+          return { x: safeX, y: safeY };
+        }
+      }
+    } catch {}
+
+    // Safe initial calculation: NEVER allow toolbar to go out of sight
+    const winW = typeof window !== 'undefined' ? window.innerWidth : 1000;
+    const winH = typeof window !== 'undefined' ? window.innerHeight : 700;
+    const initX = Math.max(10, Math.min(winW - 380, position.x - 180));
+    let initY: number;
+    if (position.y < 16) {
+      initY = 55; // If drawing is high above view (e.g. 4H fib on 5m chart), place cleanly below top bar
+    } else if (position.y > winH - 70) {
+      initY = winH - 70; // If drawing is below view
+    } else if (position.y < 75) {
+      initY = position.y + 25;
+    } else {
+      initY = position.y - 65;
+    }
+    return { x: initX, y: initY };
+  });
+
+  const currentPosRef = useRef(currentPos);
+  useEffect(() => {
+    currentPosRef.current = currentPos;
+  }, [currentPos]);
+
   const checkScroll = () => {
     if (!scrollRef.current) return;
     const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
@@ -67,6 +118,130 @@ export const DrawingToolbarPopup: React.FC<DrawingToolbarPopupProps> = ({
     return () => clearTimeout(timer);
   }, []);
 
+  // When selected drawing or position prop changes, update position if not custom positioned
+  useEffect(() => {
+    if (isCustomPos) return;
+    const parentW = containerRef.current?.parentElement?.clientWidth || window.innerWidth || 1200;
+    const parentH = containerRef.current?.parentElement?.clientHeight || window.innerHeight || 800;
+    const safeX = Math.max(10, Math.min(parentW - measuredWidth - 10, position.x - measuredWidth / 2));
+    let safeY: number;
+    if (position.y < 16) {
+      safeY = 55; // Never off-screen
+    } else if (position.y > parentH - 70) {
+      safeY = parentH - 70;
+    } else if (position.y < 75) {
+      safeY = position.y + 25;
+    } else {
+      safeY = position.y - 65;
+    }
+    setCurrentPos({ x: safeX, y: safeY });
+  }, [position.x, position.y, drawing.id, isCustomPos, measuredWidth]);
+
+  // Window resize failsafe: keep toolbar on screen at all times
+  useEffect(() => {
+    const handleResize = () => {
+      const parentW = containerRef.current?.parentElement?.clientWidth || window.innerWidth || 1200;
+      const parentH = containerRef.current?.parentElement?.clientHeight || window.innerHeight || 800;
+      setCurrentPos(prev => {
+        const safeX = Math.max(10, Math.min(parentW - measuredWidth - 10, prev.x));
+        const safeY = Math.max(16, Math.min(parentH - 60, prev.y));
+        if (safeX !== prev.x || safeY !== prev.y) {
+          const clamped = { x: safeX, y: safeY };
+          if (isCustomPos) {
+            try {
+              localStorage.setItem('eurusd_drawing_toolbar_pos', JSON.stringify({ ...clamped, isCustom: true }));
+            } catch {}
+          }
+          return clamped;
+        }
+        return prev;
+      });
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [isCustomPos, measuredWidth]);
+
+  // Dragging logic (supports Mouse and Touch for mobile/tablet)
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef<{ mouseX: number; mouseY: number; startX: number; startY: number } | null>(null);
+
+  const handleDragStart = useCallback((clientX: number, clientY: number) => {
+    setIsDragging(true);
+    dragStartRef.current = {
+      mouseX: clientX,
+      mouseY: clientY,
+      startX: currentPos.x,
+      startY: currentPos.y,
+    };
+  }, [currentPos]);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleDragStart(e.clientX, e.clientY);
+  }, [handleDragStart]);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      e.stopPropagation();
+      handleDragStart(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  }, [handleDragStart]);
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMove = (clientX: number, clientY: number) => {
+      if (!dragStartRef.current) return;
+      const dx = clientX - dragStartRef.current.mouseX;
+      const dy = clientY - dragStartRef.current.mouseY;
+
+      const parentW = containerRef.current?.parentElement?.clientWidth || window.innerWidth || 1200;
+      const parentH = containerRef.current?.parentElement?.clientHeight || window.innerHeight || 800;
+
+      const newX = Math.max(10, Math.min(parentW - measuredWidth - 10, dragStartRef.current.startX + dx));
+      const newY = Math.max(16, Math.min(parentH - 60, dragStartRef.current.startY + dy));
+
+      setCurrentPos({ x: newX, y: newY });
+      setIsCustomPos(true);
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      handleMove(e.clientX, e.clientY);
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        handleMove(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    };
+
+    const handleEnd = () => {
+      setIsDragging(false);
+      dragStartRef.current = null;
+      try {
+        localStorage.setItem(
+          'eurusd_drawing_toolbar_pos',
+          JSON.stringify({ x: currentPosRef.current.x, y: currentPosRef.current.y, isCustom: true })
+        );
+      } catch {}
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleEnd);
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchend', handleEnd);
+    window.addEventListener('touchcancel', handleEnd);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleEnd);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleEnd);
+      window.removeEventListener('touchcancel', handleEnd);
+    };
+  }, [isDragging, measuredWidth]);
+
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = Number(e.target.value);
     setScrollPos(val);
@@ -81,19 +256,16 @@ export const DrawingToolbarPopup: React.FC<DrawingToolbarPopupProps> = ({
     }
   };
 
-  // Safe screen clamping for position
-  const winWidth = typeof window !== 'undefined' ? window.innerWidth : 1000;
-  const clampedLeft = Math.max(8, Math.min(winWidth - measuredWidth - 8, position.x - measuredWidth / 2));
-  const clampedTop = position.y < 70 ? position.y + 25 : Math.max(10, position.y - 65);
-
   return (
     <div
       ref={containerRef}
       data-testid="drawing-toolbar-popup"
-      className="absolute z-50 bg-[#1e222d] border border-[#2a2e39] rounded-lg shadow-2xl flex flex-col text-xs select-none pointer-events-auto cursor-default max-w-[calc(100vw-16px)] transition-all"
+      className={`absolute z-50 bg-[#1e222d] border border-[#2a2e39] rounded-lg shadow-2xl flex flex-col text-xs select-none pointer-events-auto cursor-default max-w-[calc(100vw-16px)] transition-all ${
+        isDragging ? 'ring-2 ring-[#2962ff] shadow-blue-500/20 opacity-95' : ''
+      }`}
       style={{
-        left: clampedLeft,
-        top: clampedTop,
+        left: currentPos.x,
+        top: currentPos.y,
       }}
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
@@ -112,8 +284,26 @@ export const DrawingToolbarPopup: React.FC<DrawingToolbarPopupProps> = ({
           WebkitOverflowScrolling: 'touch',
         }}
       >
-        {/* Grip handle indicator */}
-        <div className="flex-shrink-0 text-gray-500 pl-0.5 pr-1 cursor-grab" title="Drawing options">
+        {/* Grip Drag Handle: allows dragging toolbar anywhere across chart */}
+        <div
+          data-testid="drawing-toolbar-drag-handle"
+          className="flex-shrink-0 flex items-center px-1.5 py-1 text-gray-400 hover:text-white cursor-grab active:cursor-grabbing border-r border-[#2a2e39] select-none transition-colors"
+          onMouseDown={handleMouseDown}
+          onTouchStart={handleTouchStart}
+          title="Drag to reposition toolbar anywhere (double-click to reset position)"
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            try {
+              localStorage.removeItem('eurusd_drawing_toolbar_pos');
+            } catch {}
+            setIsCustomPos(false);
+            const parentW = containerRef.current?.parentElement?.clientWidth || window.innerWidth || 1200;
+            const parentH = containerRef.current?.parentElement?.clientHeight || window.innerHeight || 800;
+            const safeX = Math.max(10, Math.min(parentW - measuredWidth - 10, position.x - measuredWidth / 2));
+            const safeY = position.y < 16 ? 55 : position.y > parentH - 70 ? parentH - 70 : (position.y < 75 ? position.y + 25 : position.y - 65);
+            setCurrentPos({ x: safeX, y: safeY });
+          }}
+        >
           <GripVertical size={14} />
         </div>
 
