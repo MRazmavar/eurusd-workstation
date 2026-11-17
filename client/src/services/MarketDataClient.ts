@@ -25,19 +25,20 @@ export class MarketDataClient {
 
   private get isServerlessHost(): boolean {
     if (typeof window === 'undefined') return false;
-    return window.location.hostname.includes('vercel.app');
+    const host = window.location.hostname;
+    return host.includes('vercel.app') || host.includes('hf.space') || host.includes('github.io');
   }
 
   private get baseUrl(): string {
     if (typeof window !== 'undefined') {
       const host = window.location.hostname;
-      // Vercel hosts our live Node.js Dukascopy serverless API on the same origin!
+      // Vercel hosts our live Node.js Dukascopy serverless API on the same origin
       if (host.includes('vercel.app')) {
         return window.location.origin;
       }
-      // Static-only hosts with no backend runtime
+      // Static hosts (Hugging Face / GitHub Pages) connect directly to our live Vercel Dukascopy API (CORS *)
       if (host.includes('github.io') || host.includes('hf.space')) {
-        return '';
+        return 'https://eurusd-workstation.vercel.app';
       }
       // When accessed via Vite (5173), tunnel domain, or reverse proxy, route through same origin proxy
       if (window.location.port === '5173' || !window.location.port || window.location.port === '80' || window.location.port === '443') {
