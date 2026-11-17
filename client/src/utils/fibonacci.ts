@@ -23,8 +23,95 @@ export const DEFAULT_FIB_LEVELS: FibLevel[] = [
   { level: -0.618, color: '#00b0ff', visible: false },
 ];
 
+export const FIB_LEVEL_PRESET_COLORS = [
+  '#2962ff', // blue
+  '#089981', // green
+  '#f23645', // red
+  '#ff9800', // orange
+  '#f59e0b', // amber
+  '#ab47bc', // purple
+  '#00bcd4', // cyan
+  '#4caf50', // emerald
+  '#ffeb3b', // yellow
+  '#ffffff', // white
+  '#787b86', // gray
+  '#363c4e', // dark gray
+];
+
 export function getDefaultFibLevels(): FibLevel[] {
   return DEFAULT_FIB_LEVELS.map(f => ({ ...f }));
+}
+
+export interface FibSettings {
+  fibLevels: FibLevel[];
+  extendLinesLeft: boolean;
+  extendLinesRight: boolean;
+  fillBackground: boolean;
+  showPrices: boolean;
+  showLevels: boolean;
+  color?: string;
+  strokeWidth?: number;
+  lineStyle?: 'solid' | 'dashed' | 'dotted';
+}
+
+export const FIB_STORAGE_KEY = 'eurusd_default_fib_settings';
+
+/**
+ * Retrieves the user's latest saved Fibonacci settings template.
+ * If none has been saved, falls back cleanly to the defaults.
+ */
+export function getSavedFibSettings(): FibSettings {
+  try {
+    const saved = localStorage.getItem(FIB_STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed.fibLevels) && parsed.fibLevels.length > 0) {
+        return {
+          fibLevels: parsed.fibLevels.map((lvl: FibLevel) => ({
+            level: typeof lvl.level === 'number' ? lvl.level : 0,
+            color: lvl.color || '#2962ff',
+            visible: lvl.visible !== false,
+          })),
+          extendLinesLeft: Boolean(parsed.extendLinesLeft),
+          extendLinesRight: Boolean(parsed.extendLinesRight),
+          fillBackground: parsed.fillBackground !== false,
+          showPrices: parsed.showPrices !== false,
+          showLevels: parsed.showLevels !== false,
+          color: parsed.color || '#2962ff',
+          strokeWidth: parsed.strokeWidth || 1,
+          lineStyle: parsed.lineStyle || 'dashed',
+        };
+      }
+    }
+  } catch {}
+
+  return {
+    fibLevels: getDefaultFibLevels(),
+    extendLinesLeft: false,
+    extendLinesRight: false,
+    fillBackground: true,
+    showPrices: true,
+    showLevels: true,
+    color: '#2962ff',
+    strokeWidth: 1,
+    lineStyle: 'dashed',
+  };
+}
+
+/**
+ * Persists the user's latest Fibonacci levels and options so all future drawings
+ * automatically reflect the latest settings.
+ */
+export function saveDefaultFibSettings(settings: Partial<FibSettings>): void {
+  try {
+    const current = getSavedFibSettings();
+    const merged: FibSettings = {
+      ...current,
+      ...settings,
+      fibLevels: settings.fibLevels ? settings.fibLevels.map(l => ({ ...l })) : current.fibLevels,
+    };
+    localStorage.setItem(FIB_STORAGE_KEY, JSON.stringify(merged));
+  } catch {}
 }
 
 export const FIB_PRESETS: Record<string, { name: string; levels: FibLevel[] }> = {

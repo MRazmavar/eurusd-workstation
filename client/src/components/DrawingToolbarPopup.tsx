@@ -7,6 +7,7 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Trash2, Copy, CopyPlus, Lock, Unlock, Palette, Settings, Scissors, ChevronLeft, ChevronRight, GripVertical, X } from 'lucide-react';
 import { DrawingObject } from '../types';
+import { saveDefaultFibSettings } from '../utils/fibonacci';
 
 interface DrawingToolbarPopupProps {
   drawing: DrawingObject;
@@ -316,9 +317,21 @@ export const DrawingToolbarPopup: React.FC<DrawingToolbarPopupProps> = ({
               data-testid={`color-swatch-${c.replace('#', '')}`}
               onClick={(e) => {
                 e.stopPropagation();
+                const isFib = drawing.type === 'fibonacci' || drawing.type.startsWith('fib') || drawing.type.includes('fib');
+                const nextLevels = isFib && drawing.properties.fibLevels
+                  ? drawing.properties.fibLevels.map(lvl => ({ ...lvl, color: c }))
+                  : drawing.properties.fibLevels;
+                if (isFib) {
+                  saveDefaultFibSettings({ color: c, fibLevels: nextLevels });
+                }
                 onUpdate({
                   ...drawing,
-                  properties: { ...drawing.properties, color: c, fillColor: c },
+                  properties: {
+                    ...drawing.properties,
+                    color: c,
+                    fillColor: c,
+                    ...(nextLevels ? { fibLevels: nextLevels } : {}),
+                  },
                   updated_at: Date.now(),
                 });
               }}
@@ -336,9 +349,22 @@ export const DrawingToolbarPopup: React.FC<DrawingToolbarPopupProps> = ({
               type="color"
               value={currentColor}
               onChange={(e) => {
+                const c = e.target.value;
+                const isFib = drawing.type === 'fibonacci' || drawing.type.startsWith('fib') || drawing.type.includes('fib');
+                const nextLevels = isFib && drawing.properties.fibLevels
+                  ? drawing.properties.fibLevels.map(lvl => ({ ...lvl, color: c }))
+                  : drawing.properties.fibLevels;
+                if (isFib) {
+                  saveDefaultFibSettings({ color: c, fibLevels: nextLevels });
+                }
                 onUpdate({
                   ...drawing,
-                  properties: { ...drawing.properties, color: e.target.value, fillColor: e.target.value },
+                  properties: {
+                    ...drawing.properties,
+                    color: c,
+                    fillColor: c,
+                    ...(nextLevels ? { fibLevels: nextLevels } : {}),
+                  },
                   updated_at: Date.now(),
                 });
               }}
@@ -358,6 +384,10 @@ export const DrawingToolbarPopup: React.FC<DrawingToolbarPopupProps> = ({
               data-testid={`width-btn-${w}`}
               onClick={(e) => {
                 e.stopPropagation();
+                const isFib = drawing.type === 'fibonacci' || drawing.type.startsWith('fib') || drawing.type.includes('fib');
+                if (isFib) {
+                  saveDefaultFibSettings({ strokeWidth: w });
+                }
                 onUpdate({
                   ...drawing,
                   properties: { ...drawing.properties, strokeWidth: w },
@@ -381,6 +411,10 @@ export const DrawingToolbarPopup: React.FC<DrawingToolbarPopupProps> = ({
           onClick={(e) => {
             e.stopPropagation();
             const nextStyle = currentStyle === 'solid' ? 'dashed' : currentStyle === 'dashed' ? 'dotted' : 'solid';
+            const isFib = drawing.type === 'fibonacci' || drawing.type.startsWith('fib') || drawing.type.includes('fib');
+            if (isFib) {
+              saveDefaultFibSettings({ lineStyle: nextStyle });
+            }
             onUpdate({
               ...drawing,
               properties: { ...drawing.properties, lineStyle: nextStyle },

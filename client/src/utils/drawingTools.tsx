@@ -93,6 +93,7 @@ export const ALL_DRAWING_TOOLS: Record<DrawingToolType, ToolMetadata> = {
   disjoint_channel: { tool: 'disjoint_channel', label: 'Disjoint Channel', icon: Maximize, category: 'Channels' },
 
   // Fibonacci
+  fibonacci: { tool: 'fibonacci', label: 'Fib Retracement', icon: Percent, category: 'Fibonacci' },
   fib_retracement: { tool: 'fib_retracement', label: 'Fib Retracement', icon: Percent, category: 'Fibonacci' },
   fib_extension: { tool: 'fib_extension', label: 'Fib Extension', icon: TrendingUp, category: 'Fibonacci' },
   fib_channel: { tool: 'fib_channel', label: 'Fib Channel', icon: Maximize, category: 'Fibonacci' },

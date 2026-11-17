@@ -225,7 +225,7 @@ export class DrawingEngine {
       }
 
       // 9. Check Fibonacci Tools (hit-test baseline trendline and individual level lines, NOT empty background)
-      else if (['fib_retracement', 'fib_extension', 'fib_channel', 'fib_fan', 'fib_timezones'].includes(d.type) && screenPoints.length >= 2) {
+      else if (['fib_retracement', 'fib_extension', 'fib_channel', 'fib_fan', 'fib_timezones', 'fibonacci'].includes(d.type) && screenPoints.length >= 2) {
         // A. Check baseline trendline
         if (this.distToSegment(mouse, screenPoints[0], screenPoints[1]) <= hitTolerance + 2) {
           return { drawing: d };

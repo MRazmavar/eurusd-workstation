@@ -2,7 +2,7 @@
  * TradingView-Style Drawing Properties & Settings Modal.
  * Opens on double-clicking any drawing tool on chart, or clicking Settings in toolbar/object tree.
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   Sliders,
@@ -22,15 +22,32 @@ import {
   Trash2,
   Sparkles,
   Calculator,
+  ChevronDown,
+  Save,
 } from 'lucide-react';
 import { PositionToolService } from '../services/PositionToolService';
 import { DrawingObject, Point, DrawingProperties, FibLevel } from '../types';
 import {
   getDefaultFibLevels,
+  getSavedFibSettings,
+  saveDefaultFibSettings,
   FIB_PRESETS,
+  FIB_LEVEL_PRESET_COLORS,
   calculateFibPrice,
   formatFibLevel,
 } from '../utils/fibonacci';
+
+function normalizeHexColor(color?: string): string {
+  if (!color) return '#2962ff';
+  const c = color.trim();
+  if (c.startsWith('#')) {
+    if (c.length === 7) return c;
+    if (c.length === 4) {
+      return `#${c[1]}${c[1]}${c[2]}${c[2]}${c[3]}${c[3]}`;
+    }
+  }
+  return '#2962ff';
+}
 
 interface DrawingPropertiesModalProps {
   isOpen: boolean;
@@ -50,7 +67,7 @@ export const DrawingPropertiesModal: React.FC<DrawingPropertiesModalProps> = ({
   onClose,
   onSave,
 }) => {
-  const isFib = drawing ? (drawing.type.startsWith('fib_') || drawing.type === 'fib_retracement') : false;
+  const isFib = drawing ? (drawing.type === 'fibonacci' || drawing.type.startsWith('fib') || drawing.type.includes('fib')) : false;
   const isPosition = drawing ? (drawing.type === 'long_position' || drawing.type === 'short_position') : false;
 
   const [activeTab, setActiveTab] = useState<'levels' | 'inputs' | 'style' | 'coordinates' | 'visibility'>('style');
@@ -68,6 +85,21 @@ export const DrawingPropertiesModal: React.FC<DrawingPropertiesModalProps> = ({
   const [fillBackground, setFillBackground] = useState<boolean>(true);
   const [showPrices, setShowPrices] = useState<boolean>(true);
   const [showLevels, setShowLevels] = useState<boolean>(true);
+  const [colorPickerIndex, setColorPickerIndex] = useState<number | null>(null);
+  const [isSavedDefaultFeedback, setIsSavedDefaultFeedback] = useState<boolean>(false);
+  const colorPopoverRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (colorPopoverRef.current && !colorPopoverRef.current.contains(e.target as Node)) {
+        setColorPickerIndex(null);
+      }
+    };
+    if (colorPickerIndex !== null) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [colorPickerIndex]);
 
   useEffect(() => {
     if (drawing) {
@@ -76,16 +108,17 @@ export const DrawingPropertiesModal: React.FC<DrawingPropertiesModalProps> = ({
       setLocked(drawing.locked);
       setHidden(drawing.hidden);
 
-      if (drawing.type.startsWith('fib_') || drawing.type === 'fib_retracement') {
+      if (drawing.type === 'fibonacci' || drawing.type.startsWith('fib') || drawing.type.includes('fib')) {
+        const savedSettings = getSavedFibSettings();
         const initialLevels = drawing.properties?.fibLevels && drawing.properties.fibLevels.length > 0
           ? drawing.properties.fibLevels.map(lvl => ({ ...lvl }))
-          : getDefaultFibLevels();
+          : savedSettings.fibLevels.map(lvl => ({ ...lvl }));
         setFibLevels(initialLevels);
-        setExtendLinesLeft(!!drawing.properties?.extendLinesLeft);
-        setExtendLinesRight(drawing.properties?.extendLinesRight ?? false);
-        setFillBackground(drawing.properties?.fillBackground ?? true);
-        setShowPrices(drawing.properties?.showPrices ?? true);
-        setShowLevels(drawing.properties?.showLevels ?? true);
+        setExtendLinesLeft(drawing.properties?.extendLinesLeft ?? savedSettings.extendLinesLeft);
+        setExtendLinesRight(drawing.properties?.extendLinesRight ?? savedSettings.extendLinesRight);
+        setFillBackground(drawing.properties?.fillBackground ?? savedSettings.fillBackground);
+        setShowPrices(drawing.properties?.showPrices ?? savedSettings.showPrices);
+        setShowLevels(drawing.properties?.showLevels ?? savedSettings.showLevels);
         setActiveTab('levels'); // Open directly into Levels tab for Fib drawings
       } else if (drawing.type === 'long_position' || drawing.type === 'short_position') {
         setAccountSize(drawing.properties?.accountSize || 10000);
@@ -151,13 +184,45 @@ export const DrawingPropertiesModal: React.FC<DrawingPropertiesModalProps> = ({
       hidden,
       updated_at: Date.now(),
     };
+
+    if (isFib) {
+      saveDefaultFibSettings({
+        fibLevels: fibLevels.map(l => ({ ...l })),
+        extendLinesLeft,
+        extendLinesRight,
+        fillBackground,
+        showPrices,
+        showLevels,
+        color: properties.color || '#2962ff',
+        strokeWidth: properties.strokeWidth || 1,
+        lineStyle: properties.lineStyle || 'dashed',
+      });
+    }
+
     onSave(updated);
     onClose();
   };
 
+  const handleSaveAsDefault = () => {
+    saveDefaultFibSettings({
+      fibLevels: fibLevels.map(l => ({ ...l })),
+      extendLinesLeft,
+      extendLinesRight,
+      fillBackground,
+      showPrices,
+      showLevels,
+      color: properties.color || '#2962ff',
+      strokeWidth: properties.strokeWidth || 1,
+      lineStyle: properties.lineStyle || 'dashed',
+    });
+    setIsSavedDefaultFeedback(true);
+    setTimeout(() => setIsSavedDefaultFeedback(false), 2000);
+  };
+
   const handleReset = () => {
     if (isFib) {
-      setFibLevels(getDefaultFibLevels());
+      const defLevels = getDefaultFibLevels();
+      setFibLevels(defLevels);
       setExtendLinesLeft(false);
       setExtendLinesRight(false);
       setFillBackground(true);
@@ -169,6 +234,17 @@ export const DrawingPropertiesModal: React.FC<DrawingPropertiesModalProps> = ({
         strokeWidth: 1,
         lineStyle: 'dashed',
       }));
+      saveDefaultFibSettings({
+        fibLevels: defLevels,
+        extendLinesLeft: false,
+        extendLinesRight: false,
+        fillBackground: true,
+        showPrices: true,
+        showLevels: true,
+        color: '#2962ff',
+        strokeWidth: 1,
+        lineStyle: 'dashed',
+      });
     } else {
       setProperties({
         color: '#2962ff',
@@ -347,20 +423,36 @@ export const DrawingPropertiesModal: React.FC<DrawingPropertiesModalProps> = ({
             <div className="space-y-4" data-testid="fib-levels-content">
               {/* Presets & Header */}
               <div className="bg-[#131722] p-2.5 rounded border border-[#2a2e39] space-y-2">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-1.5">
                   <span className="text-gray-300 font-bold flex items-center space-x-1.5 text-xs">
                     <Sparkles size={13} className="text-amber-400" />
-                    <span>Quick Presets</span>
+                    <span>Quick Presets & Defaults</span>
                   </span>
-                  <button
-                    type="button"
-                    onClick={handleAddLevel}
-                    data-testid="add-fib-level-btn"
-                    className="px-2.5 py-1 rounded bg-[#2962ff]/20 hover:bg-[#2962ff]/30 text-[#2962ff] hover:text-[#5887ff] border border-[#2962ff]/40 font-semibold text-xs flex items-center space-x-1 transition-all"
-                  >
-                    <Plus size={13} />
-                    <span>Add Level</span>
-                  </button>
+                  <div className="flex items-center space-x-1.5">
+                    <button
+                      type="button"
+                      data-testid="save-as-default-fib-btn"
+                      onClick={handleSaveAsDefault}
+                      className={`px-2 py-1 rounded text-xs font-semibold flex items-center space-x-1 border transition-all ${
+                        isSavedDefaultFeedback
+                          ? 'bg-emerald-600/30 text-emerald-400 border-emerald-500/50'
+                          : 'bg-[#2a2e39] hover:bg-[#363c4e] text-gray-200 border-[#3a3f50]'
+                      }`}
+                      title="Save current levels and options as the default template for all future Fib drawings"
+                    >
+                      {isSavedDefaultFeedback ? <Check size={12} /> : <Save size={12} />}
+                      <span>{isSavedDefaultFeedback ? 'Saved as Default!' : 'Save as Default'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleAddLevel}
+                      data-testid="add-fib-level-btn"
+                      className="px-2.5 py-1 rounded bg-[#2962ff]/20 hover:bg-[#2962ff]/30 text-[#2962ff] hover:text-[#5887ff] border border-[#2962ff]/40 font-semibold text-xs flex items-center space-x-1 transition-all"
+                    >
+                      <Plus size={13} />
+                      <span>Add Level</span>
+                    </button>
+                  </div>
                 </div>
                 <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
                   {Object.entries(FIB_PRESETS).map(([key, p]) => (
@@ -453,11 +545,12 @@ export const DrawingPropertiesModal: React.FC<DrawingPropertiesModalProps> = ({
 
                 {fibLevels.map((lvl, index) => {
                   const targetPrice = calculateFibPrice(p1, p2, lvl.level);
+                  const isPickerOpen = colorPickerIndex === index;
                   return (
                     <div
                       key={`fib-lvl-${index}`}
                       data-testid={`fib-level-row-${index}`}
-                      className={`flex items-center justify-between p-1.5 rounded border transition-colors ${
+                      className={`flex items-center justify-between p-1.5 rounded border transition-colors relative ${
                         lvl.visible
                           ? 'bg-[#131722] border-[#2a2e39] text-white'
                           : 'bg-[#131722]/50 border-transparent text-gray-500 opacity-60'
@@ -486,21 +579,101 @@ export const DrawingPropertiesModal: React.FC<DrawingPropertiesModalProps> = ({
                         />
                       </div>
 
-                      {/* Color Picker Swatch */}
-                      <div className="w-14 flex items-center justify-center">
-                        <div
-                          className="relative w-6 h-6 rounded border border-[#2a2e39] cursor-pointer overflow-hidden shadow-inner flex items-center justify-center hover:scale-110 transition-transform"
+                      {/* Interactive Color Picker Swatch & Dropdown Popover */}
+                      <div className="w-14 flex items-center justify-center relative">
+                        <button
+                          type="button"
+                          data-testid={`fib-level-color-btn-${index}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setColorPickerIndex(prev => prev === index ? null : index);
+                          }}
+                          className="w-8 h-6 rounded border border-[#2a2e39] cursor-pointer flex items-center justify-between px-1 hover:border-white/60 transition-all shadow-inner group"
                           style={{ backgroundColor: lvl.color }}
-                          title={`Color: ${lvl.color}`}
+                          title={`Click to change color: ${lvl.color}`}
                         >
-                          <input
-                            type="color"
-                            data-testid={`fib-level-color-${index}`}
-                            value={lvl.color}
-                            onChange={(e) => handleUpdateLevelColor(index, e.target.value)}
-                            className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
-                          />
-                        </div>
+                          <span className="w-1" />
+                          <ChevronDown size={11} className="text-white drop-shadow stroke-[3] group-hover:scale-110 transition-transform" />
+                        </button>
+
+                        {/* Dropdown Color Palette Popover */}
+                        {isPickerOpen && (
+                          <div
+                            ref={colorPopoverRef}
+                            data-testid={`fib-color-popover-${index}`}
+                            className="absolute z-50 top-8 left-1/2 -translate-x-1/2 bg-[#1e222d] border border-[#2a2e39] rounded-lg shadow-2xl p-2.5 w-52 flex flex-col space-y-2 text-xs animate-in fade-in zoom-in-95 duration-100"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="flex items-center justify-between text-[11px] text-gray-300 font-semibold border-b border-[#2a2e39] pb-1">
+                              <span>Level {lvl.level} Color</span>
+                              <button
+                                type="button"
+                                onClick={() => setColorPickerIndex(null)}
+                                className="text-gray-400 hover:text-white p-0.5 rounded"
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
+
+                            {/* Preset Color Swatches */}
+                            <div className="grid grid-cols-6 gap-1.5">
+                              {FIB_LEVEL_PRESET_COLORS.map((pc) => (
+                                <button
+                                  key={pc}
+                                  type="button"
+                                  data-testid={`fib-color-preset-${pc.replace('#', '')}-${index}`}
+                                  onClick={() => {
+                                    handleUpdateLevelColor(index, pc);
+                                    setColorPickerIndex(null);
+                                  }}
+                                  className={`w-5 h-5 rounded border transition-transform ${
+                                    lvl.color.toLowerCase() === pc.toLowerCase()
+                                      ? 'border-white scale-110 ring-1 ring-white'
+                                      : 'border-transparent hover:scale-110'
+                                  }`}
+                                  style={{ backgroundColor: pc }}
+                                  title={pc}
+                                />
+                              ))}
+                            </div>
+
+                            {/* Custom Native Color Picker & Hex Code */}
+                            <div className="flex items-center space-x-1.5 pt-1 border-t border-[#2a2e39]">
+                              <div className="relative w-6 h-6 rounded border border-[#2a2e39] overflow-hidden flex-shrink-0 cursor-pointer shadow-inner">
+                                <input
+                                  type="color"
+                                  data-testid={`fib-level-color-${index}`}
+                                  value={normalizeHexColor(lvl.color)}
+                                  onChange={(e) => handleUpdateLevelColor(index, e.target.value)}
+                                  className="opacity-0 absolute inset-0 w-full h-full cursor-pointer z-10"
+                                />
+                                <div className="w-full h-full" style={{ backgroundColor: lvl.color }} />
+                              </div>
+                              <input
+                                type="text"
+                                data-testid={`fib-level-hex-input-${index}`}
+                                value={lvl.color}
+                                onChange={(e) => handleUpdateLevelColor(index, e.target.value)}
+                                className="flex-1 bg-[#131722] border border-[#2a2e39] rounded px-1.5 py-0.5 text-white font-mono text-[11px] uppercase focus:outline-none focus:border-[#2962ff]"
+                                placeholder="#2962FF"
+                              />
+                            </div>
+
+                            {/* Apply to All Levels Shortcut */}
+                            <button
+                              type="button"
+                              data-testid={`fib-apply-all-color-${index}`}
+                              onClick={() => {
+                                const selectedColor = lvl.color;
+                                setFibLevels(prev => prev.map(l => ({ ...l, color: selectedColor })));
+                                setColorPickerIndex(null);
+                              }}
+                              className="w-full py-1 rounded bg-[#2a2e39] hover:bg-[#363c4e] text-gray-200 text-[10px] font-semibold text-center transition-colors"
+                            >
+                              Apply this color to all levels
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       {/* Computed Price Preview */}

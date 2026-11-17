@@ -19,7 +19,7 @@ import { DrawingToolbarPopup } from './DrawingToolbarPopup';
 import { Check, X as CloseIcon } from 'lucide-react';
 import { computeSessionBlocks, getCandleBarInterval } from '../utils/sessions';
 import { formatTimeInTimezone, formatBadgeTimeInTimezone, getTimeframeSeconds } from '../utils/timezone';
-import { DEFAULT_FIB_LEVELS, getDefaultFibLevels, formatFibLevel } from '../utils/fibonacci';
+import { DEFAULT_FIB_LEVELS, getDefaultFibLevels, getSavedFibSettings, formatFibLevel } from '../utils/fibonacci';
 import { PositionToolService } from '../services/PositionToolService';
 
 export interface MagnetSnapInfo {
@@ -1141,14 +1141,20 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         lineStyle: 'solid',
         fontSize: 12,
         text: activeTool === 'text' ? 'EUR/USD Setup' : '',
-        ...(activeTool === 'fib_retracement' ? {
-          fibLevels: getDefaultFibLevels(),
-          extendLinesLeft: false,
-          extendLinesRight: false,
-          fillBackground: true,
-          showPrices: true,
-          showLevels: true,
-        } : {}),
+        ...(activeTool === 'fib_retracement' || activeTool === 'fibonacci' || activeTool === 'fib_extension' ? (() => {
+          const savedFib = getSavedFibSettings();
+          return {
+            color: savedFib.color || '#2962ff',
+            strokeWidth: savedFib.strokeWidth || 1,
+            lineStyle: savedFib.lineStyle || 'dashed',
+            fibLevels: savedFib.fibLevels.map(l => ({ ...l })),
+            extendLinesLeft: savedFib.extendLinesLeft,
+            extendLinesRight: savedFib.extendLinesRight,
+            fillBackground: savedFib.fillBackground,
+            showPrices: savedFib.showPrices,
+            showLevels: savedFib.showLevels,
+          };
+        })() : {}),
       },
       locked: false,
       hidden: false,
@@ -2849,13 +2855,13 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
           );
         })()}
 
-        {/* Fibonacci Retracement */}
-        {d.type === 'fib_retracement' && screenPts.length >= 2 && (() => {
+        {/* Fibonacci Retracement & Extension */}
+        {(d.type === 'fib_retracement' || d.type === 'fibonacci' || d.type === 'fib_extension') && screenPts.length >= 2 && (() => {
           const p1 = d.points[0].price;
           const p2 = d.points[1].price;
           const levels: FibLevel[] = (d.properties?.fibLevels && d.properties.fibLevels.length > 0)
             ? d.properties.fibLevels
-            : DEFAULT_FIB_LEVELS;
+            : getSavedFibSettings().fibLevels;
 
           const visibleLevels = levels.filter(lvl => lvl.visible !== false);
           const extendLeft = !!d.properties?.extendLinesLeft;

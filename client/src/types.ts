@@ -46,7 +46,7 @@ export type DrawingToolType =
   // Channels
   | 'parallel_channel' | 'regression_trend' | 'flat_top_bottom' | 'disjoint_channel'
   // Fibonacci
-  | 'fib_retracement' | 'fib_extension' | 'fib_channel' | 'fib_fan' | 'fib_timezones'
+  | 'fib_retracement' | 'fib_extension' | 'fib_channel' | 'fib_fan' | 'fib_timezones' | 'fibonacci'
   // Geometric
   | 'rectangle' | 'rotated_rectangle' | 'circle' | 'ellipse' | 'triangle' | 'polyline' | 'path' | 'arrow'
   // Annotation
