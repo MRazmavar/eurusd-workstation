@@ -17,6 +17,10 @@ export class MarketDataClient {
 
   private get baseUrl(): string {
     if (typeof window !== 'undefined') {
+      // When accessed via Vite (5173), tunnel domain, or reverse proxy, route through same origin proxy
+      if (window.location.port === '5173' || !window.location.port || window.location.port === '80' || window.location.port === '443') {
+        return window.location.origin;
+      }
       return `${window.location.protocol}//${window.location.hostname}:8008`;
     }
     return 'http://127.0.0.1:8008';
@@ -45,7 +49,10 @@ export class MarketDataClient {
     this.isConnecting = true;
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.hostname}:8008/ws/market`;
+    const isSinglePort = window.location.port === '5173' || !window.location.port || window.location.port === '80' || window.location.port === '443';
+    const wsUrl = isSinglePort
+      ? `${protocol}//${window.location.host}/ws/market`
+      : `${protocol}//${window.location.hostname}:8008/ws/market`;
 
     try {
       this.ws = new WebSocket(wsUrl);
