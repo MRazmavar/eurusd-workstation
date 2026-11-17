@@ -7,9 +7,10 @@ COPY client/ ./
 RUN npm run build
 
 FROM python:3.11-slim
+RUN useradd -m -u 1000 user
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1
-ENV PORT=8008
+ENV PORT=7860
 
 # Install dependencies
 COPY server/requirements.txt ./server/
@@ -19,7 +20,11 @@ RUN pip install --no-cache-dir -r ./server/requirements.txt
 COPY server/ ./server/
 COPY --from=frontend-builder /app/client/dist ./client/dist
 
-WORKDIR /app/server
-EXPOSE 8008
+# Ensure permissions for sqlite database creation
+RUN chown -R user:user /app
 
-CMD ["sh", "-c", "python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8008}"]
+USER user
+WORKDIR /app/server
+EXPOSE 7860
+
+CMD ["sh", "-c", "python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-7860}"]
