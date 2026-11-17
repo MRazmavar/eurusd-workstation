@@ -224,34 +224,43 @@ export class DrawingEngine {
         }
       }
 
-      // 9. Check Fibonacci Tools
+      // 9. Check Fibonacci Tools (hit-test baseline trendline and individual level lines, NOT empty background)
       else if (['fib_retracement', 'fib_extension', 'fib_channel', 'fib_fan', 'fib_timezones'].includes(d.type) && screenPoints.length >= 2) {
-        let minY = Math.min(screenPoints[0].y, screenPoints[1].y);
-        let maxY = Math.max(screenPoints[0].y, screenPoints[1].y);
+        // A. Check baseline trendline
+        if (this.distToSegment(mouse, screenPoints[0], screenPoints[1]) <= hitTolerance + 2) {
+          return { drawing: d };
+        }
+
         let minX = Math.min(screenPoints[0].x, screenPoints[1].x);
-        let maxX = Math.max(screenPoints[0].x, screenPoints[1].x) + 250;
+        let maxX = Math.max(screenPoints[0].x, screenPoints[1].x) + 160;
 
         if (d.properties?.extendLinesLeft) minX = 0;
         if (d.properties?.extendLinesRight) maxX = 99999;
 
-        if (d.properties?.fibLevels && d.properties.fibLevels.length > 0) {
-          const visibleLvls = d.properties.fibLevels.filter(l => l.visible !== false);
-          const p1 = d.points[0].price;
-          const p2 = d.points[1].price;
-          const prices = visibleLvls.map(l => p1 + l.level * (p2 - p1));
-          prices.push(p1, p2);
-          const ys = prices.map(p => transformer.priceToY(p)).filter((y): y is number => y !== null && !isNaN(y));
-          if (ys.length > 0) {
-            minY = Math.min(...ys);
-            maxY = Math.max(...ys);
-          }
-        }
+        // B. Check each level line
+        const levels = (d.properties?.fibLevels && d.properties.fibLevels.length > 0)
+          ? d.properties.fibLevels
+          : [
+              { level: 0.0, color: '#787b86' },
+              { level: 0.236, color: '#f23645' },
+              { level: 0.382, color: '#ff9800' },
+              { level: 0.5, color: '#089981' },
+              { level: 0.618, color: '#089981' },
+              { level: 0.786, color: '#2962ff' },
+              { level: 1.0, color: '#787b86' },
+            ];
+        const visibleLvls = levels.filter(l => (l as any).visible !== false);
+        const p1 = d.points[0].price;
+        const p2 = d.points[1].price;
 
-        if (
-          mouse.y >= minY - hitTolerance && mouse.y <= maxY + hitTolerance &&
-          mouse.x >= minX - 50 && mouse.x <= maxX + 50
-        ) {
-          return { drawing: d };
+        if (mouse.x >= minX - hitTolerance - 10 && mouse.x <= maxX + hitTolerance + 10) {
+          for (const lvl of visibleLvls) {
+            const levelPrice = p1 + lvl.level * (p2 - p1);
+            const y = transformer.priceToY(levelPrice);
+            if (y !== null && !isNaN(y) && Math.abs(mouse.y - y) <= hitTolerance + 3) {
+              return { drawing: d };
+            }
+          }
         }
       }
 

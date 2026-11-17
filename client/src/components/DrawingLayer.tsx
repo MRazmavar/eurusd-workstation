@@ -271,6 +271,107 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     transformerRef.current = transformer;
   }, [transformer]);
 
+  // Parent chart container listener: double-click or right-click on locked drawings triggers selection and options toolbar
+  useEffect(() => {
+    const parent = svgRef.current?.parentElement;
+    if (!parent) return;
+
+    const handleParentDblClick = (e: MouseEvent) => {
+      if (isDrawingToolActive) return;
+      const rect = svgRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const hit = DrawingEngine.hitTest({ x, y }, drawingsRef.current, transformerRef.current, 16, selectedId);
+      if (hit) {
+        e.preventDefault();
+        e.stopPropagation();
+        onSelect(hit.drawing.id);
+        setActiveToolbarDrawingId(hit.drawing.id);
+      }
+    };
+
+    const handleParentContextMenu = (e: MouseEvent) => {
+      if (isDrawingToolActive) return;
+      const rect = svgRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // Check if clicked in bottom time axis zone
+      if (y >= rect.height - 35 && x < rect.width - 55) {
+        return; // Handled by time axis listener
+      }
+
+      const hit = DrawingEngine.hitTest({ x, y }, drawingsRef.current, transformerRef.current, 16, selectedId);
+      if (hit) {
+        e.preventDefault();
+        e.stopPropagation();
+        onSelect(hit.drawing.id);
+        setActiveToolbarDrawingId(hit.drawing.id);
+      }
+    };
+
+    let touchTimer: ReturnType<typeof setTimeout> | null = null;
+    let touchStartPos: { x: number; y: number } | null = null;
+
+    const handleParentTouchStart = (e: TouchEvent) => {
+      if (isDrawingToolActive || e.touches.length !== 1) return;
+      const touch = e.touches[0];
+      const rect = svgRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const x = touch.clientX - rect.left;
+      const y = touch.clientY - rect.top;
+      touchStartPos = { x, y };
+
+      const hit = DrawingEngine.hitTest({ x, y }, drawingsRef.current, transformerRef.current, 22, selectedId);
+      if (hit) {
+        if (touchTimer) clearTimeout(touchTimer);
+        touchTimer = setTimeout(() => {
+          onSelect(hit.drawing.id);
+          setActiveToolbarDrawingId(hit.drawing.id);
+        }, 500);
+      }
+    };
+
+    const handleParentTouchMove = (e: TouchEvent) => {
+      if (!touchStartPos || !touchTimer || e.touches.length !== 1) return;
+      const touch = e.touches[0];
+      const rect = svgRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const x = touch.clientX - rect.left;
+      const y = touch.clientY - rect.top;
+      if (Math.hypot(x - touchStartPos.x, y - touchStartPos.y) > 10) {
+        clearTimeout(touchTimer);
+        touchTimer = null;
+      }
+    };
+
+    const handleParentTouchEnd = () => {
+      if (touchTimer) {
+        clearTimeout(touchTimer);
+        touchTimer = null;
+      }
+      touchStartPos = null;
+    };
+
+    parent.addEventListener('dblclick', handleParentDblClick, { capture: true });
+    parent.addEventListener('contextmenu', handleParentContextMenu);
+    parent.addEventListener('touchstart', handleParentTouchStart, { passive: true });
+    parent.addEventListener('touchmove', handleParentTouchMove, { passive: true });
+    parent.addEventListener('touchend', handleParentTouchEnd, { passive: true });
+    parent.addEventListener('touchcancel', handleParentTouchEnd, { passive: true });
+
+    return () => {
+      parent.removeEventListener('dblclick', handleParentDblClick, { capture: true });
+      parent.removeEventListener('contextmenu', handleParentContextMenu);
+      parent.removeEventListener('touchstart', handleParentTouchStart);
+      parent.removeEventListener('touchmove', handleParentTouchMove);
+      parent.removeEventListener('touchend', handleParentTouchEnd);
+      parent.removeEventListener('touchcancel', handleParentTouchEnd);
+    };
+  }, [isDrawingToolActive, selectedId, onSelect]);
+
   // Global escape key listener to cancel in-progress drawing or replay cut selection
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -2301,7 +2402,8 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
         key={d.id}
         data-testid={isTemp ? 'drawing-temp' : `drawing-object-${d.id}`}
         opacity={isTemp ? 0.75 : 1}
-        className={!isDrawingToolActive && !isTemp ? 'pointer-events-auto cursor-pointer' : undefined}
+        className={!isDrawingToolActive && !isTemp && !d.locked ? 'pointer-events-auto cursor-pointer' : 'pointer-events-none'}
+        style={{ touchAction: !d.locked ? 'none' : 'auto' }}
         onClick={(e) => {
           if (!isDrawingToolActive && !isTemp) {
             e.stopPropagation();
@@ -2381,7 +2483,6 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             touchHoldTimerRef.current = null;
           }
         }}
-        style={{ touchAction: 'none' }}
         onPointerDown={(e) => {
           if (!isDrawingToolActive && !isTemp && !d.locked) {
             if (e.pointerType === 'mouse' && e.button !== 0) return;
@@ -2483,7 +2584,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
               stroke="transparent"
               strokeWidth={Math.max(16, strokeWidth + 12)}
               strokeLinecap="round"
-              className={`cursor-move pointer-events-auto`}
+              className={!d.locked ? "cursor-move pointer-events-auto" : "pointer-events-none"}
             />
             <line
               x1={screenPts[0].x}
@@ -2515,7 +2616,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 stroke="transparent"
                 strokeWidth={Math.max(16, strokeWidth + 12)}
                 strokeLinecap="round"
-                className={`cursor-move pointer-events-auto`}
+                className={!d.locked ? "cursor-move pointer-events-auto" : "pointer-events-none"}
               />
               <line
                 x1={screenPts[0].x}
@@ -2550,7 +2651,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 stroke="transparent"
                 strokeWidth={Math.max(16, strokeWidth + 12)}
                 strokeLinecap="round"
-                className={`cursor-move pointer-events-auto`}
+                className={!d.locked ? "cursor-move pointer-events-auto" : "pointer-events-none"}
               />
               <line
                 x1={startX}
@@ -2578,7 +2679,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 stroke="transparent"
                 strokeWidth={Math.max(16, strokeWidth + 12)}
                 strokeLinecap="round"
-                className={`cursor-move pointer-events-auto`}
+                className={!d.locked ? "cursor-move pointer-events-auto" : "pointer-events-none"}
               />
               <line
                 x1={screenPts[0].x}
@@ -2613,7 +2714,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
               y2={screenPts[0].y}
               stroke="transparent"
               strokeWidth={Math.max(16, strokeWidth + 12)}
-              className={`cursor-move pointer-events-auto`}
+              className={!d.locked ? "cursor-move pointer-events-auto" : "pointer-events-none"}
             />
             <line
               x1={0}
@@ -2657,7 +2758,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
               y2={screenPts[0].y}
               stroke="transparent"
               strokeWidth={Math.max(16, strokeWidth + 12)}
-              className={`cursor-move pointer-events-auto`}
+              className={!d.locked ? "cursor-move pointer-events-auto" : "pointer-events-none"}
             />
             <line
               x1={screenPts[0].x}
@@ -2682,7 +2783,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
               y2={3000}
               stroke="transparent"
               strokeWidth={Math.max(16, strokeWidth + 12)}
-              className={`cursor-move pointer-events-auto`}
+              className={!d.locked ? "cursor-move pointer-events-auto" : "pointer-events-none"}
             />
             <line
               x1={screenPts[0].x}
@@ -2714,6 +2815,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 points={`${p1.x},${p1.y} ${p2.x},${p2.y} ${p3.x},${p3.y} ${p4.x},${p4.y}`}
                 fill={color}
                 fillOpacity={d.properties.fillOpacity || 0.12}
+                className="pointer-events-none"
               />
               <line
                 x1={p1.x}
@@ -2722,6 +2824,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 y2={p2.y}
                 stroke={color}
                 strokeWidth={strokeWidth}
+                className={!d.locked ? "pointer-events-auto" : "pointer-events-none"}
               />
               <line
                 x1={p4.x}
@@ -2730,6 +2833,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 y2={p3.y}
                 stroke={color}
                 strokeWidth={strokeWidth}
+                className={!d.locked ? "pointer-events-auto" : "pointer-events-none"}
               />
               <line
                 x1={mid1.x}
@@ -2739,6 +2843,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 stroke={color}
                 strokeWidth={1}
                 strokeDasharray="4,4"
+                className={!d.locked ? "pointer-events-auto" : "pointer-events-none"}
               />
             </g>
           );
@@ -2779,9 +2884,10 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 strokeWidth={1}
                 strokeDasharray="3,3"
                 opacity={0.65}
+                className={!d.locked ? "pointer-events-auto" : "pointer-events-none"}
               />
 
-              {/* Background Bands */}
+              {/* Background Bands - always pointer-events-none so chart panning is never blocked */}
               {fillBg && sortedLevels.map((lvlA, idx) => {
                 if (idx === sortedLevels.length - 1) return null;
                 const lvlB = sortedLevels[idx + 1];
@@ -2803,6 +2909,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                     height={height}
                     fill={lvlA.color}
                     opacity={0.08}
+                    className="pointer-events-none"
                   />
                 );
               })}
@@ -2836,6 +2943,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                       strokeWidth={d.properties?.strokeWidth || 1}
                       strokeDasharray={isMajor ? undefined : '3,3'}
                       opacity={0.9}
+                      className={!d.locked ? "pointer-events-auto" : "pointer-events-none"}
                     />
                     {labelText && (
                       <text
@@ -2868,6 +2976,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             fillOpacity={d.properties.fillOpacity || 0.15}
             stroke={color}
             strokeWidth={strokeWidth}
+            className={!d.locked ? "pointer-events-auto" : "pointer-events-none"}
           />
         )}
 
@@ -2882,6 +2991,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
             fillOpacity={0.15}
             stroke={color}
             strokeWidth={strokeWidth}
+            className={!d.locked ? "pointer-events-auto" : "pointer-events-none"}
           />
         )}
 
@@ -2895,6 +3005,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
               fillOpacity={d.properties.fillOpacity || 0.15}
               stroke={color}
               strokeWidth={strokeWidth}
+              className={!d.locked ? "pointer-events-auto" : "pointer-events-none"}
             />
           );
         })()}
@@ -2910,7 +3021,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
               stroke="transparent"
               strokeWidth={Math.max(16, strokeWidth + 12)}
               strokeLinecap="round"
-              className={`cursor-move pointer-events-auto`}
+              className={!d.locked ? "cursor-move pointer-events-auto" : "pointer-events-none"}
             />
             <line
               x1={screenPts[0].x}
@@ -2934,7 +3045,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
               strokeWidth={Math.max(16, strokeWidth + 12)}
               strokeLinecap="round"
               strokeLinejoin="round"
-              className={`cursor-move pointer-events-auto`}
+              className={!d.locked ? "cursor-move pointer-events-auto" : "pointer-events-none"}
             />
             <polyline
               points={screenPts.map(pt => `${pt.x},${pt.y}`).join(' ')}
@@ -3638,8 +3749,8 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                   cy={pt.y}
                   r={isMobile ? 32 : 16}
                   fill="transparent"
-                  style={{ touchAction: 'none' }}
-                  className={`pointer-events-auto ${pt.cursor}`}
+                  style={{ touchAction: !d.locked ? 'none' : 'auto' }}
+                  className={!d.locked ? `pointer-events-auto ${pt.cursor}` : 'pointer-events-none'}
                   onPointerDown={(e) => {
                     if (e.pointerType === 'mouse' && e.button !== 0) return;
                     e.stopPropagation();
@@ -3755,7 +3866,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                     }
                   }}
                 />
-                {/* TradingView Signature 10x10 Rounded Square with #2962ff border */}
+                {/* TradingView Signature 10x10 Rounded Square with #2962ff or #f59e0b (locked) border */}
                 {pt.isVisible && (
                   <rect
                     x={pt.x - 5}
@@ -3764,7 +3875,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                     height={10}
                     rx={2.5}
                     fill="#131722"
-                    stroke="#2962ff"
+                    stroke={d.locked ? "#f59e0b" : "#2962ff"}
                     strokeWidth={2}
                     className="pointer-events-none shadow"
                   />
@@ -3772,13 +3883,41 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
               </g>
             ));
           })()}
+
+          {/* Visual Locked Badge Indicator for selected locked drawing */}
+          {isSelected && d.locked && screenPts.length > 0 && (
+            <g
+              transform={`translate(${screenPts[0].x - 10}, ${screenPts[0].y - 24})`}
+              className="pointer-events-none select-none"
+              data-testid={`locked-indicator-${d.id}`}
+            >
+              <rect
+                width={20}
+                height={18}
+                rx={4}
+                fill="#1e222d"
+                stroke="#f59e0b"
+                strokeWidth={1}
+                className="shadow-md"
+              />
+              <text
+                x={10}
+                y={13}
+                fill="#f59e0b"
+                fontSize={11}
+                textAnchor="middle"
+              >
+                🔒
+              </text>
+            </g>
+          )}
       </g>
     );
   };
 
   return (
     <div
-      className={`absolute inset-0 z-[15] overflow-hidden pointer-events-none`}
+      className={`absolute inset-0 z-[25] overflow-hidden pointer-events-none`}
     >
       <svg
         ref={svgRef}
