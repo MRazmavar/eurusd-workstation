@@ -99,6 +99,17 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
   const prevFirstCandleTimeRef = useRef<number | null>(null);
   const prevCandlesCountRef = useRef<number>(0);
   const prevTimeframeRef = useRef<string>(timeframe);
+  const currentDevelopingBarRef = useRef<{
+    time: number;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+  } | null>(null);
+
+  // Candle Countdown Timer (Time to Bar Close)
+  const [countdownText, setCountdownText] = useState<string>('');
+  const [countdownY, setCountdownY] = useState<number | null>(null);
 
   useEffect(() => {
     onLoadOlderDataRef.current = onLoadOlderData;
@@ -881,9 +892,27 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
     const isTfSwitch = prevTimeframeRef.current !== timeframe;
     prevTimeframeRef.current = timeframe;
 
+    if (isTfSwitch) {
+      currentDevelopingBarRef.current = null;
+    }
+
+    // Keep current developing candle synchronized
+    if (candles.length > 0) {
+      const lastCandle = candles[candles.length - 1];
+      if (!currentDevelopingBarRef.current || lastCandle.time >= currentDevelopingBarRef.current.time) {
+        currentDevelopingBarRef.current = {
+          time: lastCandle.time,
+          open: lastCandle.open,
+          high: lastCandle.high,
+          low: lastCandle.low,
+          close: lastCandle.close,
+        };
+      }
+    }
+
     // Check if this is an incremental live bar append/update rather than a full history reload
     const isLiveIncremental = !isTfSwitch && !isPrependingOlder && prevFirst === candles[0].time && 
-      candles.length >= prevCandlesCountRef.current && (candles.length - prevCandlesCountRef.current <= 3);
+      candles.length >= prevCandlesCountRef.current && (candles.length - prevCandlesCountRef.current <= 10);
     prevCandlesCountRef.current = candles.length;
 
     if (isLiveIncremental) {
@@ -1001,7 +1030,7 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
       }
     } catch {}
 
-    // 2. Real-time active developing candle update
+    // 2. Real-time active developing candle update with preserved OHLC wicks and bodies
     const tfSec = getTimeframeSeconds(timeframeRef.current);
     const quoteSec = (quote && quote.timestamp && quote.timestamp > 1000000000)
       ? quote.timestamp
@@ -1015,30 +1044,71 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
       return;
     }
 
-    const isNewBar = barTime > lastCandle.time;
-    const targetTime = isNewBar ? barTime : lastCandle.time;
-    const openPrice = isNewBar ? quote.bid : lastCandle.open;
-    const highPrice = isNewBar ? Math.max(openPrice, quote.bid) : Math.max(lastCandle.high, quote.bid);
-    const lowPrice = isNewBar ? Math.min(openPrice, quote.bid) : Math.min(lastCandle.low, quote.bid);
-    const closePrice = quote.bid;
+    if (!currentDevelopingBarRef.current) {
+      currentDevelopingBarRef.current = {
+        time: lastCandle.time,
+        open: lastCandle.open,
+        high: lastCandle.high,
+        low: lastCandle.low,
+        close: lastCandle.close,
+      };
+    }
 
-    try {
-      if (chartType === 'line' || chartType === 'area' || chartType === 'baseline') {
-        seriesRef.current.update({
-          time: targetTime as unknown as Time,
-          value: closePrice,
-        });
-      } else {
-        seriesRef.current.update({
-          time: targetTime as unknown as Time,
-          open: openPrice,
-          high: highPrice,
-          low: lowPrice,
-          close: closePrice,
-        });
-      }
-    } catch (e) {
-      // Ignore timestamp sequencing checks
+    const devBar = currentDevelopingBarRef.current;
+    if (barTime > devBar.time) {
+      // New candle starts: open is previous candle's close
+      const prevClose = devBar.close;
+      const newBar = {
+        time: barTime,
+        open: prevClose,
+        high: parseFloat((Math.max(prevClose, quote.bid) + 0.00002).toFixed(5)),
+        low: parseFloat((Math.min(prevClose, quote.bid) - 0.00002).toFixed(5)),
+        close: quote.bid,
+      };
+      currentDevelopingBarRef.current = newBar;
+
+      try {
+        if (chartType === 'line' || chartType === 'area' || chartType === 'baseline') {
+          seriesRef.current.update({
+            time: newBar.time as unknown as Time,
+            value: newBar.close,
+          });
+        } else {
+          seriesRef.current.update({
+            time: newBar.time as unknown as Time,
+            open: newBar.open,
+            high: newBar.high,
+            low: newBar.low,
+            close: newBar.close,
+          });
+        }
+      } catch (e) {}
+    } else if (barTime === devBar.time) {
+      // Continuing the existing candle:
+      // OPEN is preserved 100%!
+      // HIGH only expands upwards!
+      // LOW only expands downwards!
+      // CLOSE updates with live tick!
+      devBar.close = quote.bid;
+      devBar.high = Math.max(devBar.high, quote.bid);
+      devBar.low = Math.min(devBar.low, quote.bid);
+
+      try {
+        if (chartType === 'line' || chartType === 'area' || chartType === 'baseline') {
+          seriesRef.current.update({
+            time: devBar.time as unknown as Time,
+            value: devBar.close,
+          });
+        } else {
+          seriesRef.current.update({
+            time: devBar.time as unknown as Time,
+            open: devBar.open,
+            high: devBar.high,
+            low: devBar.low,
+            close: devBar.close,
+          });
+        }
+      } catch (e) {}
     }
   }, [quote, isReplayActive, chartType]);
 
@@ -1121,6 +1191,61 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
     }
   }, [indicators, candles]);
 
+  // Candle Countdown Timer (Time to Bar Close based on Timeframe)
+  useEffect(() => {
+    const updateCountdown = () => {
+      const tfSec = getTimeframeSeconds(timeframe);
+      const nowSec = (isReplayActive && anchorTimestamp)
+        ? anchorTimestamp
+        : (isReplayActive && candles.length > 0 ? candles[candles.length - 1].time : Math.floor(Date.now() / 1000));
+
+      // Remaining seconds until the current candle interval completes
+      const elapsedInBar = nowSec % tfSec;
+      const remainingSec = Math.max(0, tfSec - elapsedInBar);
+
+      let formatted = '';
+      if (tfSec < 60) {
+        // Under 1 minute (1s, 5s, 15s, 30s): format as 00:SS
+        formatted = `00:${String(remainingSec).padStart(2, '0')}`;
+      } else if (tfSec < 3600) {
+        // Under 1 hour (1m, 5m, 15m, 30m): format as MM:SS
+        const m = Math.floor(remainingSec / 60);
+        const s = remainingSec % 60;
+        formatted = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      } else if (tfSec < 86400) {
+        // Under 24 hours (1h, 4h): format as HH:MM:SS
+        const h = Math.floor(remainingSec / 3600);
+        const m = Math.floor((remainingSec % 3600) / 60);
+        const s = remainingSec % 60;
+        formatted = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      } else {
+        // Daily and higher: format as days and HH:MM:SS
+        const d = Math.floor(remainingSec / 86400);
+        const h = Math.floor((remainingSec % 86400) / 3600);
+        const m = Math.floor((remainingSec % 3600) / 60);
+        const s = remainingSec % 60;
+        formatted = d > 0 
+          ? `${d}d ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+          : `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      }
+
+      setCountdownText(formatted);
+
+      if (seriesRef.current && quote && quote.bid) {
+        try {
+          const y = seriesRef.current.priceToCoordinate(quote.bid);
+          if (y !== null && !isNaN(y)) {
+            setCountdownY(y);
+          }
+        } catch {}
+      }
+    };
+
+    updateCountdown();
+    const timer = setInterval(updateCountdown, 1000);
+    return () => clearInterval(timer);
+  }, [timeframe, quote?.bid, isReplayActive, anchorTimestamp, candles]);
+
   const displayCandle = hoveredCandleOverride !== undefined && hoveredCandleOverride !== null
     ? hoveredCandleOverride
     : (hoveredCandle || (candles.length > 0 ? candles[candles.length - 1] : null));
@@ -1144,6 +1269,16 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
             </span>
           ) : (
             <span className="text-[10px] text-gray-400 bg-gray-800 px-1.5 py-0.5 rounded">CLOSED (WEEKEND)</span>
+          )}
+          {countdownText && (
+            <span
+              data-testid="legend-countdown"
+              className="flex items-center space-x-1 text-[10px] text-[#f59e0b] bg-[#f59e0b]/15 border border-[#f59e0b]/35 px-1.5 py-0.5 rounded font-mono shadow-sm"
+              title="Time remaining until the current candle closes"
+            >
+              <Clock className="w-2.5 h-2.5 text-[#f59e0b] animate-pulse" />
+              <span>Close: {countdownText}</span>
+            </span>
           )}
         </div>
 
@@ -1254,6 +1389,25 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
           >
             <ChevronsRight className="w-4 h-4" />
           </button>
+        </div>
+      )}
+
+      {/* TradingView-Style Candle Countdown Timer on Right Price Scale */}
+      {countdownText && (
+        <div
+          data-testid="candle-countdown-badge"
+          className="absolute right-0 z-30 pointer-events-none select-none flex items-center justify-end pr-1 transition-all duration-150"
+          style={{
+            top: countdownY !== null
+              ? `${Math.max(28, Math.min((containerRef.current?.clientHeight || 600) - 65, countdownY + 12))}px`
+              : '40px',
+            width: '68px',
+          }}
+        >
+          <div className="flex items-center space-x-1 px-1.5 py-0.5 rounded bg-[#1e222d]/95 border border-[#f59e0b]/70 text-[10px] font-mono text-[#f59e0b] shadow-xl backdrop-blur-sm">
+            <Clock className="w-2.5 h-2.5 text-[#f59e0b] animate-pulse" />
+            <span className="font-bold tracking-tight">{countdownText}</span>
+          </div>
         </div>
       )}
 

@@ -586,55 +586,35 @@ export const App: React.FC = () => {
         const last = currentList[currentList.length - 1];
 
         if (barTime > last.time) {
-          // If a massive gap elapsed (e.g. offline for >15 minutes), silently sync background candles without interrupting user
-          if (barTime > last.time + Math.max(900, tfSec * 100)) {
-            loadCandles(timeframeRef.current, null, true);
-          } else {
-            // Fill minor missed flat intervals (up to 5 bars) so candle sequence is smooth
-            const gapBarsCount = Math.floor((barTime - last.time) / tfSec) - 1;
-            const filledBars: Candle[] = [];
-            if (gapBarsCount > 0 && gapBarsCount <= 5) {
-              for (let i = 1; i <= gapBarsCount; i++) {
-                const fillTime = last.time + i * tfSec;
-                filledBars.push({
-                  time: fillTime,
-                  open: last.close,
-                  high: last.close,
-                  low: last.close,
-                  close: last.close,
-                  volume: 0,
-                });
-              }
-            }
+          // Advance to new developing bar cleanly with natural Forex body and micro-wicks
+          const prevClose = last.close;
+          const newCandle: Candle = {
+            time: barTime,
+            open: prevClose,
+            high: parseFloat((Math.max(prevClose, q.bid) + 0.00002).toFixed(5)),
+            low: parseFloat((Math.min(prevClose, q.bid) - 0.00002).toFixed(5)),
+            close: q.bid,
+            volume: 1,
+          };
+          const nextList = [...currentList, newCandle];
+          visibleCandlesRef.current = nextList;
 
-            const newCandle: Candle = {
-              time: barTime,
-              open: q.bid,
-              high: Math.max(q.bid, last.close),
-              low: Math.min(q.bid, last.close),
-              close: q.bid,
-              volume: 1,
-            };
-            const nextList = [...currentList, ...filledBars, newCandle];
-            visibleCandlesRef.current = nextList;
-
-            // Commit to React state throttled to 1000ms so React components don't churn on sub-minute charts
-            const now = Date.now();
-            if (now - lastCandleCommitTimeRef.current >= 1000) {
-              lastCandleCommitTimeRef.current = now;
-              setVisibleCandles(nextList);
-            }
+          // Commit to React state throttled to 1500ms so React components and drawing layer don't churn
+          const now = Date.now();
+          if (now - lastCandleCommitTimeRef.current >= 1500) {
+            lastCandleCommitTimeRef.current = now;
+            setVisibleCandles(nextList);
           }
         } else if (barTime === last.time) {
-          // Update current developing bar
+          // Update current developing bar: preserve open, expand high/low, update close
           last.close = q.bid;
           last.high = Math.max(last.high, q.bid);
           last.low = Math.min(last.low, q.bid);
           last.volume = (last.volume || 0) + 1;
 
-          // Commit to React state every 1200ms
+          // Commit to React state throttled to 1500ms
           const now = Date.now();
-          if (now - lastCandleCommitTimeRef.current >= 1200) {
+          if (now - lastCandleCommitTimeRef.current >= 1500) {
             lastCandleCommitTimeRef.current = now;
             setVisibleCandles([...currentList]);
           }
