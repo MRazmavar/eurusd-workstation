@@ -299,7 +299,7 @@ def save_candles_to_cache(symbol: str, timeframe: str, candles: List[Candle]):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.executemany("""
-    INSERT OR IGNORE INTO candle_cache (symbol, timeframe, timestamp, open, high, low, close, volume)
+    INSERT OR REPLACE INTO candle_cache (symbol, timeframe, timestamp, open, high, low, close, volume)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, [
         (symbol, timeframe, c.time, c.open, c.high, c.low, c.close, c.volume or 0.0)

@@ -421,7 +421,12 @@ export const formatTickMarkInTimezone = (
     if (formatId.startsWith('time_24h')) {
       if (tickMarkType === 0) return new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric' }).format(d);
       if (tickMarkType === 1) return new Intl.DateTimeFormat('en-US', { timeZone, month: 'short' }).format(d);
-      if (tickMarkType === 2) return new Intl.DateTimeFormat('en-US', { timeZone, day: 'numeric', month: 'short' }).format(d);
+      if (tickMarkType === 2) {
+        // Show Day & Time so time is never hidden on day boundary
+        const day = new Intl.DateTimeFormat('en-US', { timeZone, day: 'numeric', month: 'short' }).format(d);
+        const timeStr = new Intl.DateTimeFormat('en-US', { timeZone, hour: '2-digit', minute: '2-digit', second: hasSec ? '2-digit' : undefined, hour12: false }).format(d);
+        return `${day} ${timeStr}`;
+      }
       return new Intl.DateTimeFormat('en-US', {
         timeZone,
         hour: '2-digit',
@@ -439,7 +444,22 @@ export const formatTickMarkInTimezone = (
       return new Intl.DateTimeFormat('en-US', { timeZone, month: 'short' }).format(d);
     }
     if (tickMarkType === 2) {
-      return new Intl.DateTimeFormat('en-US', { timeZone, day: 'numeric', month: 'short' }).format(d);
+      // Day boundary on intraday trading chart: show Day, Month and Time so user can always see candle time
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: hasSec ? '2-digit' : undefined,
+        hour12: false,
+      }).formatToParts(d);
+      const day = parts.find(p => p.type === 'day')?.value;
+      const m = parts.find(p => p.type === 'month')?.value;
+      const hr = parts.find(p => p.type === 'hour')?.value;
+      const min = parts.find(p => p.type === 'minute')?.value;
+      const sec = parts.find(p => p.type === 'second')?.value;
+      return hasSec && sec ? `${day} ${m} ${hr}:${min}:${sec}` : `${day} ${m} ${hr}:${min}`;
     }
     if (tickMarkType === 4 || hasSec) {
       return new Intl.DateTimeFormat('en-US', {

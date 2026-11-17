@@ -958,10 +958,17 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
 
     // 2. Real-time active developing candle update
     const tfSec = getTimeframeSeconds(timeframeRef.current);
-    const nowSec = Math.floor(Date.now() / 1000);
-    const barTime = Math.floor(nowSec / tfSec) * tfSec;
+    const quoteSec = (quote && quote.timestamp && quote.timestamp > 1000000000)
+      ? quote.timestamp
+      : Math.floor(Date.now() / 1000);
+    const barTime = Math.floor(quoteSec / tfSec) * tfSec;
     const lastCandle = candles[candles.length - 1];
     if (!lastCandle) return;
+
+    // Do NOT push a disconnected candle across a multi-bar gap before history is synced
+    if (barTime > lastCandle.time + tfSec * 2) {
+      return;
+    }
 
     const isNewBar = barTime > lastCandle.time;
     const targetTime = isNewBar ? barTime : lastCandle.time;
@@ -1147,6 +1154,15 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
           if (e.clientY >= rect.bottom - 26 && e.clientX < rect.right - 55) {
             e.preventDefault();
             setIsTimeFormatDropdownOpen(true);
+            setIsTzDropdownOpen(false);
+          }
+        }}
+        onDoubleClick={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          // If double-clicked on the bottom time axis (bottom 26px before the price scale)
+          if (e.clientY >= rect.bottom - 26 && e.clientX < rect.right - 55) {
+            e.preventDefault();
+            setIsTimeFormatDropdownOpen(prev => !prev);
             setIsTzDropdownOpen(false);
           }
         }}

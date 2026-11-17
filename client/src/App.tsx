@@ -586,18 +586,23 @@ export const App: React.FC = () => {
         const last = currentList[currentList.length - 1];
 
         if (barTime > last.time) {
-          // New candle period started: open new bar immediately
-          const newCandle: Candle = {
-            time: barTime,
-            open: q.bid,
-            high: q.bid,
-            low: q.bid,
-            close: q.bid,
-            volume: 1,
-          };
-          const nextList = [...currentList, newCandle];
-          visibleCandlesRef.current = nextList;
-          setVisibleCandles(nextList);
+          // If more than 2 bars elapsed since last bar, reload fresh candles from Dukascopy to prevent gaps
+          if (barTime > last.time + tfSec * 2) {
+            loadCandles(timeframeRef.current);
+          } else {
+            // Consecutive next bar: open new bar immediately
+            const newCandle: Candle = {
+              time: barTime,
+              open: q.bid,
+              high: q.bid,
+              low: q.bid,
+              close: q.bid,
+              volume: 1,
+            };
+            const nextList = [...currentList, newCandle];
+            visibleCandlesRef.current = nextList;
+            setVisibleCandles(nextList);
+          }
         } else if (barTime === last.time) {
           // Update current developing bar
           last.close = q.bid;

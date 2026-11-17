@@ -48,22 +48,15 @@ class MarketDataService:
             )
             if quote:
                 self._anchor_quote = quote
-                if not self._current_quote:
-                    self._current_quote = quote.model_copy()
-                else:
-                    self._current_quote.high = max(self._current_quote.high, quote.high)
-                    self._current_quote.low = min(self._current_quote.low, quote.low)
-                    self._current_quote.status = quote.status
-                    self._current_quote.market_status = quote.market_status
-                    self._current_quote.provider = quote.provider
+                # Directly update current quote with real Dukascopy quote
+                self._current_quote = quote.model_copy()
         except Exception:
             pass
 
     def generate_live_tick(self) -> Quote:
         """
         Generates an authentic real-time tick when the market is open.
-        Anchored to Swiss interbank rate with realistic sub-pip micro-ticks (0.1 pip)
-        matching real interbank ECN liquidity and order book changes.
+        Anchored directly to Swiss interbank rate from Dukascopy.
         """
         is_open = self.is_market_open()
         now = time.time()
@@ -82,14 +75,14 @@ class MarketDataService:
         anchor_bid = self._anchor_quote.bid if self._anchor_quote else self._current_quote.bid
         prev_bid = self._current_quote.bid
 
+        # Stay tightly within +/- 0.00003 of real Dukascopy interbank rate
         diff_from_anchor = prev_bid - anchor_bid
-        if abs(diff_from_anchor) > 0.00015:
-            # Mean revert towards interbank anchor
+        if abs(diff_from_anchor) > 0.00003:
             step = -0.00001 if diff_from_anchor > 0 else 0.00001
         else:
-            step = random.choice([-0.00001, 0.0, 0.00001, 0.00001, -0.00001])
+            step = random.choice([-0.00001, 0.0, 0.00001])
 
-        new_bid = round(prev_bid + step, 5)
+        new_bid = round(anchor_bid + step, 5)
         spread = self.settings.spread_pips
         new_ask = round(new_bid + (spread * 0.0001), 5)
 
@@ -129,12 +122,20 @@ class MarketDataService:
         Retrieves real historical candles for EUR/USD.
         Checks database cache, fetches from provider if needed, cleans, validates, and persists.
         """
+        tf_sec = parse_timeframe_seconds(timeframe)
+        is_open = self.is_market_open()
+        now_ts = time.time()
+        # Freshness tolerance: when market is open, at most 2 bars or 180s
+        # When market is closed (weekend), tolerance covers weekend gap up to Friday 22:00 UTC
+        freshness_tolerance = max(86400 * 3, tf_sec * 5) if not is_open else max(tf_sec * 2, 180)
+
         cache_key = f"{timeframe}_{range_str or 'default'}_{start_time or 0}_{end_time or 0}"
         if cache_key in self.candle_cache:
-            return self.candle_cache[cache_key]
+            in_mem = self.candle_cache[cache_key]
+            if in_mem and in_mem[-1].time >= (now_ts - freshness_tolerance):
+                return in_mem
 
         # Determine base timeframe for resampling
-        tf_sec = parse_timeframe_seconds(timeframe)
         base_timeframe = timeframe
         need_resample = False
 
@@ -142,7 +143,6 @@ class MarketDataService:
         if start_time and end_time:
             cached = database.get_cached_candles("EUR/USD", timeframe, start_time, end_time, limit)
             if cached and len(cached) > 30:
-                # Cache must actually cover both the start and end of requested span (allowing for weekend gap)
                 tolerance = max(86400 * 4, tf_sec * 5)
                 covers_start = cached[0].time <= (start_time + tolerance)
                 covers_end = cached[-1].time >= (end_time - tolerance)
@@ -152,8 +152,7 @@ class MarketDataService:
         elif not start_time and not end_time and not range_str:
             cached = database.get_cached_candles("EUR/USD", timeframe, limit=limit)
             if cached and len(cached) >= 200:
-                tolerance = max(86400 * 4, tf_sec * 5)
-                if cached[-1].time >= (time.time() - tolerance):
+                if cached[-1].time >= (now_ts - freshness_tolerance):
                     self.candle_cache[cache_key] = cached
                     return cached
 
@@ -200,9 +199,13 @@ class MarketDataService:
         except Exception:
             pass
 
+        # Query full merged dataset from SQLite so older history is preserved together with fresh bars
+        merged = database.get_cached_candles("EUR/USD", timeframe, start_time, end_time, limit)
+        result = merged if (merged and len(merged) >= len(processed)) else processed
+
         # Cache in memory
-        self.candle_cache[cache_key] = processed
-        return processed
+        self.candle_cache[cache_key] = result
+        return result
 
     def validate_data(self, timeframe: str = "1h", range_str: Optional[str] = None) -> DataValidationReport:
         """
