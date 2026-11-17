@@ -23,11 +23,20 @@ export class MarketDataClient {
   private directTickTimer: any = null;
   private anchorRateTimer: any = null;
 
+  private get isServerlessHost(): boolean {
+    if (typeof window === 'undefined') return false;
+    return window.location.hostname.includes('vercel.app');
+  }
+
   private get baseUrl(): string {
     if (typeof window !== 'undefined') {
-      // If hosted on GitHub Pages or Hugging Face or another static host with no local backend
       const host = window.location.hostname;
-      if (host.includes('github.io') || host.includes('hf.space') || host.includes('vercel.app')) {
+      // Vercel hosts our live Node.js Dukascopy serverless API on the same origin!
+      if (host.includes('vercel.app')) {
+        return window.location.origin;
+      }
+      // Static-only hosts with no backend runtime
+      if (host.includes('github.io') || host.includes('hf.space')) {
         return '';
       }
       // When accessed via Vite (5173), tunnel domain, or reverse proxy, route through same origin proxy
@@ -64,8 +73,8 @@ export class MarketDataClient {
     if (this.isConnecting || (this.ws && this.ws.readyState === WebSocket.OPEN)) return;
     this.isConnecting = true;
 
-    // If local backend is absent or failed twice, connect directly to public interbank tick feed
-    if (this.failedLocalWsAttempts >= 2 || !this.baseUrl) {
+    // If running on serverless host (Vercel) or static host (HF/GH Pages) or local WS failed twice, use HTTP live polling
+    if (this.isServerlessHost || this.failedLocalWsAttempts >= 2 || !this.baseUrl) {
       this.connectDirectWebSocket();
       return;
     }
@@ -186,6 +195,22 @@ export class MarketDataClient {
 
     const pollLivePrice = async () => {
       const t0 = performance.now();
+      // 1. If our live Dukascopy serverless/local backend is available, poll exact Dukascopy live quote directly
+      if (this.baseUrl) {
+        try {
+          const resp = await fetch(`${this.baseUrl}/api/market/quote`);
+          if (resp.ok) {
+            const q = await resp.json();
+            if (q && q.bid && q.bid > 0.5) {
+              this.lastQuote = q;
+              this.quoteCallbacks.forEach(cb => cb(q));
+              return;
+            }
+          }
+        } catch {}
+      }
+
+      // 2. Fallback for static-only hosting (no backend runtime): TwelveData live interbank price
       try {
         const resp = await fetch('https://api.twelvedata.com/price?symbol=EUR/USD&apikey=demo');
         if (resp.ok) {
@@ -201,7 +226,7 @@ export class MarketDataClient {
         }
       } catch {}
 
-      // Secondary live interbank rate fallback if TwelveData temporarily fails
+      // 3. Secondary live interbank rate fallback
       try {
         const resp = await fetch('https://api.fxratesapi.com/latest?base=EUR');
         if (resp.ok) {
@@ -217,13 +242,14 @@ export class MarketDataClient {
       } catch {}
     };
 
-    refreshMetaQuote();
+    if (!this.baseUrl) {
+      refreshMetaQuote();
+      this.anchorRateTimer = setInterval(refreshMetaQuote, 60000);
+    }
     pollLivePrice();
 
     // Poll true live EUR/USD interbank price every 1.5s
     this.directTickTimer = setInterval(pollLivePrice, 1500);
-    // Refresh daily OHLC & market status every 60s
-    this.anchorRateTimer = setInterval(refreshMetaQuote, 60000);
   }
 
   private scheduleReconnect() {
