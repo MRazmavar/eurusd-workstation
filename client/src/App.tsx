@@ -534,8 +534,8 @@ export const App: React.FC = () => {
   }, [timeframe, masterCandles]);
 
   // Load Historical Candles with anchor window support
-  const loadCandles = useCallback(async (tf: Timeframe, anchorTime?: number | null) => {
-    setIsLoadingCandles(true);
+  const loadCandles = useCallback(async (tf: Timeframe, anchorTime?: number | null, isSilent: boolean = false) => {
+    if (!isSilent) setIsLoadingCandles(true);
     try {
       let data: Candle[] = [];
       const now = Math.floor(Date.now() / 1000);
@@ -564,7 +564,7 @@ export const App: React.FC = () => {
       console.error('Failed to load candles:', e);
       return [];
     } finally {
-      setIsLoadingCandles(false);
+      if (!isSilent) setIsLoadingCandles(false);
     }
   }, []);
 
@@ -586,22 +586,44 @@ export const App: React.FC = () => {
         const last = currentList[currentList.length - 1];
 
         if (barTime > last.time) {
-          // If more than 2 bars elapsed since last bar, reload fresh candles from Dukascopy to prevent gaps
-          if (barTime > last.time + tfSec * 2) {
-            loadCandles(timeframeRef.current);
+          // If a massive gap elapsed (e.g. offline for >15 minutes), silently sync background candles without interrupting user
+          if (barTime > last.time + Math.max(900, tfSec * 100)) {
+            loadCandles(timeframeRef.current, null, true);
           } else {
-            // Consecutive next bar: open new bar immediately
+            // Fill minor missed flat intervals (up to 5 bars) so candle sequence is smooth
+            const gapBarsCount = Math.floor((barTime - last.time) / tfSec) - 1;
+            const filledBars: Candle[] = [];
+            if (gapBarsCount > 0 && gapBarsCount <= 5) {
+              for (let i = 1; i <= gapBarsCount; i++) {
+                const fillTime = last.time + i * tfSec;
+                filledBars.push({
+                  time: fillTime,
+                  open: last.close,
+                  high: last.close,
+                  low: last.close,
+                  close: last.close,
+                  volume: 0,
+                });
+              }
+            }
+
             const newCandle: Candle = {
               time: barTime,
               open: q.bid,
-              high: q.bid,
-              low: q.bid,
+              high: Math.max(q.bid, last.close),
+              low: Math.min(q.bid, last.close),
               close: q.bid,
               volume: 1,
             };
-            const nextList = [...currentList, newCandle];
+            const nextList = [...currentList, ...filledBars, newCandle];
             visibleCandlesRef.current = nextList;
-            setVisibleCandles(nextList);
+
+            // Commit to React state throttled to 1000ms so React components don't churn on sub-minute charts
+            const now = Date.now();
+            if (now - lastCandleCommitTimeRef.current >= 1000) {
+              lastCandleCommitTimeRef.current = now;
+              setVisibleCandles(nextList);
+            }
           }
         } else if (barTime === last.time) {
           // Update current developing bar
@@ -610,10 +632,9 @@ export const App: React.FC = () => {
           last.low = Math.min(last.low, q.bid);
           last.volume = (last.volume || 0) + 1;
 
-          // Commit to React state every 800ms to keep React components in sync
-          // while ChartContainer receives quote and updates HTML5 canvas at full 4 FPS
+          // Commit to React state every 1200ms
           const now = Date.now();
-          if (now - lastCandleCommitTimeRef.current >= 800) {
+          if (now - lastCandleCommitTimeRef.current >= 1200) {
             lastCandleCommitTimeRef.current = now;
             setVisibleCandles([...currentList]);
           }
@@ -1221,8 +1242,8 @@ export const App: React.FC = () => {
 
         {/* Center Chart Viewport with Interactive Drawing Layer */}
         <div className="flex-1 flex flex-col relative overflow-hidden bg-[#131722]">
-          {isLoadingCandles && (
-            <div className="absolute inset-0 z-40 bg-[#131722]/60 flex items-center justify-center">
+          {isLoadingCandles && visibleCandles.length === 0 && (
+            <div className="absolute inset-0 z-40 bg-[#131722]/60 flex items-center justify-center pointer-events-none">
               <div className="flex items-center space-x-2 text-[#2962ff] font-bold">
                 <div className="w-4 h-4 border-2 border-[#2962ff] border-t-transparent rounded-full animate-spin" />
                 <span>Loading EUR/USD Market Data...</span>
@@ -1251,6 +1272,7 @@ export const App: React.FC = () => {
               indicators={indicators}
               timeframe={timeframe}
               quote={quote}
+              isDrawingToolActive={activeTool !== 'crosshair' && activeTool !== 'arrow'}
               onTransformerReady={setTransformer}
               onChartInstanceReady={(inst) => { chartHelpersRef.current = inst; }}
               onChartClick={handleChartClick}

@@ -35,6 +35,7 @@ interface ChartContainerProps {
   indicators: IndicatorConfig[];
   timeframe: string;
   quote: Quote | null;
+  isDrawingToolActive?: boolean;
   onTransformerReady: (t: CoordinateTransformer) => void;
   onCrosshairMove?: (param: { time?: number; price?: number; candle?: Candle }) => void;
   onChartInstanceReady?: (instance: {
@@ -64,6 +65,7 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
   indicators,
   timeframe,
   quote,
+  isDrawingToolActive = false,
   onTransformerReady,
   onCrosshairMove,
   onChartInstanceReady,
@@ -95,6 +97,8 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
   const onLoadOlderDataRef = useRef(onLoadOlderData);
   const isLoadingOlderRef = useRef(isLoadingOlder);
   const prevFirstCandleTimeRef = useRef<number | null>(null);
+  const prevCandlesCountRef = useRef<number>(0);
+  const prevTimeframeRef = useRef<string>(timeframe);
 
   useEffect(() => {
     onLoadOlderDataRef.current = onLoadOlderData;
@@ -552,6 +556,7 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
         borderColor: '#2a2e39',
         timeVisible: true,
         secondsVisible: showSecondsRef.current || timeFormatRef.current.includes('sec'),
+        shiftVisibleRangeOnNewBar: false,
         tickMarkFormatter: (time: any, tickMarkType: any) => {
           const tSec = typeof time === 'number' ? time : (time?.timestamp || 0);
           const secVis = showSecondsRef.current || timeFormatRef.current.includes('sec');
@@ -873,6 +878,46 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
     const isPrependingOlder = prevFirst !== null && candles[0].time < prevFirst;
     const addedCount = isPrependingOlder ? candles.filter(c => c.time < prevFirst).length : 0;
     const currentLogicalRange = isPrependingOlder && chartRef.current ? chartRef.current.timeScale().getVisibleLogicalRange() : null;
+    const isTfSwitch = prevTimeframeRef.current !== timeframe;
+    prevTimeframeRef.current = timeframe;
+
+    // Check if this is an incremental live bar append/update rather than a full history reload
+    const isLiveIncremental = !isTfSwitch && !isPrependingOlder && prevFirst === candles[0].time && 
+      candles.length >= prevCandlesCountRef.current && (candles.length - prevCandlesCountRef.current <= 3);
+    prevCandlesCountRef.current = candles.length;
+
+    if (isLiveIncremental) {
+      // Incremental bar update: update ONLY the newest bar directly on Lightweight Charts series.
+      // Avoids rebuilding 1,000 candles with setData(), preventing chart freezes and gesture disruption on sub-minute charts.
+      const lastBar = candles[candles.length - 1];
+      try {
+        if (chartType === 'line' || chartType === 'area' || chartType === 'baseline') {
+          seriesRef.current.update({
+            time: lastBar.time as unknown as Time,
+            value: lastBar.close,
+          });
+        } else {
+          seriesRef.current.update({
+            time: lastBar.time as unknown as Time,
+            open: lastBar.open,
+            high: lastBar.high,
+            low: lastBar.low,
+            close: lastBar.close,
+          });
+        }
+      } catch {}
+
+      const totalBars = candles.length;
+      if (chartRef.current && totalBars > 0) {
+        try {
+          const range = chartRef.current.timeScale().getVisibleLogicalRange();
+          if (range) {
+            setIsScrolledBack(range.to < totalBars - 2);
+          }
+        } catch {}
+      }
+      return;
+    }
 
     if (chartType === 'line' || chartType === 'area' || chartType === 'baseline') {
       const lineData = candles.map(c => ({
@@ -965,8 +1010,8 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
     const lastCandle = candles[candles.length - 1];
     if (!lastCandle) return;
 
-    // Do NOT push a disconnected candle across a multi-bar gap before history is synced
-    if (barTime > lastCandle.time + tfSec * 2) {
+    // Reject only if timestamp is in the distant future or corrupted
+    if (barTime > lastCandle.time + Math.max(86400, tfSec * 500)) {
       return;
     }
 

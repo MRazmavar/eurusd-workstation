@@ -1308,7 +1308,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   // Render Forex Sessions & Killzones Overlay as Bounded Price-Range Rectangles
   // Render Forex Sessions & Killzones Overlay as Bounded Price-Range Rectangles
   const renderSessions = () => {
-    if (isLoadingCandles) return null;
+    if (candles.length === 0) return null;
 
     // Hide sessions on timeframes of 2 hours and above (2h, 3h, 4h, 1D, 1W, 1M, or >= 120m)
     const isHighTf = 
@@ -2941,6 +2941,8 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
                 return (
                   <g key={`fib-lvl-${idx}-${fib.level}`}>
                     <line
+                      data-level={fib.level}
+                      data-testid="fib-level-line"
                       x1={minX}
                       y1={y}
                       x2={maxX}
