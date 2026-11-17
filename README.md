@@ -1,3 +1,13 @@
+---
+title: EUR USD Workstation
+emoji: 📊
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Professional EUR/USD Forex Charting & Backtesting Platform
 
 A high-performance, browser-based Forex charting workstation and manual backtesting suite dedicated exclusively to **EUR/USD**, built to replicate the TradingView desktop experience.
