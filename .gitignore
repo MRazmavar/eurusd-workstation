@@ -3,5 +3,8 @@ __pycache__/
 *.pyc
 *.db
 *.db-journal
+*.sqlite*
 dist/
 .DS_Store
+scratch/
+.env
