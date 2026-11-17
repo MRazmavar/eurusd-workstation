@@ -1061,8 +1061,8 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
       const newBar = {
         time: barTime,
         open: prevClose,
-        high: parseFloat((Math.max(prevClose, quote.bid) + 0.00002).toFixed(5)),
-        low: parseFloat((Math.min(prevClose, quote.bid) - 0.00002).toFixed(5)),
+        high: Math.max(prevClose, quote.bid),
+        low: Math.min(prevClose, quote.bid),
         close: quote.bid,
       };
       currentDevelopingBarRef.current = newBar;

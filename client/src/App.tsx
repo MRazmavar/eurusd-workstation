@@ -368,7 +368,7 @@ export const App: React.FC = () => {
 
   // Load / Compute Economic News Events for visible market span + upcoming future days
   useEffect(() => {
-    const list = masterCandles.length > 0 ? masterCandles : visibleCandles;
+    const list = masterCandles;
     if (list.length === 0) return;
 
     const startSec = list[0].time - 86400 * 7;
@@ -386,7 +386,7 @@ export const App: React.FC = () => {
       .catch(() => {
         setNewsEvents(generateEconomicNewsEvents(startSec, endSec));
       });
-  }, [masterCandles, visibleCandles]);
+  }, [masterCandles]);
 
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
   const [isSessionsModalOpen, setIsSessionsModalOpen] = useState<boolean>(false);
@@ -586,13 +586,13 @@ export const App: React.FC = () => {
         const last = currentList[currentList.length - 1];
 
         if (barTime > last.time) {
-          // Advance to new developing bar cleanly with natural Forex body and micro-wicks
+          // Advance to new developing bar with exact tick-accurate OHLC
           const prevClose = last.close;
           const newCandle: Candle = {
             time: barTime,
             open: prevClose,
-            high: parseFloat((Math.max(prevClose, q.bid) + 0.00002).toFixed(5)),
-            low: parseFloat((Math.min(prevClose, q.bid) - 0.00002).toFixed(5)),
+            high: Math.max(prevClose, q.bid),
+            low: Math.min(prevClose, q.bid),
             close: q.bid,
             volume: 1,
           };
